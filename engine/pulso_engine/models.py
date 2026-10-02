@@ -43,6 +43,11 @@ class Signal:
     geo_confidence: int | None = None
     reliability: int = 50
     event_id: str | None = None
+    hash: str = ""
+    canonical_url: str | None = None
+    author: str | None = None
+    state: str | None = None
+    city: str | None = None
 
 
 @dataclass
