@@ -14,7 +14,11 @@ def push_batch(batch: dict, base_url: str | None = None, token: str | None = Non
     req = urllib.request.Request(
         f"{base_url}/api/ingest",
         data=json.dumps(batch).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "pulso-engine/0.1 (+https://github.com/henriquesouza1832001-eng/Pulso)",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URL controlada pela configuração
