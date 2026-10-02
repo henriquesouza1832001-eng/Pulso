@@ -115,86 +115,94 @@ ingest.post("/", async (c) => {
 	const { sources, events, signals, pulses, source_health } = parsed.data;
 
 	const db = c.env.DB;
-	const stmts: D1PreparedStatement[] = [];
+	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
+	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
 	// Idempotente: reenviar o mesmo lote não duplica nada (upsert por chave).
-	for (const src of sources) {
+	const stmts: D1PreparedStatement[] = [];
+	const json = (v: unknown) => JSON.stringify(v);
+	const f = (path: string) => `json_extract(j.value,'$.${path}')`;
+
+	if (sources.length) {
 		stmts.push(
 			db
 				.prepare(
-					`INSERT INTO sources (id,name,domain,adapter,source_class,url,state) VALUES (?1,?2,?3,?4,?5,?6,?7)
+					`INSERT INTO sources (id,name,domain,adapter,source_class,url,state)
+			 SELECT ${f("id")},${f("name")},${f("domain")},${f("adapter")},${f("source_class")},${f("url")},${f("state")}
+			 FROM json_each(?1) j WHERE true
 			 ON CONFLICT(id) DO UPDATE SET name=excluded.name,domain=excluded.domain,adapter=excluded.adapter,source_class=excluded.source_class,url=excluded.url,state=excluded.state`,
 				)
-				.bind(src.id, src.name, src.domain, src.adapter, src.source_class, src.url, src.state),
+				.bind(json(sources)),
 		);
 	}
-	for (const e of events) {
+	if (events.length) {
 		stmts.push(
 			db
 				.prepare(
 					`INSERT INTO events (id,title,summary,category,status,latitude,longitude,geo_precision,geo_confidence,state,city,severity,confidence,pulse,alert_level,score_breakdown,signal_count,source_count,detected_at,updated_at)
-			 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+			 SELECT ${f("event_id")},${f("title")},${f("summary")},${f("category")},${f("status")},${f("latitude")},${f("longitude")},${f("geo_precision")},${f("geo_confidence")},${f("state")},${f("city")},${f("severity")},${f("confidence")},${f("pulse")},${f("alert_level")},${f("score_breakdown")},${f("signal_count")},${f("source_count")},${f("detected_at")},${f("updated_at")}
+			 FROM json_each(?1) j WHERE true
 			 ON CONFLICT(id) DO UPDATE SET title=excluded.title,summary=excluded.summary,category=excluded.category,status=excluded.status,
 			   latitude=excluded.latitude,longitude=excluded.longitude,geo_precision=excluded.geo_precision,geo_confidence=excluded.geo_confidence,
 			   state=excluded.state,city=excluded.city,severity=excluded.severity,confidence=excluded.confidence,pulse=excluded.pulse,
 			   alert_level=excluded.alert_level,score_breakdown=excluded.score_breakdown,signal_count=excluded.signal_count,
 			   source_count=excluded.source_count,updated_at=excluded.updated_at`,
 				)
-				.bind(
-					e.event_id, e.title, e.summary, e.category, e.status, e.latitude, e.longitude,
-					e.geo_precision, e.geo_confidence, e.state, e.city, e.severity, e.confidence, e.pulse,
-					e.alert_level, JSON.stringify(e.score_breakdown), e.signal_count, e.source_count,
-					e.detected_at, e.updated_at,
-				),
+				.bind(json(events)),
 		);
 	}
-	// Sinais depois dos eventos (FK). Reenvio atualiza só o vínculo com o evento (dedup por hash).
-	for (const g of signals) {
+	if (signals.length) {
+		// Reenvio atualiza só o vínculo com o evento (dedup por hash).
 		stmts.push(
 			db
 				.prepare(
 					`INSERT INTO signals (id,source_id,source_class,timestamp,collected_at,title,text,url,canonical_url,author,category,latitude,longitude,geo_precision,geo_confidence,state,city,reliability,hash,event_id)
-			 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+			 SELECT ${f("signal_id")},${f("source_id")},${f("source_class")},${f("timestamp")},${f("collected_at")},${f("title")},${f("text")},${f("url")},${f("canonical_url")},${f("author")},${f("category")},${f("latitude")},${f("longitude")},${f("geo_precision")},${f("geo_confidence")},${f("state")},${f("city")},${f("reliability")},${f("hash")},${f("event_id")}
+			 FROM json_each(?1) j WHERE true
 			 ON CONFLICT(hash) DO UPDATE SET event_id=excluded.event_id,category=excluded.category,state=excluded.state,city=excluded.city`,
 				)
-				.bind(
-					g.signal_id, g.source_id, g.source_class, g.timestamp, g.collected_at, g.title, g.text, g.url,
-					g.canonical_url, g.author, g.category, g.latitude, g.longitude, g.geo_precision, g.geo_confidence,
-					g.state, g.city, g.reliability, g.hash, g.event_id,
-				),
+				.bind(json(signals)),
 		);
-	}
-	// Fontes por evento, recalculadas a partir dos sinais gravados.
-	for (const pair of new Set(signals.filter((g) => g.event_id).map((g) => `${g.event_id}|${g.source_id}`))) {
-		const [eventId, sourceId] = pair.split("|");
+		// Fontes por evento, recalculadas a partir dos sinais gravados.
 		stmts.push(
 			db
 				.prepare(
 					`INSERT INTO event_sources (event_id,source_id,signal_count,first_seen)
-			 SELECT ?1,?2,COUNT(*),MIN(timestamp) FROM signals WHERE event_id=?1 AND source_id=?2
+			 SELECT event_id,source_id,COUNT(*),MIN(timestamp) FROM signals
+			 WHERE event_id IN (SELECT DISTINCT json_extract(value,'$.event_id') FROM json_each(?1))
+			 GROUP BY event_id,source_id
 			 ON CONFLICT(event_id,source_id) DO UPDATE SET signal_count=excluded.signal_count,first_seen=excluded.first_seen`,
 				)
-				.bind(eventId, sourceId),
+				.bind(json(signals.map((g) => ({ event_id: g.event_id })))),
 		);
 	}
-	for (const p of pulses) {
+	if (pulses.length) {
 		stmts.push(
 			db
 				.prepare(
-					"INSERT OR REPLACE INTO pulse_history (scope,timestamp,score,alert_level,contributors) VALUES (?1,?2,?3,?4,?5)",
+					`INSERT OR REPLACE INTO pulse_history (scope,timestamp,score,alert_level,contributors)
+			 SELECT ${f("scope")},${f("timestamp")},${f("score")},${f("alert_level")},${f("contributors")} FROM json_each(?1) j`,
 				)
-				.bind(p.scope, p.timestamp, p.score, p.alert_level, JSON.stringify(p.contributors)),
+				.bind(json(pulses)),
 		);
 	}
-	for (const h of source_health) {
+	if (source_health.length) {
 		stmts.push(
 			db
 				.prepare(
-					`INSERT INTO source_health (source_id,status,last_check,last_success,detail) VALUES (?1,?2,?3,?4,?5)
+					`INSERT INTO source_health (source_id,status,last_check,last_success,detail)
+			 SELECT ${f("source_id")},${f("status")},?2,${f("last_success")},${f("detail")} FROM json_each(?1) j WHERE true
 			 ON CONFLICT(source_id) DO UPDATE SET status=excluded.status,last_check=excluded.last_check,last_success=excluded.last_success,detail=excluded.detail`,
 				)
-				.bind(h.source_id, h.status, new Date().toISOString(), h.last_success, h.detail),
+				.bind(json(source_health), new Date().toISOString()),
 		);
 	}
 	if (stmts.length) await db.batch(stmts);
-	return c.json({ ok: true, sources: sources.length, signals: signals.length, events: events.length, pulses: pulses.length, source_health: source_health.length });
+	return c.json({
+		ok: true,
+		sources: sources.length,
+		signals: signals.length,
+		events: events.length,
+		pulses: pulses.length,
+		source_health: source_health.length,
+	});
 });
