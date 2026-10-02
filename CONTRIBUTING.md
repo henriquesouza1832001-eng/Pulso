@@ -2,26 +2,34 @@
 
 ## Branches
 
-- `main`: produção. Protegida; ninguém faz push direto.
-- `hen`: branch de integração da implementação atual.
-- `feat/*`, `fix/*`, `chore/*`: trabalho de cada pessoa, abertas a partir de `hen`.
+- `main`: produção. Só recebe código por Pull Request vindo da `hen`.
+- `hen`: única branch de trabalho desta implementação. Não criamos `feat/*` nem `fix/*`.
+- `art`, `isar`, `thig`: branches pessoais de outras pessoas do time.
 
 Antes de qualquer alteração: `git status`, `git branch --show-current` e `git pull`.
 
 ## Regras de merge
 
-1. Todo código entra por Pull Request. Sem push direto em `main`.
-2. PR de `feat/*`, `fix/*` e `chore/*` vai para `hen`; de `hen` para `main` só com a etapa testada.
-3. Mínimo de 1 aprovação de outra pessoa (o autor não aprova o próprio PR).
-4. O CI (typecheck, lint e build) precisa estar verde.
-5. Conversas do PR resolvidas antes do merge.
-6. Branch atualizada com a base antes do merge.
-7. Merge por **squash**, com mensagem no formato `tipo: descrição` (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`).
-8. Proibido force-push em `main` e `hen`.
+1. Nada de push direto em `main`: toda mudança entra por PR `hen` → `main`.
+2. O CI (typecheck e build) precisa estar verde.
+3. O PR segue o template e descreve como testar.
+4. Merge por **squash**, com mensagem no formato `tipo: descrição` (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`).
+5. Após o merge, a `hen` é atualizada com a `main` (`git pull origin main`), nunca deletada.
+6. Proibido force-push em `main` e `hen`.
+7. Sem aprovação obrigatória por enquanto (há um só colaborador). Quando entrar mais gente, ligar a proteção de branch exigindo 1 aprovação.
+
+## Rodando localmente
+
+```
+npm install
+npm run db:migrate   # cria o D1 local
+npm run dev
+npm run typecheck && npm run build
+```
 
 ## Segurança
 
-- Nunca versionar `.env`, `.dev.vars`, tokens ou chaves. Use Cloudflare Secrets e `.dev.vars.example` como modelo.
+- Nunca versionar `.env`, `.dev.vars`, tokens ou chaves. Use Cloudflare Secrets.
 - Nenhum secret no frontend.
 
 ## Princípio editorial
