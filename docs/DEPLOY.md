@@ -39,3 +39,15 @@ No ambiente do Engine, exporte `PULSO_API_URL` e `PULSO_INGEST_TOKEN`. Guarde o 
 - Regras de WAF e rate limiting no painel da Cloudflare.
 - KV para cache de `/api/pulse/br` e `/api/map` quando o tráfego justificar.
 - O Python Engine ainda não roda hospedado: precisa de ambiente próprio (container/VM/cron), pois não é um Worker.
+
+## Deploy automático (GitHub Actions)
+`.github/workflows/deploy.yml` roda a cada merge na `main`: valida (typecheck, testes Node e Python) → aplica migrations do D1 → publica o Worker → compila e publica o front → confere `/api/health`.
+
+Secrets do repositório necessários:
+| Secret | Origem |
+|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | já configurado |
+| `CLOUDFLARE_API_TOKEN` | criado no painel (modelo "Editar Cloudflare Workers" + D1 Editar), restrito à conta; `gh secret set CLOUDFLARE_API_TOKEN` |
+| `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | usados pela coleta agendada (`collect.yml`) |
+
+Rotação: gerar novo token no painel, atualizar o secret e revogar o antigo. Migration que falha interrompe o deploy antes de publicar código novo.
