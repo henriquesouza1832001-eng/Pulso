@@ -1,37 +1,36 @@
 # Contribuindo com o Pulso
 
+Leia também o [AGENTS.md](AGENTS.md) (vale para humanos e agentes de IA).
+
 ## Branches
+- `main`: produção, protegida. Só recebe código por Pull Request.
+- `hen` (e outras branches pessoais de integração): uso individual.
+- Funcionalidades nascem em branches específicas: `feature/*`, `fix/*`, `refactor/*`, `infra/*`, `collector/*` (ex.: `feature/live-map`, `collector/reddit`, `infra/cloudflare`).
 
-- `main`: produção. Só recebe código por Pull Request vindo da `hen`.
-- `hen`: única branch de trabalho desta implementação. Não criamos `feat/*` nem `fix/*`.
-- `art`, `isar`, `thig`: branches pessoais de outras pessoas do time.
+Antes de começar: `git status`, `git branch --show-current`, `git pull`.
 
-Antes de qualquer alteração: `git status`, `git branch --show-current` e `git pull`.
+## Fluxo
+branch → commit → push → Pull Request → CI verde → review → merge (squash) → `main`.
 
 ## Regras de merge
-
-1. Nada de push direto em `main`: toda mudança entra por PR `hen` → `main`.
-2. O CI (typecheck e build) precisa estar verde.
-3. O PR segue o template e descreve como testar.
-4. Merge por **squash**, com mensagem no formato `tipo: descrição` (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`).
-5. Após o merge, a `hen` é atualizada com a `main` (`git pull origin main`), nunca deletada.
-6. Proibido force-push em `main` e `hen`.
-7. Sem aprovação obrigatória por enquanto (há um só colaborador). Quando entrar mais gente, ligar a proteção de branch exigindo 1 aprovação.
+1. Nada de push direto em `main`; proibido force-push em `main`.
+2. CI verde: typecheck, build, testes do Worker/shared e testes Python.
+3. PR segue o template; mudança de contrato leva label `contract` e atualiza `contracts.ts`, `models.py` e `docs/api/API.md`.
+4. Nenhum secret no diff.
+5. Merge por **squash**, mensagem `tipo: descrição` (`feat`, `fix`, `refactor`, `infra`, `collector`, `docs`, `test`). Nada de `update`, `teste`, `novo`.
+6. Quando houver mais de uma pessoa ativa, ligar a proteção de branch na `main` exigindo 1 aprovação.
 
 ## Rodando localmente
-
 ```
 npm install
-npm run db:migrate   # cria o D1 local
-npm run dev
-npm run typecheck && npm run build
+npm run db:migrate && npm run db:seed     # D1 local com dados fictícios
+npm run dev:worker                         # API em :8787 (copie apps/worker/.dev.vars.example para .dev.vars)
+npm run dev:web                            # React em :5173 (proxy para a API)
+cd engine && py -m pip install -e ".[dev]" && py -m pytest
 ```
 
 ## Segurança
-
-- Nunca versionar `.env`, `.dev.vars`, tokens ou chaves. Use Cloudflare Secrets.
-- Nenhum secret no frontend.
+Nunca versionar `.env`, `.dev.vars`, tokens ou chaves. Produção usa `wrangler secret put`. Nenhum secret no frontend.
 
 ## Princípio editorial
-
-O Pulso agrega e organiza; não decide quem tem razão. Alegações nunca viram fatos automaticamente, e todo resumo gerado por IA precisa estar ligado às fontes originais.
+O Pulso observa, correlaciona, localiza, confirma, explica e visualiza. Sinal fraco não é fato; alegação política não vira fato; IA não é fonte.

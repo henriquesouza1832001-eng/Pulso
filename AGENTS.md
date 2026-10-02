@@ -1,0 +1,32 @@
+# AGENTS.md — regras para agentes de IA (e humanos) no PULSO
+
+Leia antes de qualquer alteração: `docs/architecture/ARCHITECTURE.md`, `docs/api/API.md`, `docs/SCORING.md`.
+
+## Sempre
+1. `git status` e `git branch --show-current` antes de começar; `git pull` na branch.
+2. Trabalhar em branch própria (`feature/*`, `fix/*`, `refactor/*`, `infra/*`, `collector/*`) ou na branch pessoal de integração (`hen`). Nunca na `main`.
+3. Não sobrescrever nem apagar trabalho de outra pessoa. Se o código dela conflita com a tarefa, **adapte ou peça resolução**; não delete.
+4. Não apagar código sem entender suas dependências.
+5. Rodar os testes do módulo tocado e `npm run typecheck && npm run build`; Python: `cd engine && py -m pytest`.
+6. Verificar o comportamento real (subir o Worker, chamar o endpoint), não só "compilou".
+7. Registrar decisões arquiteturais relevantes em `docs/decisions/NNNN-titulo.md`.
+
+## Nunca
+- Commitar secrets: `.env`, `.dev.vars`, tokens, cookies, chaves privadas.
+- Mudar contrato silenciosamente. Contratos vivem em `packages/shared/src/contracts.ts` (espelho: `engine/pulso_engine/models.py`) e `docs/api/API.md`. Mudança de contrato = mesmo PR atualiza os 3 + label `contract`.
+- Fazer merge automático na `main`. Merge é decisão humana, via PR.
+- Contornar autenticação, limites ou termos de uso de qualquer fonte.
+- Implementar reconhecimento facial, rastreamento de pessoas ou perfil individual.
+- Tratar alegação política como fato, ou calcular "quem é perigoso/vai ganhar".
+
+## Antes de integrar uma fonte externa
+Verificar e documentar em `docs/sources/SOURCES.md`: API oficial, termos de uso, rate limits, custo, autenticação, licença, retenção permitida e possibilidade de exibição pública.
+
+## Dono de cada pasta (reduz conflito)
+| Pasta | Responsabilidade |
+|---|---|
+| `apps/web` | React + UI + mapa |
+| `apps/worker`, `database/` | Worker, API, D1, infraestrutura Cloudflare |
+| `engine/` | Python: coleta, NLP, geolocalização, clustering, scoring |
+| `engine/pulso_engine/collectors/<fonte>` | uma pasta por fonte, uma branch `collector/<fonte>` |
+| `packages/shared` | contratos (alterar com cuidado) |
