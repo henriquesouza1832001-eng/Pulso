@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .collectors.news.rss import RssAdapter, http_fetch
+from .config import load_sources
 from .events import build_event, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
@@ -129,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--push", action="store_true", help="envia ao Worker (exige PULSO_API_URL e PULSO_INGEST_TOKEN)")
     args = ap.parse_args(argv)
 
-    sources = [s for s in json.loads(args.config.read_text(encoding="utf-8")) if s.get("enabled", True)]
+    sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
     batch = run_once(sources)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")

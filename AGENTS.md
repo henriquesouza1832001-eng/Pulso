@@ -17,7 +17,9 @@ Leia antes de qualquer alteração: `docs/architecture/ARCHITECTURE.md`, `docs/a
 - Fazer merge automático na `main`. Merge é decisão humana, via PR.
 - Contornar autenticação, limites ou termos de uso de qualquer fonte.
 - Implementar reconhecimento facial, rastreamento de pessoas ou perfil individual.
-- Tratar alegação política como fato, ou calcular "quem é perigoso/vai ganhar".
+- Tratar alegação política como fato.
+- Publicar previsão sem probabilidade, incerteza, evidências e método registrados, ou apresentá-la como fato. O PULSO prevê qualquer tema (ver `docs/architecture/PREDICTION.md`), mas sempre como previsão calibrada.
+- Coletar de uma fonte sem cumprir `docs/COLLECTION_PROTOCOL.md`.
 
 ## Antes de integrar uma fonte externa
 Verificar e documentar em `docs/sources/SOURCES.md`: API oficial, termos de uso, rate limits, custo, autenticação, licença, retenção permitida e possibilidade de exibição pública.
