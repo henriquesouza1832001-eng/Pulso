@@ -1,0 +1,60 @@
+"""Geolocalização por gazetteer (capitais e estados). Não inventa precisão: só CITY ou STATE.
+
+Ruas, bairros e pontos exigem geocodificador próprio (fase seguinte).
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from .normalizer import fold
+
+
+@dataclass(frozen=True)
+class Place:
+    uf: str
+    city: str | None
+    lat: float
+    lon: float
+    precision: str  # CITY | STATE
+    confidence: int
+
+
+# (UF, estado, capital, lat, lon da capital)
+_STATES = [
+    ("AC", "Acre", "Rio Branco", -9.97, -67.81), ("AL", "Alagoas", "Maceió", -9.67, -35.74),
+    ("AP", "Amapá", "Macapá", 0.03, -51.07), ("AM", "Amazonas", "Manaus", -3.12, -60.02),
+    ("BA", "Bahia", "Salvador", -12.97, -38.50), ("CE", "Ceará", "Fortaleza", -3.73, -38.52),
+    ("DF", "Distrito Federal", "Brasília", -15.79, -47.88), ("ES", "Espírito Santo", "Vitória", -20.32, -40.34),
+    ("GO", "Goiás", "Goiânia", -16.68, -49.25), ("MA", "Maranhão", "São Luís", -2.53, -44.30),
+    ("MT", "Mato Grosso", "Cuiabá", -15.60, -56.10), ("MS", "Mato Grosso do Sul", "Campo Grande", -20.47, -54.62),
+    ("MG", "Minas Gerais", "Belo Horizonte", -19.92, -43.94), ("PA", "Pará", "Belém", -1.46, -48.50),
+    ("PB", "Paraíba", "João Pessoa", -7.12, -34.86), ("PR", "Paraná", "Curitiba", -25.43, -49.27),
+    ("PE", "Pernambuco", "Recife", -8.05, -34.88), ("PI", "Piauí", "Teresina", -5.09, -42.80),
+    ("RJ", "Rio de Janeiro", "Rio de Janeiro", -22.91, -43.17), ("RN", "Rio Grande do Norte", "Natal", -5.79, -35.21),
+    ("RS", "Rio Grande do Sul", "Porto Alegre", -30.03, -51.23), ("RO", "Rondônia", "Porto Velho", -8.76, -63.90),
+    ("RR", "Roraima", "Boa Vista", 2.82, -60.67), ("SC", "Santa Catarina", "Florianópolis", -27.59, -48.55),
+    ("SP", "São Paulo", "São Paulo", -23.55, -46.63), ("SE", "Sergipe", "Aracaju", -10.91, -37.07),
+    ("TO", "Tocantins", "Palmas", -10.18, -48.33),
+]
+
+# Nomes que coincidem com palavras comuns exigem contexto ("em Natal" casa; "natal" festa não).
+_AMBIGUOUS_CITY = {"Natal", "Palmas", "Vitória", "Salvador", "Recife"}
+
+_PATTERNS: list[tuple[re.Pattern[str], Place]] = []
+for _uf, _state, _capital, _lat, _lon in _STATES:
+    _pat = re.escape(fold(_capital))
+    if _capital in _AMBIGUOUS_CITY:
+        _pat = rf"(?:em|de|no|na|do|da|cidade de|capital)\s+{_pat}"
+    _PATTERNS.append((re.compile(rf"\b{_pat}\b"), Place(_uf, _capital, _lat, _lon, "CITY", 70)))
+for _uf, _state, _capital, _lat, _lon in _STATES:
+    _PATTERNS.append((re.compile(rf"\b{re.escape(fold(_state))}\b"), Place(_uf, None, _lat, _lon, "STATE", 60)))
+
+
+def locate(text: str) -> Place | None:
+    """Primeira menção geográfica (cidade tem prioridade sobre estado)."""
+    folded = fold(text)
+    for pat, place in _PATTERNS:
+        if pat.search(folded):
+            return place
+    return None
