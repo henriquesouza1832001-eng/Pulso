@@ -4,7 +4,7 @@ Leia antes de qualquer alteração: `docs/architecture/ARCHITECTURE.md`, `docs/a
 
 ## Sempre
 1. `git status` e `git branch --show-current` antes de começar; `git pull` na branch.
-2. Trabalhar em branch própria (`feature/*`, `fix/*`, `refactor/*`, `infra/*`, `collector/*`) ou na branch pessoal de integração (`hen`). Nunca na `main`.
+2. Trabalhar apenas na branch pessoal de quem pediu (`hen`, `thig`, `art` ou `isar`). Nunca na `main` e **nunca criar outras branches**. Só essas cinco existem.
 3. Não sobrescrever nem apagar trabalho de outra pessoa. Se o código dela conflita com a tarefa, **adapte ou peça resolução**; não delete.
 4. Não apagar código sem entender suas dependências.
 5. Rodar os testes do módulo tocado e `npm run typecheck && npm run build`; Python: `cd engine && py -m pytest`.

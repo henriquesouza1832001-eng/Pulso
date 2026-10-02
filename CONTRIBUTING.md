@@ -4,13 +4,13 @@ Leia também o [AGENTS.md](AGENTS.md) (vale para humanos e agentes de IA).
 
 ## Branches
 - `main`: produção, protegida. Só recebe código por Pull Request.
-- `hen` (e outras branches pessoais de integração): uso individual.
-- Funcionalidades nascem em branches específicas: `feature/*`, `fix/*`, `refactor/*`, `infra/*`, `collector/*` (ex.: `feature/live-map`, `collector/reddit`, `infra/cloudflare`).
+- Existem **somente** estas branches: `main`, `hen`, `thig`, `art` e `isar`. Cada pessoa trabalha na sua (a `hen` é do backend).
+- **Não criar outras branches** (`feature/*`, `infra/*`, `collector/*` etc.). O trabalho de cada módulo acontece na branch pessoal de quem o faz.
 
 Antes de começar: `git status`, `git branch --show-current`, `git pull`.
 
 ## Fluxo
-branch → commit → push → Pull Request → CI verde → review → merge (squash) → `main`.
+sua branch → commit → push → Pull Request para `main` → CI verde → review → merge → `main` → atualize sua branch com `git pull origin main`.
 
 ## Regras de merge
 1. Nada de push direto em `main`; proibido force-push em `main`.
