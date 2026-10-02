@@ -1,0 +1,2 @@
+# Copie para .dev.vars (ignorado pelo Git). Valor só para desenvolvimento local.
+INGEST_TOKEN=troque-por-um-valor-local

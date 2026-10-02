@@ -1,0 +1,16 @@
+{
+  "name": "@pulso/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "wrangler types && tsc -p .",
+    "test": "vitest run --passWithNoTests",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "db:migrate": "wrangler d1 migrations apply pulso --local",
+    "db:seed": "wrangler d1 execute pulso --local --file ../../database/seeds/dev.sql"
+  },
+  "dependencies": { "@pulso/shared": "*", "hono": "^4.9.0", "zod": "^4.1.0" },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^3.2.4", "wrangler": "^4.40.0" }
+}

@@ -1,0 +1,23 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "pulso-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-10-08",
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": { "enabled": true },
+	"vars": {
+		// Origens permitidas no CORS (separadas por vírgula). Não é segredo.
+		"ALLOWED_ORIGINS": "http://localhost:5173"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "pulso",
+			// Troque pelo id real após `wrangler d1 create pulso`. Em dev local qualquer valor funciona.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../database/migrations"
+		}
+	]
+	// Segredos (via `wrangler secret put`, nunca no Git): INGEST_TOKEN
+	// Futuro: kv_namespaces (cache), queues, r2_buckets, durable_objects.
+}

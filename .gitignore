@@ -31,3 +31,9 @@ Thumbs.db
 
 # tsc
 *.tsbuildinfo
+
+worker-configuration.d.ts
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/

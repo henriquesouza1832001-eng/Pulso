@@ -1,11 +1,15 @@
-# Pulso
+# PULSO 🇧🇷
 
-Radar de notícias em tempo real do Brasil: agrega fontes, agrupa matérias em eventos e mede a intensidade informacional (Pulso Score, 0–100). O score mede cobertura, não veracidade.
+Plataforma brasileira de inteligência situacional em tempo real, a partir de **sinais públicos**: o que está acontecendo no Brasil, onde, quão anormal é e quais evidências sustentam isso.
 
-**Stack:** React 19 + React Router 7 (SSR) em Cloudflare Workers, D1 (dados) e KV (cache). Veja [CONTRIBUTING.md](CONTRIBUTING.md) para o fluxo de trabalho.
+O PULSO mede **atividade e sinais detectados**, não a probabilidade de dano a ninguém, e separa **severidade** de **confiança**.
 
-## Estado atual
+| Peça | Pasta | Tecnologia |
+|---|---|---|
+| Interface | [apps/web](apps/web) | React + TypeScript + Vite |
+| API / gateway | [apps/worker](apps/worker) | Cloudflare Worker + Hono + D1 |
+| Inteligência | [engine](engine) | Python |
+| Contratos | [packages/shared](packages/shared) | TypeScript |
+| Banco | [database](database) | migrations e seeds D1 |
 
-- Esqueleto full-stack, schema D1 (`migrations/`), Pulso Score (`app/lib/score.ts`).
-- Home com Pulso nacional e `GET /api/pulse`.
-- Próximos passos: coletor RSS, normalização, deduplicação, eventos, trending, timeline, mapa.
+Documentação: [arquitetura](docs/architecture/ARCHITECTURE.md) · [API](docs/api/API.md) · [scoring](docs/SCORING.md) · [fontes](docs/sources/SOURCES.md) · [decisões](docs/decisions) · [como contribuir](CONTRIBUTING.md) · [regras para agentes](AGENTS.md)
