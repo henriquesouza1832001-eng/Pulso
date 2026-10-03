@@ -20,7 +20,7 @@
   },
   {
    "id": "realdata-2",
-   "label": "Bairro Barreiro",
+   "label": "Bairro Barreiro (câmera 1)",
    "city": "Belo Horizonte",
    "state": "MG",
    "lat": null,
@@ -37,7 +37,7 @@
   },
   {
    "id": "realdata-3",
-   "label": "Bairro Barreiro",
+   "label": "Bairro Barreiro (câmera 2)",
    "city": "Belo Horizonte",
    "state": "MG",
    "lat": null,
@@ -54,7 +54,7 @@
   },
   {
    "id": "realdata-4",
-   "label": "Bairro Barreiro",
+   "label": "Bairro Barreiro (câmera 3)",
    "city": "Belo Horizonte",
    "state": "MG",
    "lat": null,
@@ -88,7 +88,7 @@
   },
   {
    "id": "realdata-6",
-   "label": "Bairro Barreiro",
+   "label": "Bairro Barreiro (câmera 4)",
    "city": "Belo Horizonte",
    "state": "MG",
    "lat": null,
