@@ -2,7 +2,7 @@
 
 > Gerado de `engine/config/sources.json` por `py -m pulso_engine.catalog_doc`. **Não edite à mão**: mude a configuração e gere de novo. Fichas detalhadas (termos, limites, retenção) estão em `SOURCES.md`.
 
-**111 fontes cadastradas, 104 ativas.** Ativas por classe: Imprensa nacional/internacional 61, Imprensa regional 29, Oficial 14.
+**112 fontes cadastradas, 105 ativas.** Ativas por classe: Imprensa nacional/internacional 61, Imprensa regional 29, Oficial 15.
 
 Critérios: feed público oficial do veículo/órgão, testado ao vivo com o coletor real; publicação recente; sem filiação política declarada (para não enviesar a amostra); feeds em inglês ficam de fora enquanto o vocabulário do motor for em português. `revisão pendente` = ainda falta uma pessoa conferir os termos (COLLECTION_PROTOCOL §4).
 
@@ -13,6 +13,7 @@ Critérios: feed público oficial do veículo/órgão, testado ao vivo com o col
 | `agencia-camara` | Agência Câmara de Notícias | BR | 300 s | ativa |
 | `agencia-fiocruz` | Agência Fiocruz | BR | 900 s | ativa, revisão pendente |
 | `agencia-senado` | Agência Senado | BR | 300 s | ativa |
+| `bcb-ptax` | Banco Central: dólar PTAX (choque cambial) | BR | 1800 s | ativa, revisão pendente |
 | `gov-cemaden` | CEMADEN | BR | 300 s | ativa, revisão pendente |
 | `gov-ibama` | IBAMA | BR | 600 s | ativa, revisão pendente |
 | `gov-inpe` | INPE | BR | 900 s | ativa, revisão pendente |

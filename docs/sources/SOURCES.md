@@ -15,6 +15,7 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
 | USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
 | **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
+| **Banco Central, dólar PTAX** (choque cambial) | OFFICIAL | Olinda OData aberto (`bcb_ptax`) | ✅ ativa; só emite com variação ≥ 1% |
 | **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
 | Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
@@ -178,3 +179,20 @@ Exibição pública permitida: headline_link, sempre com atribuição ao INPE.
 Calibração: com 150 detecções em 3 h por UF, o dia 2026-10-02 (20 392 detecções no Brasil, temporada seca) teria dado ~25 sinais em 9 estados; limiares mais baixos geram dezenas de sinais por dia. Ajustável em `min_focos` e `window_h`.
 Papel: fonte OFICIAL e objetiva da frente de fogo (e da fumaça sobre as cidades). Um foco é uma detecção de calor por satélite, não um incêndio confirmado: o texto diz "detecções".
 ```
+
+## Ficha: Banco Central, dólar PTAX (`bcb-ptax`)
+```
+Fonte / URL: https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo (OData, JSON)
+Tipo de acesso: dados abertos do Banco Central, sem chave. Termos: https://www.bcb.gov.br/acessoinformacao/dadosabertos
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Uma consulta de ~10 dias por rodada (poucos bytes).
+Dados coletados e retenção: título e texto curtos calculados com as duas últimas cotações PTAX de venda; só quando a variação diária passa de `min_pct` (1,0%) e a cotação tem menos de 48 h. Retenção 90 dias.
+Frequência: 1800 s (a PTAX é divulgada uma vez por dia útil, por volta das 13h de Brasília).
+Fallback se cair: a fonte fica OFFLINE; as demais seguem. Dia calmo = sem sinal, e isso é normal (quiet_ok: aparece ONLINE, não DEGRADED).
+Observação: `api.bcb.gov.br` (série SGS) não resolveu DNS no ambiente de teste; o serviço `olinda.bcb.gov.br` respondeu e é o usado.
+Exibição pública permitida: headline_link, com atribuição ao Banco Central do Brasil.
+Papel: sinal econômico oficial e objetivo (o dólar pressiona combustível, alimentos e viagens). Cobre a categoria ECONOMY sem depender da imprensa.
+```
+
+## Fontes de limiar (`quiet_ok`)
+Fontes que só emitem quando passam de um limiar (`inmet-avisos`, `inpe-queimadas`, `bcb-ptax`) levam `"quiet_ok": true` em `sources.json`: sem ocorrência no limiar a saúde é ONLINE ("sem ocorrências no limiar"), e não DEGRADED. Fonte de feed contínuo (RSS) sem itens continua DEGRADED.

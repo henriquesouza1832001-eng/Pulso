@@ -147,7 +147,10 @@ def run_once(
         try:
             # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
             got = build_adapter(src, keywords, fetcher if src["adapter"] in URL_FETCH_ADAPTERS else None, lambda: now).run()
-            return got, *(("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos"))
+            if got:
+                return got, "ONLINE", None
+            # Fonte de limiar (alerta, choque, foco): sem ocorrência é o normal, não uma falha.
+            return got, *(("ONLINE", "sem ocorrências no limiar") if src.get("quiet_ok") else ("DEGRADED", "feed sem itens válidos"))
         except Exception as exc:  # uma fonte caída nunca derruba o ciclo
             detail = f"{type(exc).__name__}: {exc}"[:300]
             print(f"[warn] {src['id']}: {detail}", file=sys.stderr)
@@ -161,7 +164,7 @@ def run_once(
         for s in got:
             signals.setdefault(s.hash, s)  # dedup por URL canônica/título
         health.append({"source_id": src["id"], "status": status,
-                       "last_success": iso(now) if got else None, "detail": detail})
+                       "last_success": iso(now) if status == "ONLINE" else None, "detail": detail})
 
     # Notícia mais velha que a janela de estado não é informação nova: o feed ainda a mostra, mas a API só devolve
     # as últimas 24 h, então reenviá-la a cada ciclo reescreveria no banco linhas iguais (limite de escrita do D1)
