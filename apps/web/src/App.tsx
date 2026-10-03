@@ -69,6 +69,11 @@ export function App() {
 
 	const onSelect = useCallback((id: string) => setSelectedId(id), []);
 	const onStateSelect = useCallback((uf: string) => setUfPanel(uf), []);
+	// Alerta clicado no mapa: o dossiê e o item ficam no feed, então leva a página até lá.
+	const onMapSelect = useCallback((id: string) => {
+		setSelectedId(id);
+		document.getElementById("feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+	}, []);
 	const apiOnline = !pulse.error || !!pulse.data;
 	const onlineSources = health.data?.sources.filter((s) => s.status === "ONLINE").length ?? 0;
 
@@ -118,7 +123,7 @@ export function App() {
 						<BrazilMap
 							events={events}
 							selectedId={selectedId}
-							onSelect={onSelect}
+							onSelect={onMapSelect}
 							onStateSelect={onStateSelect}
 						/>
 						<div className="mapside">
