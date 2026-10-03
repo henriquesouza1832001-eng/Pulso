@@ -51,3 +51,12 @@ Secrets do repositório necessários:
 | `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | usados pela coleta agendada (`collect.yml`) |
 
 Rotação: gerar novo token no painel, atualizar o secret e revogar o antigo. Migration que falha interrompe o deploy antes de publicar código novo.
+
+## Agendamento da coleta (Cron Trigger da Cloudflare)
+O agendador do GitHub (`schedule`) atrasa de forma imprevisível, então o disparo vem da Cloudflare: o Worker `pulso-api` tem `triggers.crons = ["*/5 * * * *"]` e, a cada 5 min, chama a API do GitHub (`workflow_dispatch` de `collect.yml`). O GitHub só executa o Python Engine. O `schedule` do `collect.yml` fica como reserva.
+
+Necessário (uma vez): um token **fino** do GitHub, só para o repositório Pulso, com permissão **Actions: leitura e escrita**, guardado no Worker:
+```
+cd apps/worker && npx wrangler secret put GH_DISPATCH_TOKEN
+```
+Saúde: `GET /api/health` mostra `collection.age_seconds`, `stale` (sem Pulso novo há mais de 15 min) e `scheduler_configured`. Falha de disparo aparece nos logs do Worker (`falha ao acionar coleta`).

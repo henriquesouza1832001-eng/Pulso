@@ -19,6 +19,21 @@ health.get("/", async (c) => {
 	)
 		.all<SourceHealth>()
 		.catch(() => ({ results: [] as SourceHealth[] }));
+	// Atraso da coleta: sem Pulso novo há mais de 15 min (3 ciclos), o sistema está "velho".
+	const last = await c.env.DB.prepare("SELECT MAX(timestamp) AS t FROM pulse_history WHERE scope = 'BR'")
+		.first<{ t: string | null }>()
+		.catch(() => null);
+	const ageSeconds = last?.t ? Math.max(0, Math.round((Date.now() - Date.parse(last.t)) / 1000)) : null;
 	c.header("Cache-Control", "no-store");
-	return c.json({ api: "ONLINE", db, sources: results });
+	return c.json({
+		api: "ONLINE",
+		db,
+		collection: {
+			last_pulse_at: last?.t ?? null,
+			age_seconds: ageSeconds,
+			stale: ageSeconds === null || ageSeconds > 900,
+			scheduler_configured: Boolean(c.env.GH_DISPATCH_TOKEN),
+		},
+		sources: results,
+	});
 });
