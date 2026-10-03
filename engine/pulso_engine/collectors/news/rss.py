@@ -46,6 +46,26 @@ def _host_gate(url: str) -> threading.BoundedSemaphore:
         return _host_gates.setdefault(host, threading.BoundedSemaphore(PER_HOST_MAX))
 
 
+FETCH_DEADLINE_S = 30.0  # tempo TOTAL de leitura: o timeout do socket é por operação, então um servidor que goteja 1 byte por vez prenderia a coleta
+
+
+def _read_bounded(resp, deadline_s: float | None = None) -> bytes:
+    """Lê no máximo MAX_BYTES + 1 dentro de um prazo total (slow-loris/gotejamento não segura a coleta indefinidamente)."""
+    limit = time.monotonic() + (FETCH_DEADLINE_S if deadline_s is None else deadline_s)
+    chunks: list[bytes] = []
+    total = 0
+    while total <= MAX_BYTES:
+        if time.monotonic() > limit:
+            raise TimeoutError("leitura do feed excedeu o prazo total")
+        # read1: devolve o que chegou numa leitura (read(n) esperaria n bytes, e o prazo nunca seria checado num servidor que goteja)
+        chunk = getattr(resp, "read1", resp.read)(min(65536, MAX_BYTES + 1 - total))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks)
+
+
 def http_fetch(url: str) -> bytes:
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml, text/xml", "Accept-Encoding": "gzip"})
@@ -53,7 +73,7 @@ def http_fetch(url: str) -> bytes:
         for attempt in (1, 2):
             try:
                 with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URLs vêm de config/sources.json
-                    data = resp.read(MAX_BYTES + 1)
+                    data = _read_bounded(resp)
                 break
             except urllib.error.HTTPError:
                 raise  # 4xx/5xx é resposta do servidor (429, 403...): não insistir

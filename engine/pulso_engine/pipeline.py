@@ -27,6 +27,7 @@ from .processing.clustering import cluster_signals
 from .processing.geo import locate
 from .processing.geo_v2 import resolve as resolve_city
 from .flags import enabled as flag
+from .source_freshness import SourceReading, assess as assess_freshness, coverage as freshness_coverage, freshness_percentiles
 from .forecast_v2 import annotate_shadow, shadow_rows
 from .investigations_io import investigation_dict, investigation_from_row
 from .radar import analyze
@@ -309,6 +310,17 @@ def run_once(
         if old.event_id:
             prior_ids[old.hash] = old.event_id
         all_signals[old.hash] = old
+    # Saúde em dimensões separadas (RT-002): HTTP 200 não é dado novo, vazio não é normal, parado não é zero.
+    freshness: list[dict] = []
+    if flag("SOURCE_FRESHNESS"):
+        known = frozenset(known_ids)
+        for src, (got, status, _detail) in zip(sources, collected):
+            # Item sem data de publicação válida recebe timestamp = instante da coleta (timestamp == collected_at): isso NÃO é
+            # frescor (um feed parado de itens sem data pareceria sempre novo). Só fonte de limiar (quiet_ok: o dado é o estado
+            # de agora) usa o instante da coleta como data.
+            reading = SourceReading(src["id"], status, True, tuple(g.hash for g in got), tuple(
+                g.timestamp if (src.get("quiet_ok") or g.timestamp != g.collected_at) else None for g in got))
+            freshness.append(assess_freshness(src, reading, now, known))
     geo_shadow = None if flag("GEO_V2") else geo_v2_shadow(list(signals.values()), source_geo, source_states)
     signals = {h: refine_geo(s, source_geo, source_states) for h, s in signals.items()}
     all_signals.update(signals)  # o dado fresco prevalece sobre o gravado
@@ -396,6 +408,7 @@ def run_once(
         "investigations": investigations,
         "forecast_registry": forecast_registry,
         "shadow_results": shadow_results,
+        "source_freshness": freshness,  # só log/observabilidade neste ciclo; o Worker ignora (chunks não o repassa)
         "geo_v2_shadow": geo_shadow,  # só para o log do ciclo; o Worker ignora (chunks não o repassa)
     }
 
@@ -605,6 +618,12 @@ def main(argv: list[str] | None = None) -> int:
     if batch.get("geo_v2_shadow"):
         g = batch["geo_v2_shadow"]
         print(f"  geo_v2 (sombra): {g['would_upgrade']} de {g['signals']} sinais ganhariam município")
+    if batch.get("source_freshness"):
+        fam = {s["id"]: s.get("source_class", "?") for s in sources}
+        cov = freshness_coverage(batch["source_freshness"], fam)
+        pct = freshness_percentiles(batch["source_freshness"])
+        print("  frescor: " + " ".join(f"{k}[FRESH={v['FRESH']} STALE={v['STALE']} EMPTY={v['EMPTY']} UNKNOWN={v['UNKNOWN']}]" for k, v in cov.items())
+              + f" idade_min p50={pct['p50']} p95={pct['p95']} max={pct['max']}")
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])}/{batch['events_total']} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
