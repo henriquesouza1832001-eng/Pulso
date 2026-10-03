@@ -14,7 +14,7 @@ O laboratório isolado existe em `engine/pulso_engine/validation/`. Brier, log l
 
 ## Replay e leakage
 
-`ReplayItem.available_at` usa a última marca disponível entre publicação, observação, fetch e confirmação. O ataque encontrou que `payload` genérico podia carregar outcome futuro. `outcome`, `resolved_at` e `resolution` são agora proibidos, com regressão. Ainda não há schema por feature, snapshot de baseline no cutoff, nem teste contra valores futuros escondidos em campos semanticamente equivalentes: **P1**.
+`ReplayItem.available_at` usa a última marca disponível entre publicação, observação, fetch e confirmação. O ataque encontrou que `payload` genérico podia carregar outcome futuro. `outcome`, `resolved_at` e `resolution` são agora proibidos, com regressão. O `forecast_registry` também passou a registrar `data_cutoff` UTC dentro do snapshot canônico e recusa timestamps ingênuos. Ainda não há schema por feature, snapshot de baseline separado, nem teste contra valores futuros escondidos em campos semanticamente equivalentes: **P1**.
 
 ## Storage, Worker e migrations
 

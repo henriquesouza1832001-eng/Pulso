@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .. import flags
 
@@ -22,11 +22,14 @@ def build_entry(forecast: dict, features: dict, now: datetime, model_version: st
                 baseline_version: str, active_flags: dict[str, bool] | None = None) -> dict:
     """Entrada de registro para `forecast` (dict com `forecast_id`). `features`: números/strings simples que alimentaram
     o modelo (ex.: Pulso atual, pares, baseline). Flags: por padrão o estado efetivo atual (`flags.snapshot()`)."""
-    body = {"features": features, "model_version": model_version, "feature_version": feature_version,
+    if now.tzinfo is None:
+        raise ValueError("data_cutoff requer timezone")
+    data_cutoff = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body = {"data_cutoff": data_cutoff, "features": features, "model_version": model_version, "feature_version": feature_version,
             "baseline_version": baseline_version, "flags": active_flags if active_flags is not None else flags.snapshot(),
             "probability": forecast["probability"], "method": forecast["method"], "method_version": forecast["method_version"],
             "scope": forecast["scope"], "threshold": forecast["threshold"]}
-    return {"forecast_id": forecast["forecast_id"], "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    return {"forecast_id": forecast["forecast_id"], "created_at": data_cutoff,
             "snapshot": _canonical(body), "snapshot_hash": hashlib.sha256(_canonical(body).encode()).hexdigest()}
 
 
