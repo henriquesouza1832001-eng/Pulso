@@ -36,6 +36,8 @@ export function App() {
 
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [ufPanel, setUfPanel] = useState<string | null>(null);
+	// Estado em foco no feed: escolher uma UF no mapa/lista também recorta o feed para ela.
+	const [feedUf, setFeedUf] = useState<string | null>(null);
 	const [, forceTick] = useState(0);
 
 	// re-render leve a cada 10s para os "há Xs" andarem
@@ -68,7 +70,15 @@ export function App() {
 	);
 
 	const onSelect = useCallback((id: string) => setSelectedId(id), []);
-	const onStateSelect = useCallback((uf: string) => setUfPanel(uf), []);
+	const onStateSelect = useCallback((uf: string) => {
+		setUfPanel(uf);
+		setFeedUf(uf);
+	}, []);
+	// Alerta clicado no mapa: o dossiê e o item ficam no feed, então leva a página até lá.
+	const onMapSelect = useCallback((id: string) => {
+		setSelectedId(id);
+		document.getElementById("feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+	}, []);
 	const apiOnline = !pulse.error || !!pulse.data;
 	const onlineSources = health.data?.sources.filter((s) => s.status === "ONLINE").length ?? 0;
 
@@ -118,7 +128,7 @@ export function App() {
 						<BrazilMap
 							events={events}
 							selectedId={selectedId}
-							onSelect={onSelect}
+							onSelect={onMapSelect}
 							onStateSelect={onStateSelect}
 						/>
 						<div className="mapside">
@@ -157,6 +167,8 @@ export function App() {
 							demo={DEMO}
 							sourcesCount={health.data?.sources.length ?? 0}
 							onlineSources={onlineSources}
+							uf={feedUf}
+							onUfChange={setFeedUf}
 						/>
 						<div id="mercados">
 							<Markets items={DEMO ? DEMO_FORECASTS : []} />
