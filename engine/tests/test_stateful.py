@@ -67,3 +67,15 @@ def test_orphan_signals_are_chunked_without_events():
     assert batch["events"] == [] and len(batch["signals"]) == 2
     parts = chunks(batch, max_signals=1)
     assert [len(p["signals"]) for p in parts if p["signals"]] == [1, 1]
+
+
+def test_stored_signals_with_wrong_old_geolocation_are_corrected():
+    f1, s1 = feeds(("a", "Governo vai pagar bônus para professores em todo o país", 50),
+                   ("b", "Bônus para professores: governo vai pagar em todo o país", 40))
+    run1 = run_once(s1, lambda u: f1[u], T0)
+    rows = rows_from(run1)
+    for r in rows:  # simula o dado antigo gravado com o bug do Pará
+        r["state"], r["city"], r["latitude"], r["longitude"] = "PA", None, -1.46, -48.5
+    f2, s2 = feeds(("c", "Professores recebem bônus: governo vai pagar para todo o país", 5))
+    run2 = run_once(s2, lambda u: f2[u], T0 + timedelta(minutes=30), stored=rows)
+    assert run2["events"] and all(e["state"] is None for e in run2["events"])  # sem UF falsa

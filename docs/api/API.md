@@ -21,6 +21,15 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 - Sem dados → `score 0`, nível 1. A API nunca inventa atividade.
 - Exemplo de evento: ver `PulsoEvent` (campos `severity`, `confidence`, `pulse`, `alert_level`, `score_breakdown`).
 
+## Dados para o front (públicos)
+| Endpoint | Função | Cache |
+|---|---|---|
+| `GET /api/pulse/history?scope=BR&hours=24` | Série real do Pulso (`points[{timestamp,score,alert_level}]`), máx. 168 h | 30 s |
+| `GET /api/pulse/states` | Pulso mais recente de cada UF com atividade (snapshots com mais de 30 min são descartados) | 15 s |
+| `GET /api/stats` | Contadores do indicador nacional com a janela correta (`signals_2h`, `active_events`, `states_active`, `alerts`, fontes online) | 15 s |
+
+`delta_2h` em `/api/pulse/*` só é calculado com um ponto real a ±20 min de 2 h atrás; caso contrário vem `null`.
+
 ## Previsões (públicas)
 | Endpoint | Função | Cache |
 |---|---|---|

@@ -41,20 +41,47 @@ _STATES = [
 # Nomes que coincidem com palavras comuns exigem contexto ("em Natal" casa; "natal" festa não).
 _AMBIGUOUS_CITY = {"Natal", "Palmas", "Vitória", "Salvador", "Recife"}
 
-_PATTERNS: list[tuple[re.Pattern[str], Place]] = []
+# Estados cujo nome, sem acento e minúsculo, vira palavra comum. Regras próprias (padrão, aplicado ao
+# texto ORIGINAL, e se é sensível a maiúsculas/acento):
+#   Pará  -> "para" (preposição): só casa "Pará" com acento e maiúscula;
+#   Acre  -> "acre" (unidade de área, adjetivo): só com contexto ("no Acre", "governo do Acre");
+#   Espírito Santo -> termo religioso: só com contexto geográfico.
+_CONTEXT = r"(?:no|na|do|da|ao|em|pelo|pelos|estado d[oe]|governo d[oe]|capital d[oe]|prefeitura d[oe]|policia d[oe])"
+_SPECIAL_STATES: dict[str, tuple[str, int]] = {
+    "PA": (r"\bPará\b", 0),  # sensível a maiúsculas e ao acento
+    "AC": (rf"\b{_CONTEXT}\s+Acre\b", re.IGNORECASE),
+    # "do/da Espírito Santo" é quase sempre religioso (missa, igreja): só contextos geográficos inequívocos.
+    "ES": (r"\b(?:no|ao|em|pelo|estado d[oe]|governo d[oe]|prefeitura d[oe]|policia d[oe])\s+Espírito\s+Santo\b", re.IGNORECASE),
+}
+# Cidade cujo nome homônimo existe fora do Brasil: ignorada se o texto indicar o outro contexto.
+_CITY_EXCLUDE: dict[str, re.Pattern[str]] = {
+    "Belém": re.compile(r"cisjord|israel|palestin|gaza|jesus|presepio|natividade"),
+}
+
+# (padrão, lugar, aplica ao texto original?)
+_PATTERNS: list[tuple[re.Pattern[str], Place, bool]] = []
 for _uf, _state, _capital, _lat, _lon in _STATES:
     _pat = re.escape(fold(_capital))
     if _capital in _AMBIGUOUS_CITY:
         _pat = rf"(?:em|de|no|na|do|da|cidade de|capital)\s+{_pat}"
-    _PATTERNS.append((re.compile(rf"\b{_pat}\b"), Place(_uf, _capital, _lat, _lon, "CITY", 70)))
+    _PATTERNS.append((re.compile(rf"\b{_pat}\b"), Place(_uf, _capital, _lat, _lon, "CITY", 70), False))
 for _uf, _state, _capital, _lat, _lon in _STATES:
-    _PATTERNS.append((re.compile(rf"\b{re.escape(fold(_state))}\b"), Place(_uf, None, _lat, _lon, "STATE", 60)))
+    _place = Place(_uf, None, _lat, _lon, "STATE", 60)
+    if _uf in _SPECIAL_STATES:
+        _rx, _flags = _SPECIAL_STATES[_uf]
+        _PATTERNS.append((re.compile(_rx, _flags), _place, True))
+    else:
+        _PATTERNS.append((re.compile(rf"\b{re.escape(fold(_state))}\b"), _place, False))
 
 
 def locate(text: str) -> Place | None:
-    """Primeira menção geográfica (cidade tem prioridade sobre estado)."""
+    """Primeira menção geográfica (cidade tem prioridade sobre estado). Conservadora: prefere não localizar."""
     folded = fold(text)
-    for pat, place in _PATTERNS:
-        if pat.search(folded):
-            return place
+    for pat, place, on_original in _PATTERNS:
+        if not pat.search(text if on_original else folded):
+            continue
+        exclude = _CITY_EXCLUDE.get(place.city or "")
+        if exclude and exclude.search(folded):
+            continue
+        return place
     return None

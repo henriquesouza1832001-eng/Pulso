@@ -85,7 +85,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
 1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
 2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
-3. **Classificação inicial por keywords** gera falsos positivos (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
+3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
 6. **Token exposto**: um token da Cloudflare foi colado em chat; deve ser **revogado**. O token em uso no GitHub é outro, criado depois.
@@ -147,6 +147,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 `docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
 - **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
 - **2026-10-03** — PR #7 mergeado e em produção (migration `0002`, Cron Trigger, rotas admin). Registro de coletores. Divisão de trabalho e onboarding (seção 8.1).
