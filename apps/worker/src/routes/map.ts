@@ -22,9 +22,11 @@ interface MapRow {
 map.get("/", async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT id, title, category, status, latitude, longitude, severity, confidence, pulse, alert_level, updated_at
-		 FROM events WHERE resolved_at IS NULL AND latitude IS NOT NULL AND longitude IS NOT NULL
+		 FROM events WHERE resolved_at IS NULL AND updated_at >= ?1 AND latitude IS NOT NULL AND longitude IS NOT NULL
 		 ORDER BY pulse DESC LIMIT 1000`,
-	).all<MapRow>();
+	)
+		.bind(new Date(Date.now() - 24 * 3600_000).toISOString())
+		.all<MapRow>();
 	c.header("Cache-Control", cacheControl(10));
 	return c.json({
 		type: "FeatureCollection",

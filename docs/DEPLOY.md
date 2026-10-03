@@ -1,77 +1,62 @@
-# Deploy do PULSO
+# Hospedagem na Cloudflare
 
-Runbook para colocar o Worker (API + D1) e o web (SPA) no ar na Cloudflare.
-Merge para `main` continua sendo decisão humana via PR — este documento cobre
-após o merge (ou a partir da branch que você decidir publicar).
+Conta: a do e-mail henriquesouza1832001@gmail.com (login via `wrangler login`).
 
-## 0. Pré-requisitos (uma vez por máquina)
+| Recurso | Nome | URL / ID |
+|---|---|---|
+| Worker (API) | `pulso-api` | https://pulso-api.henriquesouza.workers.dev |
+| Worker com assets (front React) | `pulso-web` | https://pulso-web.henriquesouza.workers.dev |
+| D1 | `pulso` | `c0added6-9187-434a-a1d0-559857107e1b` (identificador, não é segredo) |
+| Secret | `INGEST_TOKEN` (no Worker `pulso-api`) | só na Cloudflare; **nunca** no Git |
 
-```bash
-npx wrangler login          # abre o navegador e autentica na conta Cloudflare
+`preview_urls` está desativado nos dois Workers, para não existirem URLs paralelas sem controle.
+
+## Deploy
 ```
-
-## 1. Banco D1 de produção (uma vez por conta)
-
-```bash
-npx wrangler d1 create pulso
+# API
+cd apps/worker && npx wrangler deploy
+# Front (compila e publica)
+cd apps/web && npm run deploy
+# Migrations novas, sempre versionadas em database/migrations
+cd apps/worker && npx wrangler d1 migrations apply pulso --remote
 ```
+Nunca aplicar `database/seeds/dev.sql` em produção (dados fictícios).
 
-Copie o `database_id` retornado para `apps/worker/wrangler.jsonc`
-(substituindo o placeholder `00000000-…`).
-
-Depois aplique as migrations e o seed no remoto:
-
-```bash
-npm run db:migrate -w @pulso/worker -- --remote
-npx wrangler d1 execute pulso --remote --file database/seeds/dev.sql
+## Secret de ingestão
+O Python Engine envia lotes com `Authorization: Bearer <INGEST_TOKEN>`. Para gerar um novo e atualizar:
 ```
-
-## 2. Secret do coletor
-
-```bash
-cd apps/worker
-npx wrangler secret put INGEST_TOKEN   # cole o token gerado (nunca versionar)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+npx wrangler secret put INGEST_TOKEN      # em apps/worker; cole o valor
 ```
+No ambiente do Engine, exporte `PULSO_API_URL` e `PULSO_INGEST_TOKEN`. Guarde o valor num gerenciador de senhas. O token em uso foi guardado fora do repositório, na máquina de quem fez o deploy.
 
-## 3. Origem permitida no CORS
+## CORS
+`ALLOWED_ORIGINS` (em `apps/worker/wrangler.jsonc`) lista as origens do front. Ao trocar o domínio do front, atualize e faça novo deploy da API.
 
-Em `apps/worker/wrangler.jsonc`, ajuste `ALLOWED_ORIGINS` para a URL final do
-web (ex.: `https://pulso.pages.dev`), mantendo `http://localhost:5173` para
-desenvolvimento — separe por vírgula.
+## Pendências de hospedagem
+- Domínio próprio (`pulso...`) e ambiente de STAGING separado (outro D1 e Workers `-staging`).
+- Deploy automático pelo GitHub Actions a partir da `main` (precisa de `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID` nos Secrets do GitHub).
+- Regras de WAF e rate limiting no painel da Cloudflare.
+- KV para cache de `/api/pulse/br` e `/api/map` quando o tráfego justificar.
+- O Python Engine ainda não roda hospedado: precisa de ambiente próprio (container/VM/cron), pois não é um Worker.
 
-## 4. Publicar a API (Worker)
+## Deploy automático (GitHub Actions)
+`.github/workflows/deploy.yml` roda a cada merge na `main`: valida (typecheck, testes Node e Python) → aplica migrations do D1 → publica o Worker → compila e publica o front → confere `/api/health`.
 
-```bash
-cd apps/worker
-npx wrangler deploy
+Secrets do repositório necessários:
+| Secret | Origem |
+|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | já configurado |
+| `CLOUDFLARE_API_TOKEN` | criado no painel (modelo "Editar Cloudflare Workers" + D1 Editar), restrito à conta; `gh secret set CLOUDFLARE_API_TOKEN` |
+| `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | usados pela coleta agendada (`collect.yml`) |
+
+Rotação: gerar novo token no painel, atualizar o secret e revogar o antigo. Migration que falha interrompe o deploy antes de publicar código novo.
+
+## Agendamento da coleta (Cron Trigger da Cloudflare)
+O agendador do GitHub (`schedule`) atrasa de forma imprevisível, então o disparo vem da Cloudflare: o Worker `pulso-api` tem `triggers.crons = ["*/5 * * * *"]` e, a cada 5 min, chama a API do GitHub (`workflow_dispatch` de `collect.yml`). O GitHub só executa o Python Engine. O `schedule` do `collect.yml` fica como reserva.
+
+Necessário (uma vez): um token **fino** do GitHub, só para o repositório Pulso, com permissão **Actions: leitura e escrita**, guardado no Worker:
 ```
-
-Anote a URL retornada, ex.: `https://pulso-api.<sua-conta>.workers.dev`.
-
-## 5. Publicar o web (Cloudflare Pages)
-
-O SPA precisa saber a URL da API em tempo de build (`VITE_API_BASE`):
-
-```bash
-VITE_API_BASE=https://pulso-api.<sua-conta>.workers.dev npm run build -w @pulso/web
-npx wrangler pages deploy apps/web/dist --project-name pulso
+cd apps/worker && npx wrangler secret put GH_DISPATCH_TOKEN
 ```
-
-Alternativa sem linha de comando: conectar o repositório no dashboard do
-Pages (build command `npm run build -w @pulso/web`, output `apps/web/dist`,
-variável de ambiente `VITE_API_BASE`).
-
-## 6. Verificação pós-deploy
-
-```bash
-curl https://pulso-api.<sua-conta>.workers.dev/api/health   # {"api":"ONLINE",...}
-curl https://pulso-api.<sua-conta>.workers.dev/api/pulse/br
-```
-
-Abrir o Pages e conferir: indicador nacional carregando score real
-(`VITE_DEMO` **não** definido em produção = sem dados fictícios).
-
-## Pull request
-
-CI roda em PRs para `main`/`hen` (typecheck + testes + build + engine Python).
-Da branch `thig`, abra o PR `thig → main` pela UI do GitHub; merge é humano.
+Saúde: `GET /api/health` mostra `collection.age_seconds`, `stale` (sem Pulso novo há mais de 15 min) e `scheduler_configured`. Falha de disparo aparece nos logs do Worker (`falha ao acionar coleta`).

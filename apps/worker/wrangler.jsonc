@@ -5,19 +5,23 @@
 	"compatibility_date": "2025-10-08",
 	"compatibility_flags": ["nodejs_compat"],
 	"observability": { "enabled": true },
+	"preview_urls": false,
 	"vars": {
 		// Origens permitidas no CORS (separadas por vírgula). Não é segredo.
-		"ALLOWED_ORIGINS": "http://localhost:5173"
+		"ALLOWED_ORIGINS": "http://localhost:5173,https://pulso-web.henriquesouza.workers.dev",
+		// Repositório cujo workflow "collect.yml" o Cron Trigger aciona. Não é segredo.
+		"GITHUB_REPO": "henriquesouza1832001-eng/Pulso"
 	},
+	// A cada 5 min a Cloudflare aciona a coleta (mais pontual que o agendador do GitHub).
+	"triggers": { "crons": ["*/5 * * * *"] },
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "pulso",
-			// Troque pelo id real após `wrangler d1 create pulso`. Em dev local qualquer valor funciona.
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "c0added6-9187-434a-a1d0-559857107e1b",
 			"migrations_dir": "../../database/migrations"
 		}
 	]
-	// Segredos (via `wrangler secret put`, nunca no Git): INGEST_TOKEN
+	// Segredos (via `wrangler secret put`, nunca no Git): INGEST_TOKEN, GH_DISPATCH_TOKEN
 	// Futuro: kv_namespaces (cache), queues, r2_buckets, durable_objects.
 }

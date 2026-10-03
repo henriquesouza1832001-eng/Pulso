@@ -1,0 +1,68 @@
+name: Deploy
+
+# A cada merge na main: valida → migrations do D1 → Worker (API) → front (React).
+# Exige os secrets CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID.
+# O INGEST_TOKEN do Worker já vive na Cloudflare (wrangler secret); não passa por aqui.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false  # nunca interromper um deploy no meio
+
+jobs:
+  verify:
+    name: Validar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e "engine[dev]"
+      - run: pytest
+        working-directory: engine
+
+  deploy:
+    name: Publicar na Cloudflare
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Falhar cedo se faltar o token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::error::Secret CLOUDFLARE_API_TOKEN não configurado"; exit 1; fi
+      - name: Migrations do D1 (versionadas em database/migrations)
+        working-directory: apps/worker
+        run: npx wrangler d1 migrations apply pulso --remote
+      - name: Deploy do Worker (API)
+        working-directory: apps/worker
+        run: npx wrangler deploy
+      - name: Build e deploy do front
+        working-directory: apps/web
+        run: npm run deploy
+      - name: Verificar produção
+        run: |
+          curl -fsS https://pulso-api.henriquesouza.workers.dev/api/health
+          curl -fsS -o /dev/null https://pulso-web.henriquesouza.workers.dev/

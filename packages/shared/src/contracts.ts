@@ -59,6 +59,22 @@ export interface Signal {
 	geo_confidence: number | null; // 0–100
 	reliability: number; // 0–100, só da fonte
 	event_id: string | null;
+	hash: string; // deduplicação (canonical_url ou título normalizado)
+	canonical_url: string | null;
+	author: string | null;
+	state: string | null; // UF
+	city: string | null;
+}
+
+/** Cadastro de uma fonte (espelha a tabela sources). */
+export interface SourceDef {
+	id: string;
+	name: string;
+	domain: string | null;
+	adapter: string; // rss | api | feed | sitemap | social
+	source_class: SourceClass;
+	url: string;
+	state: string | null;
 }
 
 /** Evento normalizado (cluster de sinais). Severidade e confiança são independentes. */
@@ -104,12 +120,24 @@ export interface SourceHealth {
 	detail: string | null;
 }
 
+/** Contagem agregada por escopo x categoria x janela de 5 min: base do baseline e das previsões. */
+export interface SeriesPoint {
+	scope: string; // BR | UF:MG
+	category: Category;
+	bucket: string; // início da janela, ISO-8601 UTC
+	signals: number; // sinais publicados na janela
+	sources: number; // fontes distintas na janela
+}
+
 /** Payload que o Python Engine envia ao Worker (POST /api/ingest). Idempotente por event_id/scope+timestamp. */
 export interface IngestBatch {
 	batch_id: string;
+	sources: SourceDef[];
 	events: PulsoEvent[];
+	signals: Signal[];
 	pulses: PulseSnapshot[];
 	source_health: SourceHealth[];
+	series?: SeriesPoint[];
 }
 
 export interface ApiError {
