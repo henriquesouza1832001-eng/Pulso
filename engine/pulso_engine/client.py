@@ -75,6 +75,16 @@ def fetch_pulse_history(scope: str = "BR", hours: int = 72, base_url: str | None
     return _get_json(f"/api/admin/pulse-history?scope={scope}&hours={hours}", "points", base_url, token)
 
 
+def fetch_observations(hours: int = 24 * 28, limit: int = 30000, base_url: str | None = None, token: str | None = None) -> list[dict]:
+    """Histórico agregado por hora (base do baseline sazonal do Sentinela). Mais novas primeiro; o teto poupa leitura do banco."""
+    return _get_json(f"/api/admin/observations?hours={hours}&limit={limit}", "observations", base_url, token, timeout=45)
+
+
+def fetch_active_investigations(base_url: str | None = None, token: str | None = None) -> list[dict]:
+    """Investigações do Sentinela ainda não encerradas (para não pesquisar de novo a mesma coisa)."""
+    return _get_json("/api/admin/investigations?status=active", "investigations", base_url, token)
+
+
 def fetch_open_forecasts(base_url: str | None = None, token: str | None = None) -> list[dict]:
     return _get_json("/api/admin/forecasts/open", "forecasts", base_url, token)
 

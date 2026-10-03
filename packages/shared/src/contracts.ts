@@ -177,6 +177,29 @@ export interface IngestBatch {
 	forecasts?: Forecast[];
 	/** Histórico agregado por HORA (docs/research/SPEC_01_HISTORY.md): só contagens, só horas fechadas. */
 	observations?: ObservationPoint[];
+	/** Investigações do Sentinela que MUDARAM nesta rodada (docs/research/SPEC_05_SENTINEL.md). */
+	investigations?: InvestigationPoint[];
+}
+
+export const INVESTIGATION_STATUSES = [
+	"NEW", "INVESTIGATING", "CORRELATING", "WAITING_CONFIRMATION", "CONFIRMED", "DISPUTED", "RESOLVING", "CLOSED",
+] as const;
+export type InvestigationStatus = (typeof INVESTIGATION_STATUSES)[number];
+
+/** Investigação proativa do Sentinela (rota interna; não é parte da API pública). Não confundir com `EventStatus`. */
+export interface InvestigationPoint {
+	id: string; // inv-<sha1(scope|category|hora de abertura)[:10]>
+	scope: string; // "BR" | "UF:MG"
+	category: Category;
+	status: InvestigationStatus;
+	started_at: string;
+	last_update: string;
+	last_anomalous_at: string | null;
+	initial_anomaly: number;
+	anomaly: number;
+	evidence_count: number;
+	official_confirmation: boolean;
+	reasons: string[]; // por que o Sentinela investigou
 }
 
 /** Contagem de sinais por hora × escopo × categoria × classe de fonte. O Worker só sobe valores (MAX), nunca diminui. */
