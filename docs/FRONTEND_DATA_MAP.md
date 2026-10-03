@@ -19,7 +19,7 @@
 | **Contadores do indicador** ("eventos ativos", "sinais · 2h", "UFs ativas") | calculados no front a partir da lista de 50 eventos (`signal_count` somado ≠ "2h"; o total trava em 50) | ✅ `GET /api/stats` → `active_events, states_active, alerts, signals_2h, signals_24h, sources_online, sources_total, last_pulse_at` | Usar `/api/stats` nesses números. |
 | **Pulso por UF** (lista e mapa) | derivado dos eventos no front | ✅ `GET /api/pulse/states` → `states[{uf,score,alert_level,timestamp}]` | Preferir o valor do servidor; o dos eventos serve só para marcadores. |
 | **Mercados / odds** | `DEMO_FORECASTS` `{q, yes, drivers}` | ✅ `GET /api/forecasts` (**depende do merge do PR de previsões**) → ver seção 3 | Trocar o adaptador. |
-| **Histórico de inteligência** | `DEMO_HISTORY` | ⏳ `GET /api/history` (a fazer: momentos de nível ≥ 3) | Manter estado vazio ("sem registros") até existir. |
+| **Histórico de inteligência** | `DEMO_HISTORY` | ✅ `GET /api/history?min_level=3` → `entries[{kind,date,level,peak_pulse,title,...}]` | Trocar `DEMO_HISTORY`. Enquanto nada tiver chegado a nível 3 (hoje é o caso), a lista vem vazia: mostrar "sem registros". |
 | **Câmeras** | `DEMO_CAMERAS` | ❌ só na Fase 3 (câmeras oficiais autorizadas; depende de parcerias) | Manter vazio. Nunca mostrar câmera fictícia em produção. |
 | **Feed cronológico de relatos brutos** | mostra eventos, não sinais | ⏳ `GET /api/timeline` (a fazer, tarefa E4) | Hoje o "feed" é por evento; combinar a necessidade. |
 
