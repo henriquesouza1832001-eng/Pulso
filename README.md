@@ -12,4 +12,6 @@ O PULSO mede **atividade e sinais detectados**, não a probabilidade de dano a n
 | Contratos | [packages/shared](packages/shared) | TypeScript |
 | Banco | [database](database) | migrations e seeds D1 |
 
+**Entrando no backend? Comece por [docs/BACKEND_STATUS.md](docs/BACKEND_STATUS.md)** (estado, ambientes, problemas conhecidos e roadmap).
+
 Documentação: [arquitetura](docs/architecture/ARCHITECTURE.md) · [API](docs/api/API.md) · [scoring](docs/SCORING.md) · [fontes](docs/sources/SOURCES.md) · [decisões](docs/decisions) · [como contribuir](CONTRIBUTING.md) · [regras para agentes](AGENTS.md)
