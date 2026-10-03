@@ -172,7 +172,8 @@ def test_http_200_with_html_is_degraded_not_online():
 QA001_OPEN = pytest.mark.xfail(strict=True, reason="QA-001: volume de veículos sozinho leva ruído a N2")
 
 
-# "onde assistir" e "show" foram fechados pelo PR #89 (papel editorial/agenda não publica); futebol e feriado seguem abertos.
+# O gate editorial/agenda também cobre futebol e feriado; o marcador só permanece
+# nos casos ainda não resolvidos pela classificação operacional.
 @pytest.mark.parametrize("name", [
     "futebol", "onde_assistir", "show", "feriado"])
 def test_noise_does_not_reach_n2_by_outlet_volume(name):
