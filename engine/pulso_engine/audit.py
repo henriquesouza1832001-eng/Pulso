@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from .collectors.news.rss import http_fetch
-from .collectors.registry import build_adapter
+from .collectors.registry import URL_FETCH_ADAPTERS, build_adapter
 from .config import load_sources
 from .pipeline import DEFAULT_SOURCES, MAX_PARALLEL_SOURCES, STATE_WINDOW
 from .processing.keyword_engine import KeywordEngine
@@ -26,7 +26,7 @@ def audit_one(src: dict, fetcher: Callable[[str], bytes], now: datetime, keyword
     row = {"id": src["id"], "enabled": src.get("enabled", True), "status": "OK", "items": 0, "fresh": 0,
            "newest_h": None, "with_state": 0, "categories": {}, "error": None}
     try:
-        sigs = build_adapter(src, keywords, fetcher if src["adapter"] in ("rss", "inmet") else None, lambda: now).run()
+        sigs = build_adapter(src, keywords, fetcher if src["adapter"] in URL_FETCH_ADAPTERS else None, lambda: now).run()
     except Exception as exc:  # noqa: BLE001 - a auditoria mostra o erro, não esconde
         row.update(status=getattr(exc, "health_status", "ERRO"), error=f"{type(exc).__name__}: {exc}"[:160])
         return row

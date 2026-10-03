@@ -14,7 +14,7 @@ from typing import Callable
 from .anomaly import anomaly_score
 from .baseline import ewma_baseline, hourly_counts
 from .collectors.news.rss import http_fetch
-from .collectors.registry import build_adapter
+from .collectors.registry import URL_FETCH_ADAPTERS, build_adapter
 from .config import load_sources
 from .forecast import make_nowcasts, resolve_due
 from .forecast_surge import METRIC_PREFIX, make_surge_forecasts, merge_series, resolve_surge_due
@@ -146,7 +146,7 @@ def run_once(
     def collect(src: dict) -> tuple[list[Signal], str, str | None]:
         try:
             # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
-            got = build_adapter(src, keywords, fetcher if src["adapter"] in ("rss", "inmet") else None, lambda: now).run()
+            got = build_adapter(src, keywords, fetcher if src["adapter"] in URL_FETCH_ADAPTERS else None, lambda: now).run()
             return got, *(("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos"))
         except Exception as exc:  # uma fonte caída nunca derruba o ciclo
             detail = f"{type(exc).__name__}: {exc}"[:300]
