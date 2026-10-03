@@ -81,9 +81,14 @@ def load_sources(path: Path, only_enabled: bool = True) -> list[dict]:
     ids = [s.get("id") for s in sources]
     if len(ids) != len(set(ids)):
         raise SourceConfigError("ids de fonte duplicados")
+    pending: list[str] = []
     for s in sources:
         validate_source(s)
-        if s.get("enabled", True) and (p := pending_items(s)):
-            # Fontes já em operação antes do protocolo: seguem, mas com aviso até alguém revisar.
-            warnings.warn(f"{s['id']}: conformidade pendente ({', '.join(p)}). Ver COLLECTION_PROTOCOL.md §4.", stacklevel=2)
+        if s.get("enabled", True) and pending_items(s):
+            pending.append(s["id"])
+    if pending:
+        # Fontes ativas sem revisão humana seguem em operação, mas com UM aviso agregado (e não um por fonte).
+        shown = ", ".join(pending[:8]) + (f" e mais {len(pending) - 8}" if len(pending) > 8 else "")
+        warnings.warn(f"conformidade pendente em {len(pending)} fonte(s) ativa(s): {shown}. Ver COLLECTION_PROTOCOL.md §4.",
+                      stacklevel=2)
     return [s for s in sources if s.get("enabled", True)] if only_enabled else sources

@@ -19,11 +19,33 @@ Soma de pontos = peso × componente (0–1). A lista de pontos é o "POR QUE 87?
 | Velocidade de sinais | 15 |
 | Diversidade de fontes | 15 |
 | Anomalia vs. baseline | 15 |
-| Recência (decay, meia-vida 90 min) | 10 |
+| Recência (decay; meia-vida por categoria, ver Frescor) | 10 |
 | Persistência | 5 |
 | Alcance geográfico | 5 |
 
 Avisos do INMET: "Grande Perigo" entra como `EMERGENCY` (base 70) e "Perigo" como `WEATHER` (base 55); "Perigo Potencial" não entra por padrão (ADR 0004).
+
+## Frescor: o que é de agora vale mais que o de ontem
+O Pulso de um evento é multiplicado por um **fator de frescor** de 0,25 a 1, calculado a partir da idade do sinal mais recente e de uma **meia-vida que depende da categoria** (`HALF_LIFE_BY_CATEGORY` em `scoring/pulse.py`):
+
+| Categoria | Meia-vida |
+|---|---|
+| Trânsito | 1 h |
+| Segurança | 2 h |
+| Protesto, eventos | 3 h |
+| Emergência, tecnologia | 4 h |
+| Clima, infraestrutura | 6 h |
+| Economia | 8 h |
+| Saúde, política, internacional | 12 h |
+
+`fator = 0,25 + 0,75 · 0,5^(idade / meia-vida)`. O mesmo evento impactante vale muito mais agora do que 12 h atrás (os pontos de **todos** os componentes são escalados, e o "POR QUE N?" continua somando o score). O piso de 0,25 existe porque a história não deixa de existir, só pesa pouco. Limitação conhecida: um aviso oficial ainda vigente (ex.: INMET "Grande Perigo" válido o dia todo) é datado pelo início, então esfria mesmo vigente; renovar o frescor enquanto o aviso estiver em vigor é próximo passo.
+
+## Como um sinal vira evento (qualidade)
+- **Categoria**: o **título** decide; só se ele não classificar, o resumo entra (uma palavra solta no resumo não vence o título).
+- **Agrupamento** (`processing/clustering.py`): a matéria nova precisa se parecer com **pelo menos 25% dos membros** do grupo (e não com um qualquer), para pautas amplas (ex.: eleições) não encadearem centenas de matérias num só "evento". Sinais de **estados diferentes, ambos com lugar explícito no texto**, nunca se juntam.
+- **Lugar do evento** (`events.event_place`): o estado **majoritário** ponderado pela confiança da geo. Se os sinais se espalham por 4+ estados, ou nenhum estado domina, ou só há um estado herdado da fonte regional entre muitos sinais sem lugar, o evento fica **sem estado** (pauta nacional), e não em um estado arbitrário.
+- **Publicação** (`events.is_publishable`): vira evento o que tem **2+ fontes independentes**; ou fonte **oficial** com categoria; ou notícia isolada de categoria de impacto (clima, emergência, infraestrutura, saúde, segurança, trânsito) cujo **texto** é de impacto (mortes, desabamento...). Uma matéria isolada de política, economia ou internacional espera uma segunda fonte. Medido em coleta real com 81 fontes: de 1793 para 466 eventos.
+- **Feed regional**: sem lugar no texto, a notícia herda o estado da fonte (`state`), com confiança 35.
 
 ## Nível PULSO 1–5
 1 Normal · 2 Atenção (score ≥ 30) · 3 Elevado (≥ 55 e confiança ≥ 40) · 4 Crítico (≥ 75, confiança ≥ 70, ≥ 2 fontes independentes) · 5 Emergência (≥ 90, confiança ≥ 85, **fonte oficial** e ≥ 3 fontes independentes). Social isolado nunca passa do nível 3.

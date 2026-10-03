@@ -11,10 +11,11 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | INMET — avisos meteorológicos | OFFICIAL | API de avisos (`inmet`) | ✅ ativa desde 2026-10-03 (piloto encurtado, ver ficha) |
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
-| GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 desligada: **não validada ao vivo** (429 persistente mesmo a 7 s de intervalo e consulta vazia em 2026-10-03) |
 | Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
 | USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
-| Trânsito, câmeras públicas | — | — | Fase 2/3 |
+| **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
+| Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
 ## Modelo de ficha
 ```
@@ -141,4 +142,23 @@ Dados coletados e retenção: título, link, data; coordenadas só se dentro do 
 Termos relevantes: domínio público do governo dos EUA, citar a fonte.
 Exibição pública permitida: sim (headline_link).
 Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional.
+```
+
+## Catálogo RSS em escala (2026-10-03)
+```
+Fontes: ver CATALOGO_FONTES.md (gerado de engine/config/sources.json).
+Tipo de acesso: feeds RSS/Atom/RDF públicos publicados pelo próprio veículo ou órgão (access = public_feed).
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Coleta em paralelo (8 simultâneas), User-Agent identificado, timeout de 15 s, resposta de no máximo 5 MB.
+Dados coletados e retenção: título, resumo curto (<= 500 car.), link, data. Retenção 90 dias. Sem texto integral.
+Frequência: 300 a 900 s por fonte (is_due respeita interval_s).
+Fallback se cair: cada fonte é isolada; falha vira source_health e não derruba o ciclo.
+Termos relevantes: terms_url = PENDENTE na maioria; um humano precisa conferir os termos de cada veículo (COLLECTION_PROTOCOL §4).
+Exibição pública permitida: headline_link (título + link com atribuição).
+Decisão: o dono do projeto autorizou ativar o catálogo mesmo com a revisão pendente (ADR 0006). O aviso de conformidade continua sendo emitido (agregado).
+Critérios de entrada: testado ao vivo com o coletor real; publicação recente; sem filiação política declarada;
+  feeds em inglês ficam de fora enquanto o vocabulário for em português; feeds que exigem contornar bloqueio (ex.: governo de SP com desafio anti-robô) NÃO entram.
+Leitor tolerante: gzip (com limite na saída), RSS 1.0/RDF (gov.br), '&' solto e entidades HTML; declarações <!ENTITY seguem recusadas.
+Cobertura regional: G1 de 17 estados; ES, SC, PA, MA, AM, RN, BA, DF, SP (Metrópoles), RJ (prefeitura) e GO (governo) por portais locais.
+  Lacunas: não há RSS regional utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018).
 ```
