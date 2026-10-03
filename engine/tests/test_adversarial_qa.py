@@ -209,13 +209,44 @@ def test_duplicate_volume_from_one_outlet_does_not_inflate_pulse():
     assert many["pulse"] <= one["pulse"] + 5
 
 
-@pytest.mark.xfail(strict=True, reason="QA-005: a mesma história redigida de 4 jeitos vira 4 eventos de 1 fonte (false split)")
-def test_paraphrased_coverage_of_one_story_is_one_event():
-    titles = ["Deslizamento de terra atinge casas em Petrópolis", "Petrópolis: chuva provoca deslizamento e soterra imóveis",
+PETROPOLIS = ["Deslizamento de terra atinge casas em Petrópolis", "Petrópolis: chuva provoca deslizamento e soterra imóveis",
               "Defesa Civil confirma deslizamento em Petrópolis após temporal",
               "Moradores de Petrópolis são retirados após deslizamento"]
-    b = run({f"s{i}": rss([(t, f"https://s{i}.com/x", 10 + i)]) for i, t in enumerate(titles)})
+
+
+# Em produção (agrupamento V1, só título) segue aberto; a correção vive na V2 CLUSTER_REFINE (ver testes abaixo).
+@pytest.mark.xfail(strict=True, reason="QA-005: a mesma história redigida de 4 jeitos vira 4 eventos de 1 fonte (false split)")
+def test_paraphrased_coverage_of_one_story_is_one_event():
+    b = run({f"s{i}": rss([(t, f"https://s{i}.com/x", 10 + i)]) for i, t in enumerate(PETROPOLIS)})
     assert len(b["events"]) == 1 and b["events"][0]["source_count"] == 4
+
+
+@pytest.fixture
+def cluster_refine(monkeypatch):
+    monkeypatch.setenv("PULSO_FLAG_CLUSTER_REFINE", "1")
+
+
+@pytest.mark.usefixtures("cluster_refine")
+def test_refine_paraphrased_coverage_is_one_event():
+    # QA-005: "Petrópolis: ..." (dateline) perdia a entidade do lugar e ficava fora do grupo (4 -> 2 eventos).
+    b = run({f"s{i}": rss([(t, f"https://s{i}.com/x", 10 + i)]) for i, t in enumerate(PETROPOLIS)})
+    assert len(b["events"]) == 1 and b["events"][0]["source_count"] == 4
+
+
+@pytest.mark.usefixtures("cluster_refine")
+def test_refine_same_story_other_city_is_not_merged():
+    titles = PETROPOLIS[:2] + ["Deslizamento de terra atinge casas em Blumenau", "Blumenau: chuva provoca deslizamento e soterra imóveis"]
+    b = run({f"s{i}": rss([(t, f"https://s{i}.com/x", 10 + i)]) for i, t in enumerate(titles)})
+    assert sorted(e["state"] for e in b["events"]) == ["RJ", "SC"]
+
+
+@pytest.mark.usefixtures("cluster_refine")
+def test_refine_dateline_does_not_merge_different_incidents_in_same_city():
+    feeds = {"a": rss([("Petrópolis: chuva provoca deslizamento e soterra imóveis", "https://a.com/1", 10)]),
+             "b": rss([("Deslizamento de terra atinge casas em Petrópolis", "https://b.com/1", 11)]),
+             "c": rss([("Petrópolis: assalto a banco deixa feridos no centro", "https://c.com/1", 12)]),
+             "d": rss([("Assalto a banco no centro de Petrópolis deixa feridos", "https://d.com/1", 13)])}
+    assert len(run(feeds)["events"]) == 2
 
 
 # QA-006 (corrigido): corpo vazio ou XML quebrado com transporte ok é problema de DADO (DEGRADED), não de rede (OFFLINE).
