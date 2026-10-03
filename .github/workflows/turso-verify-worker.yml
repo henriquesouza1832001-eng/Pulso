@@ -20,3 +20,12 @@ jobs:
           code=$(curl -s -o out.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/admin/turso-ping")
           echo "HTTP $code"; cat out.json; echo
           [ "$code" = "200" ]
+      - name: Painel do motor (engine-status)
+        env:
+          API: ${{ secrets.PULSO_API_URL }}
+          TOKEN: ${{ secrets.PULSO_INGEST_TOKEN }}
+        run: |
+          # Só contagens e o orçamento de escrita do dia: nada secreto no log (que é público).
+          code=$(curl -s -o status.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/admin/engine-status")
+          echo "HTTP $code"; python3 -m json.tool status.json
+          [ "$code" = "200" ]
