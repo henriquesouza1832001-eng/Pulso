@@ -145,7 +145,7 @@ Limites e custo: gratuito; o feed atualiza a cada minuto, usamos 900 s.
 Dados coletados e retenção: título, link, data; coordenadas só se dentro do Brasil. Retenção 90 dias.
 Termos relevantes: domínio público do governo dos EUA, citar a fonte.
 Exibição pública permitida: sim (headline_link).
-Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional.
+Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional. As coordenadas só são guardadas quando o PRÓPRIO USGS diz que o abalo é no Brasil (o título termina em ", Brazil"); uma caixa de coordenadas pegaria Chile, Argentina, Bolívia e Peru.
 ```
 
 ## Catálogo RSS em escala (2026-10-03)
@@ -172,7 +172,7 @@ Cobertura regional: G1 de 17 estados; ES, SC, PA, MA, AM, RN, BA, DF, SP (Metró
 Fonte / URL: https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/diario/Brasil/focos_diario_br_AAAAMMDD.csv
 Tipo de acesso: dados abertos (CSV por dia UTC, atualizado ao longo do dia; sem chave). Portal: https://terrabrasilis.dpi.inpe.br/queimadas/situacao-atual/
 Autenticação e secrets: nenhum.
-Limites e custo: gratuito. Arquivo do dia de ~0,2 a 3 MB (limite do coletor: 5 MB). Perto da meia-noite UTC lê também o do dia anterior.
+Limites e custo: gratuito. O arquivo do dia é cronológico e pode passar de 5 MB na temporada de pico; por isso o coletor lê só o **cabeçalho e o final** por HTTP `Range` (até 4 MB, que cobrem mais de 3 h mesmo no pico, ~0,8 s por leitura; se o servidor ignorar o Range, lê o arquivo inteiro com teto de 40 MB). Perto da meia-noite UTC lê também o do dia anterior.
 Dados coletados e retenção: nenhum foco individual é guardado: só um sinal por UF e por janela de 3 h quando passa de `min_focos` (150) detecções, com a contagem, as 3 cidades de maior concentração, o bioma e a potência radiativa somada. Retenção 90 dias.
 Frequência: 600 s.
 Fallback se cair: a fonte fica OFFLINE (o arquivo do dia pode não existir logo após 00:00 UTC; o coletor tenta o do dia anterior). As demais seguem.

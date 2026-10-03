@@ -15,9 +15,9 @@ def test_usgs_only_places_points_inside_brazil():
     def quake(title, lon, lat):
         return {"properties": {"title": title, "url": "https://usgs/" + title, "time": 1790990000000},
                 "geometry": {"coordinates": [lon, lat, 10]}}
-    sigs = run("usgs", {"features": [quake("M 6.1 - Acre", -70.5, -9.0), quake("M 6.4 - Japan", 140.0, 36.0)]})
+    sigs = run("usgs", {"features": [quake("M 6.1 - 80 km W of Cruzeiro do Sul, Brazil", -70.5, -9.0), quake("M 6.4 - Japan", 140.0, 36.0)]})
     by = {s.title: s for s in sigs}
-    assert by["Terremoto: M 6.1 - Acre"].latitude == -9.0
+    assert by["Terremoto: M 6.1 - 80 km W of Cruzeiro do Sul, Brazil"].latitude == -9.0
     assert by["Terremoto: M 6.4 - Japan"].latitude is None and by["Terremoto: M 6.4 - Japan"].category == "INTERNATIONAL"
 
 

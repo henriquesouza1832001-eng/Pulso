@@ -1,5 +1,9 @@
+import io
 from datetime import datetime, timezone
 
+import pytest
+
+from pulso_engine.collectors.official import inpe_fires as inpe
 from pulso_engine.collectors.official.inpe_fires import InpeFiresAdapter
 
 NOW = datetime(2026, 10, 3, 14, 30, tzinfo=timezone.utc)
@@ -78,3 +82,50 @@ def test_all_files_missing_is_an_error_and_bad_rows_are_skipped():
     rows = [row(i, "2026-10-03 13:%02d:00" % i) for i in range(6)] + ["x,y,z\n", "1,abc,def,2026-10-03 13:00:00,N,M,PARÁ,Brasil\n"]
     a2, _ = adapter({"20261003": csv_bytes(*rows)})
     assert len(a2.run()) == 1  # as linhas malformadas não derrubam nem entram na contagem
+
+
+# ---- leitura por HTTP Range (arquivo de pico passa de 5 MB) -------------------------------------------------------------
+class _Resp(io.BytesIO):
+    def __init__(self, data, status):
+        super().__init__(data)
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_fetch_tail_joins_header_with_the_tail_and_drops_the_cut_first_line(monkeypatch):
+    header = HEADER.encode()
+    body = (row(1, "2026-10-03 13:00:00") + row(2, "2026-10-03 13:10:00")).encode("utf-8")
+    cut = b"3,-3.2000,-52.2000,2026-10-03 12:5"  # linha cortada pelo Range
+    calls = []
+
+    def urlopen(req, timeout=0):
+        calls.append(req.headers.get("Range"))
+        if req.headers.get("Range", "").startswith("bytes=0-"):
+            return _Resp(header + body, 206)
+        return _Resp(cut + b"\n" + body, 206)
+
+    monkeypatch.setattr(inpe.urllib.request, "urlopen", urlopen)
+    data = inpe.fetch_tail("https://dados/x.csv", tail_bytes=1000)
+    assert calls == ["bytes=-1000", "bytes=0-1023"]
+    text = data.decode("utf-8")
+    assert text.startswith("id,lat,lon,data_hora_gmt") and "12:5" not in text.replace("2026-10-03 13", "")  # linha cortada fora
+    assert len(list(__import__("csv").DictReader(io.StringIO(text)))) == 2
+
+
+def test_fetch_tail_falls_back_to_the_whole_file_when_range_is_ignored_and_enforces_a_cap(monkeypatch):
+    whole = csv_bytes(row(1, "2026-10-03 13:00:00"))
+    monkeypatch.setattr(inpe.urllib.request, "urlopen", lambda req, timeout=0: _Resp(whole, 200))  # 200 = sem Range
+    assert inpe.fetch_tail("https://dados/x.csv") == whole
+    monkeypatch.setattr(inpe, "MAX_FULL_BYTES", 50)
+    with pytest.raises(ValueError, match="tamanho máximo"):
+        inpe.fetch_tail("https://dados/x.csv")
+
+
+def test_default_fetcher_is_the_range_reader_not_the_5mb_limited_one():
+    a = InpeFiresAdapter(SRC, None, None, lambda: NOW)
+    assert a._fetch is inpe.fetch_tail  # o pipeline passa fetcher=None para este adaptador
