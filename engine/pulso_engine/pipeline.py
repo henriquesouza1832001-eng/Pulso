@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 from .anomaly import anomaly_score
-from .baseline import ewma_baseline, hourly_counts
+from .baseline import ewma_baseline, hourly_counts, seasonal_baseline
 from .collectors.news.rss import http_fetch
 from .collectors.registry import URL_FETCH_ADAPTERS, build_adapter
 from .config import load_sources
@@ -22,8 +22,10 @@ from .forecast import make_nowcasts, resolve_due
 from .forecast_surge import METRIC_PREFIX, make_surge_forecasts, merge_series, resolve_surge_due
 from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
+from .processing.cluster_refine import refine_clusters
 from .processing.clustering import cluster_signals
 from .processing.geo import locate
+from .processing.geo_v2 import resolve as resolve_city
 from .flags import enabled as flag
 from .investigations_io import investigation_dict, investigation_from_row
 from .radar import analyze
@@ -118,6 +120,38 @@ def regeolocate(s: Signal, source_geo: frozenset[str] = frozenset()) -> Signal:
     )
 
 
+GEO_V2_MIN_CONF = 55  # abaixo disso o V2 não troca a localização do V1 (a guarda de cluster também usa >= 55)
+
+
+def _geo_v2_candidate(s: Signal, source_geo: frozenset[str], source_states: dict[str, str | None]):
+    """Município que o gazetteer acharia para o sinal, ou None. Nunca mexe em sinal cuja geografia veio da FONTE."""
+    if s.source_id in source_geo:
+        return None
+    res = resolve_city(f"{s.title}. {s.text or ''}", source_states.get(s.source_id))
+    if res is None or res.geo_confidence < GEO_V2_MIN_CONF:
+        return None
+    if s.geo_precision == "CITY" and (s.geo_confidence or 0) >= res.geo_confidence:
+        return None  # o V1 já tinha cidade com confiança igual ou maior
+    return res
+
+
+def refine_geo(s: Signal, source_geo: frozenset[str], source_states: dict[str, str | None]) -> Signal:
+    """GEO_V2: troca a localização pelo município do gazetteer quando ele é melhor. Chamada nos sinais novos E nos gravados
+    (senão o lugar do evento oscilaria entre V1 e V2 de um ciclo para o outro). Desligada: devolve o sinal intacto."""
+    if not flag("GEO_V2"):
+        return s
+    res = _geo_v2_candidate(s, source_geo, source_states)
+    if res is None:
+        return s
+    return replace(s, latitude=res.latitude, longitude=res.longitude, geo_precision="CITY", geo_confidence=res.geo_confidence,
+                   state=res.uf, city=res.city)
+
+
+def geo_v2_shadow(signals: list[Signal], source_geo: frozenset[str], source_states: dict[str, str | None]) -> dict:
+    """Com a flag desligada: quantos sinais o V2 melhoraria (só contagem, nada muda)."""
+    return {"signals": len(signals), "would_upgrade": sum(1 for s in signals if _geo_v2_candidate(s, source_geo, source_states) is not None)}
+
+
 def choose_event_id(cluster, prior_ids: dict[str, str]) -> str | None:
     """Reaproveita o id de evento mais frequente entre os membros já gravados (empate: o menor id)."""
     counts = Counter(prior_ids[s.hash] for s in cluster.signals if s.hash in prior_ids)
@@ -151,13 +185,18 @@ def assign_event_ids(clusters: list, prior_ids: dict[str, str]) -> list[str | No
     return out
 
 
-def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now: datetime) -> float:
+def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now: datetime,
+                    obs_rows: list[dict] | None = None) -> float:
     """Anomalia do tema no escopo do evento: atividade da última hora vs. baseline histórico."""
     sigs = cluster.signals
     category = dominant_category(sigs)
     state = next((s.state for s in sigs if s.state), None)
     scope = f"UF:{state}" if state else "BR"
     base = ewma_baseline(hourly_counts(history, scope, category, now))
+    if obs_rows and flag("SEASONAL_BASELINE_V2"):  # V2: normal da hora/dia da semana; sem histórico suficiente fica o EWMA (V1)
+        seasonal = seasonal_baseline(obs_rows, scope, category, now)
+        if seasonal.valid:
+            base = seasonal
     # Mesma régua do baseline: todos os sinais do tema no escopo, na última hora.
     current = sum(
         1 for s in all_signals
@@ -253,6 +292,7 @@ def run_once(
     # (mesmo event_id) mesmo depois que a notícia mais antiga sai do feed.
     source_geo = geo_source_ids(catalog if catalog is not None else sources)
     alert_sources = frozenset(s["id"] for s in (catalog if catalog is not None else sources) if s.get("alert_source"))
+    source_states = {s["id"]: s.get("state") for s in (catalog if catalog is not None else sources)}
     prior_ids: dict[str, str] = {}
     known_ids: dict[str, str | None] = {}  # hash -> event_id já gravado (None = gravado sem evento)
     all_signals: dict[str, Signal] = {}
@@ -263,16 +303,21 @@ def run_once(
         known_ids[old.hash] = old.event_id  # mesmo fora da janela: já está no banco, não reenviar
         if (now - old.timestamp) > STATE_WINDOW:
             continue
-        old = regeolocate(old, source_geo)  # correções do geolocalizador valem também para sinais já gravados
+        old = refine_geo(regeolocate(old, source_geo), source_geo, source_states)  # correções do geolocalizador valem também para sinais já gravados
         if old.event_id:
             prior_ids[old.hash] = old.event_id
         all_signals[old.hash] = old
+    geo_shadow = None if flag("GEO_V2") else geo_v2_shadow(list(signals.values()), source_geo, source_states)
+    signals = {h: refine_geo(s, source_geo, source_states) for h, s in signals.items()}
     all_signals.update(signals)  # o dado fresco prevalece sobre o gravado
 
     history = history or []
     events: list[dict] = []
     publishable = []
-    for cluster in cluster_signals(list(all_signals.values())):
+    clusters = cluster_signals(list(all_signals.values()))
+    if flag("CLUSTER_REFINE"):  # V2: funde grupos da mesma história (vetos rígidos); desligado = agrupamento V1 intacto
+        clusters = refine_clusters(clusters)
+    for cluster in clusters:
         if not is_publishable(cluster):
             for s in cluster.signals:
                 object.__setattr__(s, "event_id", None)
@@ -280,7 +325,7 @@ def run_once(
         publishable.append(cluster)
     for cluster, event_id in zip(publishable, assign_event_ids(publishable, prior_ids)):
         events.append(build_event(
-            cluster, now, cluster_anomaly(cluster, list(all_signals.values()), history, now),
+            cluster, now, cluster_anomaly(cluster, list(all_signals.values()), history, now, obs_rows),
             event_id=event_id, alert_sources=alert_sources,
         ))
 
@@ -332,6 +377,7 @@ def run_once(
         "forecasts": forecasts,
         "observations": observations,
         "investigations": investigations,
+        "geo_v2_shadow": geo_shadow,  # só para o log do ciclo; o Worker ignora (chunks não o repassa)
     }
 
 
@@ -534,6 +580,9 @@ def main(argv: list[str] | None = None) -> int:
             obs_rows = None
     batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
                      catalog=catalog, known_events=known_events, obs_rows=obs_rows, active_investigations=active_inv)
+    if batch.get("geo_v2_shadow"):
+        g = batch["geo_v2_shadow"]
+        print(f"  geo_v2 (sombra): {g['would_upgrade']} de {g['signals']} sinais ganhariam município")
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])}/{batch['events_total']} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:

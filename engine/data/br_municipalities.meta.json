@@ -1,0 +1,15 @@
+{
+ "dataset": "br_municipalities",
+ "count": 5571,
+ "population_year": "2026",
+ "retrieved_at": "2026-10-03T15:42:29Z",
+ "sha256": "642ea1836edb4c6f660555dc74339b46c94923b0fc6d9dff0f93af9269d8aa2b",
+ "sources": [
+  "https://servicodados.ibge.gov.br/api/v1/localidades/municipios",
+  "https://servicodados.ibge.gov.br/api/v3/malhas/estados/<UF>?intrarregiao=municipio (qualidade=minima)",
+  "https://servicodados.ibge.gov.br/api/v3/agregados/6579/periodos/-1/variaveis/9324 (SIDRA 6579, estimativa de população)"
+ ],
+ "license": "Dados abertos do IBGE: uso livre com citação da fonte (Fonte: IBGE).",
+ "coordinates": "centroide do polígono do município (malha IBGE, qualidade mínima), NÃO a sede",
+ "generator": "scripts/build_gazetteer.py"
+}
