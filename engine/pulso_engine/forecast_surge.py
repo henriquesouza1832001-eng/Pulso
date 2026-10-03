@@ -11,6 +11,7 @@ suficiente não se prevê nada.
 """
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime, timedelta, timezone
 
@@ -32,6 +33,16 @@ LABELS = {
     "PROTEST": "protestos", "POLITICS": "política", "ECONOMY": "economia", "HEALTH": "saúde",
     "INTERNATIONAL": "assuntos internacionais", "TECH": "tecnologia", "EVENT": "eventos", "EMERGENCY": "emergências",
 }
+
+
+def _parse_evidence(raw) -> dict:
+    """A rota /api/admin/forecasts/open devolve `evidence` como texto JSON (coluna crua); o Engine reenvia a resolução
+    junto com a evidência registrada, então ela precisa ser lida, e não descartada."""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, (str, bytes)) else {}
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def merge_series(*groups: list[dict]) -> list[dict]:
@@ -129,7 +140,7 @@ def resolve_surge_due(open_forecasts: list[dict], rows: list[dict], points: list
         end = start + timedelta(minutes=HORIZON_MIN)
         if now < end + timedelta(minutes=BUCKET_MIN):  # espera a última janela fechar
             continue
-        evidence = f["evidence"] if isinstance(f["evidence"], dict) else {}
+        evidence = f["evidence"] if isinstance(f["evidence"], dict) else _parse_evidence(f["evidence"])
         base = {**f, "evidence": evidence}
         category = f["metric"][len(METRIC_PREFIX):].upper()
         covered = sum(1 for t in pulse_times if start <= t < end) >= MIN_COVERAGE_POINTS

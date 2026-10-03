@@ -43,7 +43,11 @@ def walk_forward(counts: list[int], min_pairs: int = 24, bins: int = 5) -> Backt
     if not preds:
         return BacktestResult(0, 0.0, 0.0, 0.0, [])
     n = len(preds)
-    rate = sum(o for _, o in preds) / n
+    # Referência ingênua JUSTA: a taxa de acerto observada ATÉ aquele ponto (com Laplace), sem espiar o futuro. Usar a
+    # taxa da amostra inteira deixaria a referência otimista e o `skill` subestimado.
+    hits_before = [0] * n
+    for i in range(1, n):
+        hits_before[i] = hits_before[i - 1] + preds[i - 1][1]
     bs = lambda f: sum((f(i) - o) ** 2 for i, (_, o) in enumerate(preds)) / n  # noqa: E731
     brier_model = sum((p - o) ** 2 for p, o in preds) / n
     rel = []
@@ -52,4 +56,4 @@ def walk_forward(counts: list[int], min_pairs: int = 24, bins: int = 5) -> Backt
         cell = [(p, o) for p, o in preds if lo <= p < hi or (b == bins - 1 and p == 1.0)]
         if cell:
             rel.append((sum(p for p, _ in cell) / len(cell), sum(o for _, o in cell) / len(cell), len(cell)))
-    return BacktestResult(n, brier_model, bs(lambda i: rate), bs(lambda i: 0.5), rel)
+    return BacktestResult(n, brier_model, bs(lambda i: (hits_before[i] + 1) / (i + 2)), bs(lambda i: 0.5), rel)
