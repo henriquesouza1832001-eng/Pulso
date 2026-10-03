@@ -24,6 +24,12 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      # Sensores sociais (Reddit/X); ver docs/sources/SOURCES.md. Sem os secrets, nada social roda.
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+      X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,3 +48,25 @@ jobs:
           else
             python -m pulso_engine.pipeline --push
           fi
+      # Piloto de 48 h (COLLECTION_PROTOCOL.md §3): fontes sociais desativadas rodam aqui só se
+      # o secret existir, NUNCA enviam ao Worker e o log mostra só contagens (repo público).
+      - name: Piloto dos sensores sociais (sem envio)
+        if: always()
+        continue-on-error: true
+        working-directory: engine
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          ids=""
+          if [ -n "$REDDIT_CLIENT_ID" ] && [ -n "$REDDIT_CLIENT_SECRET" ]; then ids="$ids --source reddit-politics --source reddit-clima"; fi
+          if [ -n "$X_BEARER_TOKEN" ]; then ids="$ids --source x-politics --source x-clima"; fi
+          if [ -z "$ids" ]; then echo "sem secrets sociais: piloto não roda"; exit 0; fi
+          python -m pulso_engine.pipeline $ids --respect-interval
+      # Piloto das fontes oficiais propostas (sem secret, sem envio): Senado, Câmara e avisos do INMET.
+      - name: Piloto das fontes oficiais propostas (sem envio)
+        if: always()
+        continue-on-error: true
+        working-directory: engine
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m pulso_engine.pipeline --source agencia-senado --source agencia-camara --source inmet-avisos --respect-interval

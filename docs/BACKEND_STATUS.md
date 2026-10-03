@@ -36,6 +36,7 @@ Leitura obrigatória, nesta ordem: `AGENTS.md` → `docs/architecture/ARCHITECTU
 | Worker | `GH_DISPATCH_TOKEN` | token fino do GitHub (Actions: leitura e escrita, só o repo Pulso) para o Cron acionar a coleta. **Vence em 31/12/2026**: renovar antes disso (gerar novo, `wrangler secret put GH_DISPATCH_TOKEN`), senão a coleta automática para. |
 | GitHub Actions | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy automático |
 | GitHub Actions | `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | a coleta enviar lotes ao Worker |
+| GitHub Actions | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `X_BEARER_TOKEN` | **ainda não criados**: sensores sociais (só depois da aprovação; ver `docs/sources/SOURCES.md`) |
 
 Quem precisa de acesso novo: convite como colaborador no GitHub e na conta Cloudflare (Membros). Peça os valores dos segredos a quem os criou; **não** os cole em chats, issues nem PRs.
 
@@ -46,7 +47,7 @@ npm run db:migrate && npm run db:seed          # D1 local + dados FICTÍCIOS
 copy apps\worker\.dev.vars.example apps\worker\.dev.vars   # edite INGEST_TOKEN (local)
 npm run dev:worker                              # API em :8787
 npm run dev:web                                 # Web em :5173 (proxy /api → :8787)
-cd engine && py -m pip install -e ".[dev]" && py -m pytest      # 36+ testes
+cd engine && py -m pip install -e ".[dev]" && py -m pytest      # 50+ testes
 py -m pulso_engine.pipeline                     # rodada simulada (não envia)
 ```
 Enviar ao Worker local: `PULSO_API_URL=http://localhost:8787 PULSO_INGEST_TOKEN=<seu .dev.vars> py -m pulso_engine.pipeline --push`.
@@ -80,10 +81,16 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 **Em andamento / aguardando**
 - [x] **PR #7** mergeado e publicado em 2026-10-03: séries, baseline, anomalia, rotas admin, Cron Trigger (`*/5 * * * *` registrado), migration `0002` aplicada
 - [x] Registro de coletores (`collectors/registry.py`): fonte nova = arquivo novo + uma linha, sem mexer no pipeline
-- [ ] **Segredo `GH_DISPATCH_TOKEN`** no Worker (sem ele o Cron não aciona a coleta; `/api/health` mostra `scheduler_configured: false`)
+- [x] Adaptadores Reddit/X completos para política BR (busca temática, filtro por categoria, geo, `RATE_LIMITED`/`AUTH_ERROR`, cadência por `interval_s`, modo piloto `--source`); `enabled: false`, sem autorização nem credenciais (ADR 0003)
+- [x] Fontes oficiais de política propostas: RSS da Agência Senado e da Agência Câmara (`OFFICIAL`, `enabled: false`, termos lidos, piloto OK); falta revisão humana para ativar
+- [ ] Reddit: abrir pedido de acesso (Responsible Builder Policy exige aprovação prévia desde nov/2025; RSS do Reddit é bloqueado pelo robots.txt)
+- [x] Clima impactante por estado: coletor oficial `inmet` (avisos Perigo/Grande Perigo, um evento por UF) + `reddit-clima`/`x-clima`; geo com gentílicos/assembleias/TRE; Reddit regional por UF (ADR 0004). Tudo `enabled: false` aguardando revisão
+- [x] Piloto automático no `collect.yml`: liga sozinho quando os secrets sociais existirem, sem envio e sem conteúdo no log
+- [ ] Reddit/X: registrar app/contratar plano (com teto de gasto), revisar termos, criar secrets (inicia o piloto), avaliar 48 h e só então `enabled: true` (checklist em `docs/sources/SOURCES.md`)
+- [ ] Confirmar cadência do Cron pelos logs de produção: `/api/health` mostra a presença do token, não sucesso do dispatch
 
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
-1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
+1. **Coleta contínua**: Cron Trigger da Cloudflare confirmado em produção em 2026-10-03 (coleta a cada 5 min). `/api/health` só mostra a presença do segredo: acompanhar pelos logs que cada rodada foi aceita e terminou. `GH_DISPATCH_TOKEN` vence em 31/12/2026. Sem coleta contínua não há histórico para baseline/previsão.
 2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
 3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
@@ -95,14 +102,14 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 8. Roadmap do backend (ordem sugerida)
 | # | Item | Estado |
 |---|---|---|
-| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | em andamento (falta o segredo) |
+| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | **feito** (confirmado em 2026-10-03); acompanhar logs; renovar token até 31/12/2026 |
 | 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
 | 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | **v1 feita** (experimental). Faltam EVENT/QUANTITY/OPEN e modelos melhores |
 | 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
 | 7 | `/api/search`, `/api/timeline` | a fazer |
-| 8 | Reddit e X (APIs oficiais; perfis pequenos pesam menos e nunca confirmam sozinhos) | a fazer (cadastro, custo e termos) |
+| 8 | Reddit e X (APIs oficiais; nunca confirmam sozinhos) | código pronto e testado (política BR); falta autorização, custo, termos, secrets e piloto de 48 h |
 | 9 | Fase 3: câmeras públicas autorizadas, trânsito (Waze só por parceria), visão computacional onde permitido | futuro |
 | 10 | Robustez: Queues, KV (cache), rate limiting, staging, observabilidade | conforme a carga |
 
@@ -144,9 +151,12 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
 
 ## 9. Decisões registradas
-`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
+`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação) · `0004` (eventos separados por UF; avisos do INMET). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — Clima e política por estado: coletor `inmet` (avisos oficiais, só Perigo/Grande Perigo, um sinal por UF), `reddit-clima`/`x-clima`, comunidades regionais do Reddit com UF, geo com gentílicos/assembleias/TRE-UF, clusterização não junta UFs diferentes da mesma fonte, piloto das fontes oficiais no `collect.yml`. ADR 0004.
+- **2026-10-03** — RSS da Agência Senado e da Agência Câmara propostos como fontes `OFFICIAL` de política (fichas em `SOURCES.md`). Reddit: confirmado que todo acesso à API exige aprovação prévia; RSS do Reddit descartado (robots.txt).
+- **2026-10-03** — Coletores Reddit e X (desativados) focados em política BR: busca temática, filtro `categories`, geo, título sem links/@menções, 429/401/403 mapeados na saúde, `interval_s` respeitado (`is_due`), `start_time` no X, modo piloto `--source`, secrets no `collect.yml`, novas keywords de política/protesto. ADR 0003. Piloto automático no `collect.yml` (`--respect-interval`; log só com contagens).
 - **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
 - **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
