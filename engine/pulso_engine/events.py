@@ -9,7 +9,7 @@ from .models import EventStats, Signal, SOCIAL_CLASSES
 from .processing.clustering import Cluster
 from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
-from .scoring.pulse import alert_level, pulse_score
+from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
 BASE_SEVERITY = {
@@ -49,6 +49,7 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> Eve
         geo_consistency=1.0 if len({s.state for s in signals if s.state}) <= 1 else 0.3,
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
+        half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
 

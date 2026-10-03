@@ -71,4 +71,5 @@ class EventStats:
     temporal_consistency: float = 0.5  # 0-1
     contradiction: float = 0.0  # 0-1
     duplicate_ratio: float = 0.0  # 0-1
+    half_life_min: float = 90.0  # meia-vida do frescor (depende da categoria; ver scoring/pulse.py)
     extra: dict[str, float] = field(default_factory=dict)

@@ -10,7 +10,16 @@ import math
 from ..models import SOCIAL_CLASSES, EventStats
 from .confidence import confidence
 
-HALF_LIFE_MIN = 90.0  # decaimento temporal: após 90 min, a recência vale metade
+HALF_LIFE_MIN = 90.0  # padrão: após 90 min, a recência vale metade
+
+# Meia-vida do frescor por categoria, em minutos: trânsito esfria em horas; saúde e política duram dias.
+HALF_LIFE_BY_CATEGORY: dict[str, float] = {
+    "TRAFFIC": 60, "SECURITY": 120, "PROTEST": 180, "EVENT": 180, "EMERGENCY": 240, "TECH": 240,
+    "WEATHER": 360, "INFRASTRUCTURE": 360, "ECONOMY": 480, "HEALTH": 720, "POLITICS": 720,
+    "INTERNATIONAL": 720, "OTHER": HALF_LIFE_MIN,
+}
+# O que resta de um evento muito antigo: nunca zera (a história continua existindo), mas pesa pouco.
+FRESHNESS_FLOOR = 0.25
 
 # (chave, rótulo, peso). Pesos somam 100.
 WEIGHTS: list[tuple[str, str, int]] = [
@@ -35,6 +44,11 @@ def decay(age_min: float, half_life: float = HALF_LIFE_MIN) -> float:
     return math.exp(-math.log(2) * max(0.0, age_min) / half_life)
 
 
+def freshness(s: EventStats) -> float:
+    """Fator 0,25-1 aplicado a TODOS os pontos: o impactante de agora vale mais que o de 12 h atrás."""
+    return FRESHNESS_FLOOR + (1 - FRESHNESS_FLOOR) * decay(s.newest_age_min, s.half_life_min)
+
+
 def components(s: EventStats, conf: int) -> dict[str, float]:
     return {
         "severity": _clamp01(s.severity / 100),
@@ -42,7 +56,7 @@ def components(s: EventStats, conf: int) -> dict[str, float]:
         "velocity": _clamp01(s.velocity_per_hour / 30),
         "sources": _clamp01((s.independent_sources - 1) / 9) * 0.7 + _clamp01((len(s.source_classes) - 1) / 3) * 0.3,
         "anomaly": _clamp01(s.anomaly),
-        "recency": decay(s.newest_age_min),
+        "recency": decay(s.newest_age_min, s.half_life_min),
         "persistence": _clamp01(s.persistence_min / 120),
         "geo_reach": _clamp01(s.geo_reach),
     }
@@ -51,8 +65,9 @@ def components(s: EventStats, conf: int) -> dict[str, float]:
 def pulse_score(s: EventStats) -> tuple[int, list[dict]]:
     """Retorna (score, breakdown). Os pontos do breakdown somam o score (após arredondamento)."""
     comp = components(s, confidence(s))
+    f = freshness(s)
     breakdown = [
-        {"key": k, "label": label, "points": round(comp[k] * w)} for k, label, w in WEIGHTS
+        {"key": k, "label": label, "points": round(comp[k] * w * f)} for k, label, w in WEIGHTS
     ]
     breakdown = [b for b in breakdown if b["points"] > 0]
     breakdown.sort(key=lambda b: -b["points"])
