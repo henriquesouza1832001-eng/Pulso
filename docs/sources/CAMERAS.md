@@ -14,6 +14,13 @@ Objetivo: exibir imagem/vídeo ao vivo de câmeras públicas na plataforma, para
 | DAER-RS, `daer.rs.gov.br/cameras-de-monitoramento` | Mapa com imagens em tempo real das rodovias | Remete a "Termos de Uso" gerais; não detalha reutilização. |
 | COR-Rio, `cor.rio` | App e imagens no X | A página oficial restringe imagens gravadas a fins judiciais; sem API, licença nem embed. |
 
+## Lista B2: embed público do próprio provedor, sem termos de reutilização (verificado em 2026-10-03)
+| Fonte | O que oferece | Condição |
+|---|---|---|
+| **RealData Telecom**, `realdata.com.br/cameras-ao-vivo` | **6 câmeras** de ruas de BH e Contagem (Barreiro x4, Floresta/Centro, Industrial), player embutível `monitore.realdata.com.br/#/cembed/<token>`; `robots.txt` permite o site | É uma página de marketing do provedor de internet ("quer câmeras na sua rua?"), sem termos de reuso; sem coordenadas exatas (só bairro). Cadastradas em `engine/config/cameras.json` com `enabled: false`. Pedir autorização escrita (contato@realdata.com.br, (31) 3381-3381): o provedor tem interesse comercial em exposição, então a chance é boa. |
+
+Limite honesto: essa página tem 6 câmeras, não centenas. Mil ou mais câmeras no país só vêm de catálogos agregados (Windy, com chave) ou de acordos com órgãos/concessionárias; não de uma lista única aberta.
+
 ## Lista C: sem caminho aberto hoje
 | Fonte | Situação |
 |---|---|
@@ -43,3 +50,10 @@ Objetivo: exibir imagem/vídeo ao vivo de câmeras públicas na plataforma, para
 1. Contrato de `/api/cameras`: `id`, `label`, `city`, `state`, `lat`, `lon`, `provider`, `attribution`, `page_url`, `embed` (tipo e URL). Atualizar `contracts.ts`, `models.py` e `API.md` no mesmo PR, com a label `contract`.
 2. Worker: rota que consulta a API do Windy com a chave em secret e devolve só os campos acima (a chave nunca vai ao navegador); cache curto respeitando a expiração de 10 min.
 3. Front: o `Cameras.tsx` já recebe uma lista; trocar `DEMO_CAMERAS` por essa rota e exibir atribuição e link.
+
+## Concentrar câmeras onde algo importante acontece (desenho)
+1. Todo catálogo de câmeras precisa de `lat`/`lon` confirmados (sem coordenada, a câmera só aparece na lista geral do estado/cidade).
+2. Evento com alerta alto (nível 3 ou mais) e geolocalização de cidade: o Worker devolve as N câmeras `enabled` mais próximas (raio ~10 km) em `/api/events/:id/cameras`.
+3. O front destaca "câmeras perto deste evento" no detalhe do evento e um mosaico "onde está acontecendo agora" com as câmeras dos eventos de maior nível.
+4. Isso muda o contrato (`/api/cameras` e o endpoint do evento): mesmo PR atualiza `contracts.ts`, `models.py` e `API.md`, com label `contract`.
+Hoje só há 6 câmeras (nenhuma habilitada, nenhuma com coordenada), então ainda não faz sentido construir a rota: primeiro entram Windy (com chave) e as autorizações.
