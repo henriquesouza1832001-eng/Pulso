@@ -8,6 +8,9 @@ QA-001..004 **atrás da flag `NOISE_GATE`, desligada por padrão** (shadow). Nen
 existente foi alterado; com a flag desligada a produção se comporta exatamente como antes. Ligar a flag é decisão do
 Reliability Gate (shadow → canary → prod), não desta entrega.
 
+**Continuação (2026-10-03):** validação OFF × ON do `NOISE_GATE`, fechamento de QA-005 (na V2) e QA-006, e achados
+QA-010..014 em `docs/reliability/NOISE_GATE_VALIDATION.md`. Veredito do gate: **READY_FOR_EXTENDED_SHADOW** (flag segue desligada).
+
 ## Como ler
 
 - Teste normal = invariante que vale hoje e não pode regredir.
@@ -44,13 +47,13 @@ A `NOISE_GATE` foi mantida (nomes `GATE_*` para não colidir com o `_SCHEDULED` 
 | Ruído vs incidente (corpus hostil) | **FAIL** em produção / PASS com `NOISE_GATE` | QA-001, QA-002 |
 | Duplicatas / independência | **FAIL** em produção / PASS com `NOISE_GATE` | QA-003, QA-004; cópia da mesma fonte e sindicação OK |
 | Eventos: false merge | PASS | mesmo assunto em SP e MG fica separado |
-| Eventos: false split | **FAIL** | QA-005 (V2 `CLUSTER_REFINE` melhora: 4 → 2 eventos) |
-| Eventos: drift / ressurreição | UNVERIFIED | não exercitado com estado gravado nesta rodada |
+| Eventos: false split | **FAIL** em produção / PASS com `CLUSTER_REFINE` | QA-005 (V2 corrigida em 2026-10-03: 4 → 1 evento; ver `NOISE_GATE_VALIDATION.md`) |
+| Eventos: drift / ressurreição | PASS (corpus sintético) | `NOISE_GATE_VALIDATION.md` §7; estado gravado entre ciclos segue não exercitado |
 | Ordem dos sinais | PASS | 4 ordens diferentes, resultado idêntico |
 | Distribuição de níveis ao vivo | INSUFFICIENT_DATA | QA-008: 100/100 dos eventos mais quentes da API em N2+ |
 | Datas ruins | PARTIAL | futuro limitado a "agora", 2019 descartado; sem fuso lido como UTC (QA-007) |
-| Entradas ruins (título, XML, corpo) | PARTIAL | vazio/truncado vira OFFLINE (QA-006) |
-| `HTTP 200 != fresh` | PASS (HTML) / PARTIAL (vazio) | HTML com 200 é DEGRADED; corpo vazio é OFFLINE |
+| Entradas ruins (título, XML, corpo) | PASS | QA-006 corrigido: vazio/XML ilegível = DEGRADED; corte de Content-Length = OFFLINE |
+| `HTTP 200 != fresh` | PASS | HTML, vazio e XML quebrado com 200 são DEGRADED |
 | API / Worker (entrada hostil) | PASS | ver abaixo |
 | Storage / idempotência | UNVERIFIED nesta rodada | segue RT-005 (`BACKEND_TOTAL_RED_TEAM.md`) |
 | Forecast (invariantes) | UNVERIFIED nesta rodada | RT-001 tem regressão; skill: INSUFFICIENT_DATA (RT-004) |

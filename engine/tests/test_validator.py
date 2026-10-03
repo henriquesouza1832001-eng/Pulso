@@ -62,3 +62,18 @@ def test_apply_does_not_reopen_closing_investigations():
     assert apply_validation(inv("RESOLVING"), v).status == "RESOLVING"
     out = apply_validation(inv("INVESTIGATING"), v)
     assert out.status == "CONFIRMED" and out.official_confirmation
+
+
+def test_official_denial_is_the_negation_side_not_a_second_confirmation():
+    # "não deixou feridos" contém "feridos": antes ficava ambíguo (descartado) e a negação oficial sumia.
+    news = sig(1, "Incêndio em hospital de Campinas deixa feridos", source="a")
+    denial = sig(2, "Bombeiros: incêndio em hospital de Campinas não deixou feridos", cls="OFFICIAL", source="bombeiros")
+    found = find_contradictions([news, denial])
+    assert found and found[0]["topic"] == "vítimas" and found[0]["official_side"] == "b"
+
+
+def test_event_noun_is_not_a_claim_restored_power_is_the_outcome_side():
+    out = sig(1, "Recife: bairros sem energia", source="a")
+    back = sig(2, "Energia restabelecida em bairros de Recife após apagão", source="b")
+    assert [c["topic"] for c in find_contradictions([out, back])] == ["energia/serviço"]
+    assert find_contradictions([sig(3, "Apagão atinge bairros de Recife", source="c"), back]) == []

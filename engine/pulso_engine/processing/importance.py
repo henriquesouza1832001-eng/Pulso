@@ -145,12 +145,17 @@ GATE_SCHEDULED = (
     "goleia", "goleada", "rodada", "brasileirao", "libertadores", "copa do brasil", "amistoso", "classico",
     "show", "festival", "ingressos", "turne", "feriado", "o que abre e fecha", "abre e fecha", "horario de funcionamento",
     "loteria", "mega-sena", "sorteio", "programacao", "veja como", "saiba como",  # "bets/apostas" é tema, não agenda
+    # rotina diária (validação do gate): chuva fraca e trânsito de pico. "chuva forte", "temporal", "congestionamento" e
+    # "acidente" são termos de impacto e anulam o teto (ver `context`).
+    "chuva fraca", "chuva leve", "garoa", "tempo nublado", "tempo instavel",
+    "transito lento", "transito intenso", "lentidao", "horario de pico",
 )
 # Incidente operacional que o vocabulário de impacto (substantivos) não pegava: verbos/particípios e telecom.
 GATE_OPERATIONAL = (
     "circulacao interrompida", "interrompida", "interrompido", "paralisada", "paralisado", "paralisacao",
     "sem internet", "sem sinal", "sem energia", "fora do ar", "pane", "bloqueiam", "bloqueada", "bloqueado",
     "interditada", "interditado", "evacuado", "evacuada", "evacuados", "tumulto", "feridos", "ferido",
+    "sem transporte", "estacao fechada", "trens param", "ficam presos",
 )
 _GATE_SCHEDULED = _compile(GATE_SCHEDULED)
 _GATE_OPERATIONAL = _compile(GATE_OPERATIONAL)
