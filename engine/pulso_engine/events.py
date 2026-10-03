@@ -12,7 +12,7 @@ from .processing.importance import (EDITORIAL_ONLY, OPERATIONAL_SIGNAL, POTENTIA
                                      SCHEDULED_CONTEXT, assess, context)
 from .processing.keyword_engine import _fold
 from .processing.normalizer import normalized_title
-from .research.validator import CLAIM_PAIRS, COPY_JACCARD, _origins, claim_side
+from .research.validator import CLAIM_PAIRS, _origins, claim_side
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
@@ -21,6 +21,7 @@ IMPACT_WEIGHT = 0.3  # pontos de severidade por ponto de importância do texto (
 # NOISE_GATE: incidente operacional (metrô parado, sem internet, bloqueio, tumulto) pesa como um evento físico de nível B.
 OPERATIONAL_BASE = 45
 OPERATIONAL_IMPACT = 45
+COPY_JACCARD = 0.8
 NOISE_GATE_MAX_LEVEL = 1  # teto de nível de agenda/esporte/serviço e de OTHER sem nenhum termo de impacto
 
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
@@ -73,7 +74,7 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
         news_toks = [tokens(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES]
         own = [s for s in signals if s.source_class in SOCIAL_CLASSES and not any(_near_copy(tokens(s.title), t) for t in news_toks)]
-        independent = len(non_social) + len(_origins(own))
+        independent = len(non_social) + len({normalized_title(s.title) for s in own})
         # QA-004: velocidade conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
         def distinct(lo: float, hi: float) -> int:
             return len({(s.source_id, normalized_title(s.title)) for s in signals
@@ -134,6 +135,8 @@ def disputes(sigs: list[Signal]) -> list[str]:
 
 
 def status_for(stats: EventStats) -> str:
+    if stats.contradiction >= 0.5:
+        return "DISPUTED"
     # Volume de relatos sociais não é confirmação independente.
     if stats.source_classes <= SOCIAL_CLASSES:
         return "DETECTED"
