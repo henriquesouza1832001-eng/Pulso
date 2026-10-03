@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 
+export interface Polling<T> {
+	data: T | null;
+	error: string | null;
+	updatedAt: number | null;
+	loading: boolean;
+}
+
 /** Busca periódica leve. Mantém o último dado se uma chamada falhar. */
-export function usePolling<T>(fn: () => Promise<T>, ms: number) {
+export function usePolling<T>(fn: () => Promise<T>, ms: number): Polling<T> {
 	const [data, setData] = useState<T | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [updatedAt, setUpdatedAt] = useState<number | null>(null);
@@ -27,5 +34,5 @@ export function usePolling<T>(fn: () => Promise<T>, ms: number) {
 		};
 	}, [fn, ms]);
 
-	return { data, error, updatedAt };
+	return { data, error, updatedAt, loading: data === null && error === null };
 }
