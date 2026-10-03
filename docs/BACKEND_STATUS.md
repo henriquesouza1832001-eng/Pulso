@@ -78,8 +78,9 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 - [x] Testes: 36 Python, 4 do Worker
 
 **Em andamento / aguardando**
-- [ ] **PR #7** (hen → main): séries, baseline, anomalia, admin, Cron Trigger. *Ainda sem merge; enquanto isso a migration `0002` e a anomalia não estão em produção.*
-- [ ] **Segredo `GH_DISPATCH_TOKEN`** no Worker (sem ele o Cron não aciona a coleta)
+- [x] **PR #7** mergeado e publicado em 2026-10-03: séries, baseline, anomalia, rotas admin, Cron Trigger (`*/5 * * * *` registrado), migration `0002` aplicada
+- [x] Registro de coletores (`collectors/registry.py`): fonte nova = arquivo novo + uma linha, sem mexer no pipeline
+- [ ] **Segredo `GH_DISPATCH_TOKEN`** no Worker (sem ele o Cron não aciona a coleta; `/api/health` mostra `scheduler_configured: false`)
 
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
 1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
@@ -107,9 +108,45 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 
 Fora de escopo por restrição de termos: extrair dados do Google Maps (o mapa de calor é gerado a partir dos **nossos** eventos), raspar X/Instagram/Waze sem API autorizada, câmeras privadas.
 
+## 8.1 Divisão de trabalho
+
+### Primeiros passos de quem entra (≈ 1 h)
+1. Pedir convite de colaborador no GitHub e membro na conta Cloudflare; receber os segredos por canal seguro (nunca por chat/PR).
+2. `git clone`, `git checkout <sua branch>` e `git pull origin main`. *Qual das branches `thig`/`art`/`isar` é a sua: definir com o responsável.*
+3. Ler a lista da seção 1, rodar tudo localmente (seção 3) e deixar `py -m pytest` e `npm run typecheck` verdes.
+4. Combinar com o responsável a primeira tarefa (abaixo) e abrir um PR pequeno cedo para validar o fluxo.
+
+### Passos do responsável pelo backend (+ Claude) — núcleo e infraestrutura
+| # | Passo | Arquivos principais |
+|---|---|---|
+| N1 | Criar o token fino do GitHub e rodar `wrangler secret put GH_DISPATCH_TOKEN` (liga a coleta de 5 em 5 min) | `apps/worker/src/lib/dispatch.ts` |
+| N2 | **Revogar** o token da Cloudflare que foi exposto em chat | painel Cloudflare |
+| N3 | Revisar os termos das 5 fontes RSS e preencher `terms_url`/`reviewed_by` | `engine/config/sources.json` |
+| N4 | Clusterização com estado (ids de evento estáveis) | `pipeline.py`, `processing/clustering.py`, `events.py` |
+| N5 | **Previsões**: migration `forecasts`, `/api/forecasts`, resolução e pontuação (Brier); NOWCAST primeiro | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
+| N6 | SSE (`/api/events/live`) e `/api/trending` | `apps/worker/src/routes` |
+| N7 | Revisar e fazer o merge dos PRs da colega | — |
+
+### Passos de quem está entrando — módulos independentes (baixo conflito)
+Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
+| # | Passo | Onde mexer (arquivos próprios) | Observações |
+|---|---|---|---|
+| E1 | Onboarding acima + PR de teste (ex.: corrigir um erro de digitação em doc) | docs | valida acesso, CI e fluxo |
+| E2 | **Qualidade da classificação e da geo**: ampliar o gazetteer (mais municípios, bairros conhecidos), ajustar famílias de keywords, reduzir falsos positivos, com testes | `processing/geo.py`, `processing/keywords.json`, `tests/` | exemplos reais ruins estão na seção 7 (itens 2 e 3) |
+| E3 | **Coletores de fontes oficiais**, um por PR: INMET (alertas), Defesa Civil, PRF, IBGE, Banco Central | `collectors/official/<fonte>.py` + 1 linha em `collectors/registry.py` + entrada em `config/sources.json` + ficha em `docs/sources/SOURCES.md` | **antes de codar**: ler API/termos/limites e preencher o checklist de `COLLECTION_PROTOCOL.md` §4; teste com feed gravado (sem rede) |
+| E4 | `/api/search` e `/api/timeline` | `apps/worker/src/routes/search.ts`, `timeline.ts` (novos) + registrar em `index.ts` | seguir o padrão de `events.ts` (zod, cache, erros) e documentar em `docs/api/API.md` |
+| E5 | Proteger `/api/admin/*` (Cloudflare Access ou token próprio) e definir com o front o que o painel precisa | `apps/worker/src/routes/admin.ts` | combinar antes com o responsável |
+
+### Para não pisarmos um no outro
+- Cada PR = uma coisa, pequeno, com testes. Arquivos de `N*` e de `E*` são separados de propósito.
+- **Migrations**: após `git pull`, numere a sua como a próxima da sequência; se duas pessoas criarem o mesmo número, quem for mergear depois renumera antes do merge. Nunca editar uma migration já aplicada em produção.
+- **Contratos** (`contracts.ts`, `models.py`, `API.md`): mudança só com aviso ao front e ao responsável.
+- Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
+
 ## 9. Decisões registradas
 `docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — PR #7 mergeado e em produção (migration `0002`, Cron Trigger, rotas admin). Registro de coletores. Divisão de trabalho e onboarding (seção 8.1).
 - **2026-10-03** — Cron Trigger da Cloudflare + `/api/health` com atraso da coleta; histórico em séries, baseline e anomalia; rotas admin; eventos só das últimas 24 h; política de branches (somente 5). 
 - **2026-10-02** — Monorepo; Cloudflare (D1, Worker, front); deploy automático; coleta RSS; protocolo de coleta e previsão documentados.

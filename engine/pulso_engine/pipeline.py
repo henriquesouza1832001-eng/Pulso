@@ -10,7 +10,8 @@ from typing import Callable
 
 from .anomaly import anomaly_score
 from .baseline import ewma_baseline, hourly_counts
-from .collectors.news.rss import RssAdapter, http_fetch
+from .collectors.news.rss import http_fetch
+from .collectors.registry import build_adapter
 from .config import load_sources
 from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
@@ -79,10 +80,8 @@ def run_once(
     signals: dict[str, Signal] = {}
     health: list[dict] = []
     for src in sources:
-        if src.get("adapter") != "rss":
-            continue
         try:
-            got = RssAdapter(src, keywords, fetcher, lambda: now).run()
+            got = build_adapter(src, keywords, fetcher, lambda: now).run()
             status, detail = ("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos")
             for s in got:
                 signals.setdefault(s.hash, s)  # dedup por URL canônica/título
