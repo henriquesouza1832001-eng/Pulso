@@ -19,7 +19,7 @@ UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "
 DISPLAY = {"headline_link", "metrics_only", "full"}
 REQUIRED = ("id", "name", "adapter", "source_class", "url", "access", "terms_url", "interval_s",
             "retention_days", "display", "reviewed_by", "reviewed_at")
-MIN_INTERVAL_S = {"rss": 300, "sitemap": 300, "api": 60, "social": 60, "x": 300, "inmet": 300, "gdelt": 900, "mastodon": 600, "usgs": 600}
+MIN_INTERVAL_S = {"rss": 300, "sitemap": 300, "api": 60, "social": 60, "x": 300, "inmet": 300, "gdelt": 900, "mastodon": 600, "usgs": 600, "inpe_fires": 300}
 
 
 PENDING = "PENDENTE"

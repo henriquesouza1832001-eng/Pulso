@@ -14,6 +14,7 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 desligada: **não validada ao vivo** (429 persistente mesmo a 7 s de intervalo e consulta vazia em 2026-10-03) |
 | Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
 | USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
 | Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
@@ -161,4 +162,19 @@ Critérios de entrada: testado ao vivo com o coletor real; publicação recente;
 Leitor tolerante: gzip (com limite na saída), RSS 1.0/RDF (gov.br), '&' solto e entidades HTML; declarações <!ENTITY seguem recusadas.
 Cobertura regional: G1 de 17 estados; ES, SC, PA, MA, AM, RN, BA, DF, SP (Metrópoles), RJ (prefeitura) e GO (governo) por portais locais.
   Lacunas: não há RSS regional utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018).
+```
+
+## Ficha: INPE Queimadas (`inpe-queimadas`)
+```
+Fonte / URL: https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/diario/Brasil/focos_diario_br_AAAAMMDD.csv
+Tipo de acesso: dados abertos (CSV por dia UTC, atualizado ao longo do dia; sem chave). Portal: https://terrabrasilis.dpi.inpe.br/queimadas/situacao-atual/
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Arquivo do dia de ~0,2 a 3 MB (limite do coletor: 5 MB). Perto da meia-noite UTC lê também o do dia anterior.
+Dados coletados e retenção: nenhum foco individual é guardado: só um sinal por UF e por janela de 3 h quando passa de `min_focos` (150) detecções, com a contagem, as 3 cidades de maior concentração, o bioma e a potência radiativa somada. Retenção 90 dias.
+Frequência: 600 s.
+Fallback se cair: a fonte fica OFFLINE (o arquivo do dia pode não existir logo após 00:00 UTC; o coletor tenta o do dia anterior). As demais seguem.
+Termos relevantes: dados abertos do INPE; citar a fonte. Confirmar a política de uso no portal antes de tratar a revisão como concluída (terms_url = PENDENTE).
+Exibição pública permitida: headline_link, sempre com atribuição ao INPE.
+Calibração: com 150 detecções em 3 h por UF, o dia 2026-10-02 (20 392 detecções no Brasil, temporada seca) teria dado ~25 sinais em 9 estados; limiares mais baixos geram dezenas de sinais por dia. Ajustável em `min_focos` e `window_h`.
+Papel: fonte OFICIAL e objetiva da frente de fogo (e da fumaça sobre as cidades). Um foco é uma detecção de calor por satélite, não um incêndio confirmado: o texto diz "detecções".
 ```
