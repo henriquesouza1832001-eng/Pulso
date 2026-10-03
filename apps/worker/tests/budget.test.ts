@@ -16,6 +16,9 @@ const batch = (): BatchLike => ({
 	forecasts: [{ status: "open" }, { status: "resolved" }],
 	observations: [{ scope: "BR" }, { scope: "UF:MG" }],
 	investigations: [{ status: "NEW" }, { status: "INVESTIGATING" }, { status: "CLOSED" }],
+	forecast_registry: [{ id: "f1" }],
+	shadow_results: [{ id: "s1" }],
+	driver_registry: [{ id: "d1" }],
 });
 
 describe("governador do orçamento de escrita", () => {
@@ -46,6 +49,9 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.pulses).toHaveLength(2);
 		expect(out.observations).toEqual([{ scope: "BR" }]); // histórico agregado: só o nacional em economia
 		expect(out.investigations).toEqual([{ status: "NEW" }, { status: "CLOSED" }]); // economia: só abertura e encerramento
+		expect(out.forecast_registry).toHaveLength(1); // auditoria de previsão continua em economia
+		expect(out.shadow_results).toEqual([]); // comparação e drivers esperam a cota folgar
+		expect(out.driver_registry).toEqual([]);
 		expect(shed.events).toBe(1);
 	});
 
@@ -58,5 +64,6 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.forecasts).toEqual([{ status: "resolved" }]); // a resolução de uma previsão nunca se perde
 		expect(out.observations).toEqual([]);
 		expect(out.investigations).toEqual([]);
+		expect(out.forecast_registry).toEqual([]);
 	});
 });

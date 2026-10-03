@@ -95,6 +95,65 @@ admin.get("/investigations", async (c) => {
 	return c.json({ investigations: results });
 });
 
+const shadowQuery = z.object({
+	method: z.string().regex(/^[a-z0-9_]{1,60}$/).optional(),
+	scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/).optional(),
+	limit: z.coerce.number().int().min(1).max(20000).default(5000),
+});
+
+/** V1 x V2 x desfecho: matéria-prima do portão de promoção (validation/shadow_compare.promotion_gate). */
+admin.get("/shadow-results", async (c) => {
+	const q = shadowQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const { results } = await c.env.DB.prepare(
+		`SELECT item_id, method, scope, p_v1, p_v2, outcome, created_at FROM shadow_results
+		 WHERE (?1 IS NULL OR method = ?1) AND (?2 IS NULL OR scope = ?2) ORDER BY created_at DESC LIMIT ?3`,
+	)
+		.bind(q.data.method ?? null, q.data.scope ?? null, q.data.limit)
+		.all();
+	return c.json({ shadow_results: results });
+});
+
+const driversQuery = z.object({
+	state: z.enum(["CANDIDATE", "TESTING", "ACTIVE", "DEGRADED", "DISABLED"]).optional(),
+	limit: z.coerce.number().int().min(1).max(2000).default(500),
+});
+
+/** Registro de drivers antecedentes (só ACTIVE pode alterar a probabilidade de uma previsão). */
+admin.get("/drivers", async (c) => {
+	const q = driversQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const { results } = await c.env.DB.prepare(
+		`SELECT driver, target, scope, lag_hours, correlation, pairs, samples, brier_without, brier_with, state, reason, updated_at
+		 FROM driver_registry WHERE (?1 IS NULL OR state = ?1) ORDER BY updated_at DESC LIMIT ?2`,
+	)
+		.bind(q.data.state ?? null, q.data.limit)
+		.all();
+	return c.json({ drivers: results });
+});
+
+const registryQuery = z.object({
+	hours: z.coerce.number().int().min(1).max(24 * 180).default(72),
+	forecast_id: z.string().regex(/^fc-[a-z0-9-]{1,100}$/).optional(),
+});
+
+/** Trilha de auditoria. Sem `forecast_id`: só os ids já registrados (o Engine envia apenas o que falta). Com ele: a entrada completa. */
+admin.get("/forecast-registry", async (c) => {
+	const q = registryQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	if (q.data.forecast_id) {
+		const row = await c.env.DB.prepare("SELECT forecast_id, created_at, snapshot, snapshot_hash FROM forecast_registry WHERE forecast_id = ?1")
+			.bind(q.data.forecast_id)
+			.first();
+		return row ? c.json({ entry: row }) : c.json({ error: "not_found" }, 404);
+	}
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare("SELECT forecast_id FROM forecast_registry WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT 5000")
+		.bind(since)
+		.all();
+	return c.json({ forecast_ids: results.map((r) => (r as { forecast_id: string }).forecast_id) });
+});
+
 const signalsQuery = z.object({
 	hours: z.coerce.number().int().min(1).max(72).default(24),
 });
