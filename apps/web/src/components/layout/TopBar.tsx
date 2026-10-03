@@ -14,7 +14,7 @@ export function TopBar({
 	apiOnline: boolean;
 	demo: boolean;
 	sourcesCount: number;
-	alertsCount: number;
+	alertsCount: number | null;
 	score: number | null;
 	level: number;
 }) {
@@ -46,7 +46,7 @@ export function TopBar({
 				</div>
 
 				<div className="right">
-					{alertsCount > 0 && (
+					{alertsCount != null && alertsCount > 0 && (
 						<a href="#feed" className="alertchip">
 							{alertsCount} ALERTAS
 						</a>

@@ -1,5 +1,5 @@
 import type { PulsoEvent } from "@pulso/shared";
-import type { Forecast, HistEntry } from "../components/sections/Forecasts";
+import type { HistoryEntry } from "../lib/api";
 
 /**
  * Dataset fictício para desenvolvimento/apresentação (VITE_DEMO=1).
@@ -78,16 +78,23 @@ export const DEMO_EVENTS: PulsoEvent[] = [
 		"equipe no local, desvio pelo sentido oposto. normalização prevista em 40 min."),
 ];
 
-export const DEMO_FORECASTS: Forecast[] = [
-	{ q: "o PULSO de DF alcança N4 nas próximas 6h?", yes: 71, drivers: "14 sinais convergindo" },
+interface DemoForecast {
+	q: string;
+	yes: number;
+	drivers: string;
+	horizonMinutes?: number;
+}
+
+export const DEMO_FORECASTS: DemoForecast[] = [
+	{ q: "o PULSO de DF alcança N4 nas próximas 6h?", yes: 71, drivers: "14 sinais convergindo", horizonMinutes: 360 },
 	{ q: "temporal severo atinge a GRBS/SP até 06h?", yes: 68, drivers: "inmet + 2 fontes" },
-	{ q: "o PULSO nacional sai de N3 nas próximas 24h?", yes: 34, drivers: "depende do eixo SP·RJ" },
+	{ q: "o PULSO nacional sai de N3 nas próximas 24h?", yes: 34, drivers: "depende do eixo SP·RJ", horizonMinutes: 1440 },
 ];
 
-export const DEMO_HISTORY: HistEntry[] = [
-	{ date: "28/09", text: "APAGÃO EM MANAUS/AM · PULSO 4 POR 3H12 · 62 SINAIS · CONF 91%", level: 4 },
-	{ date: "21/09", text: "ATOS NACIONAIS · SINAIS EM 24 UFS · PICO 17:40", level: 4 },
-	{ date: "14/09", text: "TEMPORAL NO LITORAL NORTE/SP · 118 MM ACUMULADOS", level: 3 },
+export const DEMO_HISTORY: HistoryEntry[] = [
+	{ kind: "event", date: min(60 * 24 * 4), title: "Apagão em Manaus/AM", level: 4, peak_pulse: 78, state: "AM", city: "Manaus", signal_count: 62, source_count: 5, confidence: 91 },
+	{ kind: "national", date: min(60 * 24 * 11), title: "Atos nacionais · sinais em 24 UFs", level: 4, peak_pulse: 76, duration_minutes: 192 },
+	{ kind: "event", date: min(60 * 24 * 18), title: "Temporal no litoral norte/SP", level: 3, peak_pulse: 58, state: "SP", city: "São Sebastião", signal_count: 29, source_count: 4 },
 ];
 
 export const DEMO_CAMERAS = [

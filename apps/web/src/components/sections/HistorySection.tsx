@@ -1,26 +1,21 @@
 import { useState } from "react";
-import type { PulsoEvent } from "@pulso/shared";
-import type { HistEntry } from "./Forecasts";
+import type { HistoryEntry } from "../../lib/api";
 import { History } from "./Forecasts";
 
-/**
- * Histórico de inteligência — no molde do PIZZA INTELLIGENCE HISTORY:
- * tabs de período, entradas datadas e retorno aos dados ao vivo.
- */
+/** Histórico real de picos/eventos, filtrado nas janelas selecionadas. */
 export function HistorySection({
 	entries,
-	events,
+	loading,
+	error,
 }: {
-	entries: HistEntry[];
-	events: PulsoEvent[];
+	entries: HistoryEntry[];
+	loading: boolean;
+	error: string | null;
 }) {
 	const [tab, setTab] = useState<"24h" | "7d" | "30d">("24h");
-	const shown =
-		tab === "24h"
-			? { entries: [], events } // só eventos reais resolvidos nas últimas 24h
-			: tab === "7d"
-				? { entries: entries.slice(0, 2), events: [] }
-				: { entries, events: [] };
+	const days = tab === "24h" ? 1 : tab === "7d" ? 7 : 30;
+	const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+	const shown = entries.filter((entry) => Date.parse(entry.date) >= cutoff);
 
 	return (
 		<div>
@@ -31,10 +26,14 @@ export function HistorySection({
 					</button>
 				))}
 			</div>
-			{shown.entries.length === 0 && shown.events.length === 0 ? (
-				<p className="state">SEM REGISTROS NESTE PERÍODO · O MOTOR AINDA NÃO FECHOU EVENTOS</p>
+			{loading && entries.length === 0 ? (
+				<p className="state">CARREGANDO HISTÓRICO…</p>
+			) : error && entries.length === 0 ? (
+				<p className="state err">HISTÓRICO INDISPONÍVEL · {error}</p>
+			) : shown.length === 0 ? (
+				<p className="state">SEM REGISTROS DE NÍVEL ELEVADO NESTE PERÍODO</p>
 			) : (
-				<History entries={shown.entries} events={shown.events} />
+				<History entries={shown} />
 			)}
 			<a className="back-live" href="#feed">
 				↑ VOLTAR AOS DADOS AO VIVO

@@ -8,6 +8,7 @@ import { Hero } from "./components/layout/Hero";
 import { Section } from "./components/layout/Section";
 import { Footer } from "./components/layout/Footer";
 import { PulseIndicator } from "./components/pulse/PulseIndicator";
+import type { ForecastCardData } from "./components/sections/Forecasts";
 import { MonitoredCities } from "./components/sections/MonitoredCities";
 import { BrazilMap } from "./components/map/BrazilMap";
 import { StateList } from "./components/sections/StateList";
@@ -33,6 +34,10 @@ export function App() {
 	const pulse = usePolling(api.pulseBR, 15_000);
 	const eventsPoll = usePolling(api.events, 15_000);
 	const health = usePolling(api.health, 30_000);
+	const stats = usePolling(api.stats, 15_000);
+	const forecasts = usePolling(api.forecasts, 15_000);
+	const history = usePolling(api.history, 60_000);
+	const pulseHistory = usePolling(api.pulseHistory, 60_000);
 
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [ufPanel, setUfPanel] = useState<string | null>(null);
@@ -54,18 +59,39 @@ export function App() {
 		[events, selectedId],
 	);
 
-	const alertsCount = useMemo(
-		() => events.filter((e) => e.alert_level >= 3).length,
-		[events],
-	);
-	const signals2h = useMemo(
-		() => events.reduce((a, e) => a + e.signal_count, 0),
-		[events],
-	);
-	const statesActive = useMemo(
-		() => new Set(events.map((e) => e.state).filter(Boolean)).size,
-		[events],
-	);
+	const marketItems: ForecastCardData[] = useMemo(() => {
+		if (DEMO) {
+			return DEMO_FORECASTS.map((f, i) => ({
+				id: `demo-forecast-${i}`,
+				question: f.q,
+				probability: f.yes / 100,
+				intervalLow: null,
+				intervalHigh: null,
+				horizonMinutes: f.horizonMinutes ?? null,
+				scope: "DEMO",
+				method: "demo",
+				evidence: {},
+				resolvesAt: null,
+				experimental: true,
+				demo: true,
+				drivers: f.drivers,
+			}));
+		}
+		return (forecasts.data?.forecasts ?? []).map((f) => ({
+			id: f.forecast_id,
+			question: f.question,
+			probability: f.probability,
+			intervalLow: f.interval_low,
+			intervalHigh: f.interval_high,
+			horizonMinutes: f.horizon_minutes,
+			scope: f.scope,
+			method: `${f.method} v${f.method_version}`,
+			evidence: f.evidence,
+			resolvesAt: f.resolves_at,
+			experimental: f.experimental ?? true,
+		}));
+	}, [forecasts.data]);
+	const historyEntries = DEMO ? DEMO_HISTORY : (history.data?.entries ?? []);
 
 	const onSelect = useCallback((id: string) => setSelectedId(id), []);
 	const onStateSelect = useCallback((uf: string) => setUfPanel(uf), []);
@@ -78,8 +104,8 @@ export function App() {
 				clock={clock}
 				apiOnline={apiOnline}
 				demo={DEMO}
-				sourcesCount={health.data?.sources.length ?? 0}
-				alertsCount={alertsCount}
+				sourcesCount={stats.data?.sources_total ?? health.data?.sources.length ?? 0}
+				alertsCount={stats.data?.alerts ?? null}
 				score={pulse.data?.score ?? null}
 				level={pulse.data?.alert_level ?? 3}
 			/>
@@ -88,10 +114,13 @@ export function App() {
 
 			<PulseIndicator
 				pulse={pulse}
-				sources={health.data?.sources ?? null}
-				eventsCount={events.length}
-				signals2h={signals2h}
-				statesActive={statesActive}
+				sourcesOnline={stats.data?.sources_online ?? null}
+				eventsCount={stats.data?.active_events ?? null}
+				signals2h={stats.data?.signals_2h ?? null}
+				statesActive={stats.data?.states_active ?? null}
+				pulseHistory={pulseHistory.data?.points ?? []}
+				pulseHistoryLoading={pulseHistory.loading}
+				pulseHistoryError={pulseHistory.error}
 			/>
 
 			<main>
@@ -159,7 +188,11 @@ export function App() {
 							onlineSources={onlineSources}
 						/>
 						<div id="mercados">
-							<Markets items={DEMO ? DEMO_FORECASTS : []} />
+							<Markets
+								items={marketItems}
+								loading={!DEMO && forecasts.loading}
+								error={DEMO ? null : forecasts.error}
+							/>
 						</div>
 					</div>
 
@@ -211,7 +244,11 @@ export function App() {
 					title="histórico de inteligência"
 					desc="momentos de nível alto registrados pelo motor"
 				>
-					<HistorySection entries={DEMO ? DEMO_HISTORY : []} events={events} />
+					<HistorySection
+						entries={historyEntries}
+						loading={!DEMO && history.loading}
+						error={DEMO ? null : history.error}
+					/>
 				</Section>
 
 				<Section
@@ -228,7 +265,7 @@ export function App() {
 			<Footer
 				clock={clock}
 				apiOnline={apiOnline}
-				sourcesCount={health.data?.sources.length ?? 0}
+				sourcesCount={stats.data?.sources_total ?? health.data?.sources.length ?? 0}
 				demo={DEMO}
 			/>
 		</>
