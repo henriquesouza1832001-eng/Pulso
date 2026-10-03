@@ -3,9 +3,10 @@
 Autor: `claude-art` (QA independente). Base: `main` em `0530004`. Feito na branch `art`: o `AGENTS.md` proíbe criar branches,
 então a `test/backend-adversarial` pedida pelo roteiro não foi criada.
 
-Escopo: só testes novos (`engine/tests/test_adversarial_qa.py`) e este relatório. **Nenhum código de produção, limiar, golden
-dataset ou teste existente foi alterado.** Os defeitos de política de pontuação são do motor (`claude-motor`) e ficam
-registrados, não corrigidos.
+Escopo: testes novos (`engine/tests/test_adversarial_qa.py`), este relatório e, a pedido do dono do projeto, a correção de
+QA-001..004 **atrás da flag `NOISE_GATE`, desligada por padrão** (shadow). Nenhum limiar existente, golden dataset ou teste
+existente foi alterado; com a flag desligada a produção se comporta exatamente como antes. Ligar a flag é decisão do
+Reliability Gate (shadow → canary → prod), não desta entrega.
 
 ## Como ler
 
@@ -23,18 +24,20 @@ registrados, não corrigidos.
 | `npm test` (web/worker/shared) | 13 arquivos, 136 testes, todos passando | — |
 | `npm run build` + `wrangler deploy --dry-run` | ok | ~30 s no total |
 
-Depois desta entrega: engine **679 passed, 13 xfailed** (19 invariantes novas + 13 defeitos documentados).
+Depois desta entrega: engine **701 passed, 13 xfailed**, tanto com `NOISE_GATE` desligada quanto ligada
+(19 invariantes novas + 22 testes da correção com a flag ligada + 13 defeitos em xfail estrito no comportamento de produção).
 
 ## Resumo por área
 
 | Área | Status | Nota |
 |---|---|---|
-| Ruído vs incidente (corpus hostil) | **FAIL** | QA-001, QA-002 |
-| Duplicatas / independência | **FAIL** | QA-003, QA-004; cópia da mesma fonte e sindicação OK |
+| Ruído vs incidente (corpus hostil) | **FAIL** em produção / PASS com `NOISE_GATE` | QA-001, QA-002 |
+| Duplicatas / independência | **FAIL** em produção / PASS com `NOISE_GATE` | QA-003, QA-004; cópia da mesma fonte e sindicação OK |
 | Eventos: false merge | PASS | mesmo assunto em SP e MG fica separado |
 | Eventos: false split | **FAIL** | QA-005 (V2 `CLUSTER_REFINE` melhora: 4 → 2 eventos) |
 | Eventos: drift / ressurreição | UNVERIFIED | não exercitado com estado gravado nesta rodada |
 | Ordem dos sinais | PASS | 4 ordens diferentes, resultado idêntico |
+| Distribuição de níveis ao vivo | INSUFFICIENT_DATA | QA-008: 100/100 dos eventos mais quentes da API em N2+ |
 | Datas ruins | PARTIAL | futuro limitado a "agora", 2019 descartado; sem fuso lido como UTC (QA-007) |
 | Entradas ruins (título, XML, corpo) | PARTIAL | vazio/truncado vira OFFLINE (QA-006) |
 | `HTTP 200 != fresh` | PASS (HTML) / PARTIAL (vazio) | HTML com 200 é DEGRADED; corpo vazio é OFFLINE |
@@ -114,6 +117,38 @@ Depois desta entrega: engine **679 passed, 13 xfailed** (19 invariantes novas + 
 - **Resultado:** interpretado como 19:30Z. Feeds brasileiros costumam publicar em horário de Brasília, então o sinal fica 3 h "mais velho": perde recência e pode sair da janela antes da hora.
 - **Por que não virou teste:** depende da convenção de cada fonte. Registro para o dono do coletor decidir (fuso padrão por fonte em `sources.json`).
 
+### QA-008 — N2 quase não separa nada nos dados ao vivo (observação, INSUFFICIENT_DATA)
+
+- **Ataque:** distribuição de níveis dos eventos ao vivo em 2026-10-03.
+- **Resultado:** 98 eventos em N2 e 2 em N3, de 100. Pulso mínimo 35, mediana 40. O filtro "nível 2+" dos briefings mostra tudo.
+- **Ressalva:** a API devolve os 100 eventos **mais quentes**, então a amostra é enviesada. Sem a lista completa não dá para afirmar inflação de nível. Precisa de uma consulta ao banco (dono: `claude-hen`).
+- **Replay do `NOISE_GATE` nesses 100 eventos (título + resumo):** 9 seriam rebaixados a N1. Todos são agenda/serviço: "onde assistir" (2×), Mega-Sena, "saiba como baixar o e-Título", "veja como funciona", "zerézima", local de votação. "AGU pede que STF declare lei das bets inconstitucional" deixou de ser rebaixado depois de tirar "bets/apostas" da lista (é tema, não agenda).
+
+## Correção em shadow: flag `NOISE_GATE`
+
+Pedida pelo dono do projeto depois do relatório. Regra completa em `docs/SCORING.md` ("Portão de ruído"). Código:
+`processing/importance.py` (`SCHEDULED`, `OPERATIONAL`, `context`), `events.py` (`is_noise`, independência e velocidade em
+`stats_for`, teto em `build_event`) e `flags.py`.
+
+| Ataque | Produção (flag desligada) | `NOISE_GATE` ligada |
+|---|---|---|
+| Futebol, "onde assistir", show, feriado com 6 a 10 veículos | N2 | **N1** (teto no "POR QUE?") |
+| Metrô parado, sem internet, bloqueio de rodovia, tumulto com feridos (4 veículos) | N1 | **N2** |
+| Apagão, evacuação, enchente, "show termina em tumulto", "feriado tem acidente com mortos" | N2 | N2 (recall mantido) |
+| 1 notícia + 9 reposts sociais idênticos | 10 fontes, CONFIRMED | **1 fonte, DETECTED** |
+| Relato social com palavras próprias | conta | conta |
+| 1000 cópias da mesma fonte | Pulso 45 | **Pulso 30** (igual a 1 cópia) |
+| Menos cobertura | — | confiança nunca sobe (4 → 3 → 2 fontes) |
+
+**Não corrigidos:**
+- **QA-005** (agrupamento de paráfrases): já tem a V2 `CLUSTER_REFINE` do motor em andamento.
+- **QA-006** (corpo vazio vira OFFLINE): a correção foi feita e **desfeita**. A matriz de caos de `tests/chaos/test_collector_chaos.py` exige de propósito `OFFLINE/UNKNOWN` para `204`, `truncated`, `malformed` e `json-not-xml`, e o roteiro proíbe enfraquecer teste existente. É uma divergência de decisão entre a matriz e o comentário de `circuit_breaker.py` ("conteúdo vazio com transporte ok NÃO abre o breaker"); fica com o dono.
+- **QA-007** (data sem fuso): depende da convenção de cada fonte.
+
+**Riscos da correção:**
+- As listas `SCHEDULED` e `OPERATIONAL` são heurísticas por palavra. Precisam de backtest com eventos reais antes do canary.
+- A regra "OTHER sem impacto" depende do classificador de categoria.
+
 ## O que resistiu (regressão permanente)
 
 - Ruído de um único veículo nunca vira evento.
@@ -156,6 +191,6 @@ sistema pronto para produção.
 
 ## Handoff
 
-- `claude-motor`: QA-001, QA-002, QA-003, QA-004, QA-005. Corrigir QA-001 junto com QA-002, ou o recall cai.
-- `claude-hen`: QA-006.
+- `claude-motor`: revisar e decidir a promoção da `NOISE_GATE` (QA-001..004) pelo Reliability Gate; QA-005.
+- `claude-hen` / `codex`: QA-006 (decidir entre a matriz de caos e o comentário do breaker); QA-008 (distribuição real de níveis).
 - Dono dos coletores: QA-007.

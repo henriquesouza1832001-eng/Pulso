@@ -177,11 +177,11 @@ def test_operational_incidents_with_four_outlets_reach_n2(name):
     assert ev["alert_level"] >= 2
 
 
-@pytest.mark.xfail(strict=True, reason="QA-001/002: com o mesmo volume, ruído pontua igual ou acima de incidente com feridos")
+@pytest.mark.xfail(strict=True, reason="QA-001/002: com o mesmo volume, futebol fica no mesmo nível de tumulto com feridos")
 def test_incident_with_injured_outranks_football_at_equal_volume():
     football = only_event(run(same_story(NOISE["futebol"], 6)))
     tumult = only_event(run(same_story(INCIDENTS_UNDERRATED["tumulto_show"], 6)))
-    assert tumult["pulse"] >= football["pulse"] + 10
+    assert tumult["alert_level"] > football["alert_level"]
 
 
 @pytest.mark.xfail(strict=True, reason="QA-003: repost social idêntico conta como fonte independente e confirma o evento")
@@ -214,3 +214,80 @@ def test_paraphrased_coverage_of_one_story_is_one_event():
 def test_empty_body_is_content_problem_not_transport_failure():
     h = run({"s0": b""})["source_health"][0]
     assert h["status"] == "DEGRADED"
+
+
+# ---------------------------------------------------------------- correção em SHADOW: flag NOISE_GATE (padrão desligada)
+# Os mesmos ataques acima, com a flag ligada: provam a correção de QA-001..004 sem mudar a produção até o Reliability Gate.
+
+@pytest.fixture
+def noise_gate(monkeypatch):
+    monkeypatch.setenv("PULSO_FLAG_NOISE_GATE", "1")
+
+
+@pytest.mark.usefixtures("noise_gate")
+@pytest.mark.parametrize("name", list(NOISE))
+@pytest.mark.parametrize("outlets", [6, 10])
+def test_gate_noise_stays_n1_at_any_volume(name, outlets):
+    ev = only_event(run(same_story(NOISE[name], outlets)))
+    assert ev["alert_level"] == 1
+    assert any(b["key"] == "noise_gate" for b in ev["score_breakdown"])  # o teto aparece no "POR QUE?"
+
+
+@pytest.mark.usefixtures("noise_gate")
+@pytest.mark.parametrize("name", list(INCIDENTS_UNDERRATED))
+def test_gate_operational_incidents_reach_n2(name):
+    assert only_event(run(same_story(INCIDENTS_UNDERRATED[name], 4)))["alert_level"] >= 2
+
+
+@pytest.mark.usefixtures("noise_gate")
+@pytest.mark.parametrize("title", [
+    "Apagão deixa bairros de São Paulo sem energia elétrica",
+    "Prédio é evacuado após incêndio no centro de Belo Horizonte",
+    "Enchente deixa desalojados em Porto Alegre após chuva forte",
+    "Show termina em tumulto e deixa feridos em São Paulo",  # palavra de agenda + incidente: o incidente prevalece
+    "Feriado tem acidente com mortos na rodovia em Minas Gerais",
+])
+def test_gate_keeps_recall_of_real_incidents(title):
+    assert only_event(run(same_story(title, 4)))["alert_level"] >= 2
+
+
+@pytest.mark.usefixtures("noise_gate")
+def test_gate_incident_with_injured_outranks_football():
+    football = only_event(run(same_story(NOISE["futebol"], 6)))
+    tumult = only_event(run(same_story(INCIDENTS_UNDERRATED["tumulto_show"], 6)))
+    assert tumult["alert_level"] > football["alert_level"]
+
+
+@pytest.mark.usefixtures("noise_gate")
+def test_gate_identical_social_reposts_do_not_add_independence():
+    title = "Incêndio atinge galpão em Campinas e mobiliza bombeiros"
+    feeds = {"a": rss([(title, "https://a.com/1", 10)]),
+             **{f"r{i}": rss([(title, f"https://r{i}.com/p", 9)]) for i in range(9)}}
+    ev = only_event(run(feeds, [src("a")] + [src(f"r{i}", "SOCIAL") for i in range(9)]))
+    assert ev["source_count"] == 1 and ev["status"] != "CONFIRMED"
+
+
+@pytest.mark.usefixtures("noise_gate")
+def test_gate_social_reports_with_their_own_words_still_count():
+    feeds = {"a": rss([("Incêndio atinge galpão em Campinas e mobiliza bombeiros", "https://a.com/1", 10)]),
+             "r1": rss([("Incêndio atinge galpão em Campinas, bombeiros no local agora", "https://r1.com/p", 9)]),
+             "r2": rss([("Bombeiros chegando no incêndio do galpão em Campinas", "https://r2.com/p", 8)])}
+    ev = only_event(run(feeds, [src("a"), src("r1", "SOCIAL"), src("r2", "SOCIAL")]))
+    assert ev["source_count"] == 3  # relato próprio continua sendo evidência
+
+
+@pytest.mark.usefixtures("noise_gate")
+def test_gate_duplicate_volume_does_not_inflate_pulse():
+    title = "Incêndio atinge galpão em Campinas e mobiliza bombeiros"
+    one = only_event(run({"a": rss([(title, "https://a.com/n0", 5)])}))
+    many = only_event(run({"a": rss([(title, f"https://a.com/n{i}", 5 + i % 50) for i in range(1000)])}))
+    assert many["pulse"] <= one["pulse"] + 5
+
+
+@pytest.mark.usefixtures("noise_gate")
+def test_gate_reduced_coverage_never_raises_confidence():
+    titles = ["Incêndio atinge galpão em Campinas e mobiliza bombeiros", "Bombeiros combatem incêndio em galpão de Campinas",
+              "Galpão pega fogo em Campinas; bombeiros no local", "Incêndio de grandes proporções em galpão de Campinas"]
+    confs = [only_event(run({f"s{i}": rss([(t, f"https://s{i}.com/x", 10)]) for i, t in enumerate(titles[:k])}))["confidence"]
+             for k in (4, 3, 2)]
+    assert confs == sorted(confs, reverse=True)

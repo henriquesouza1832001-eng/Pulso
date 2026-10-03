@@ -108,3 +108,36 @@ def assess(text: str) -> Importance:
         # fato: "Atentado em casamento deixa 20 mortos" é notícia. Com 1 só ("morreu" + "famosos no casamento"), é fofoca.
         score -= NOISE_PENALTY // 3 if len(hits["A"]) >= 2 else NOISE_PENALTY
     return Importance(max(0, min(100, score)), tuple(matched), noise, False)
+
+
+# ---------------------------------------------------------------- NOISE_GATE (QA-001/002), só lido com a flag ligada
+# Agenda, esporte, entretenimento e serviço: muitos veículos noticiam, mas sozinho não é incidente operacional.
+SCHEDULED = (
+    "onde assistir", "assistir ao vivo", "escalacao", "escalacoes", "vence o", "vence a", "venceu", "empata", "empatou",
+    "goleia", "goleada", "rodada", "brasileirao", "libertadores", "copa do brasil", "amistoso", "classico",
+    "show", "festival", "ingressos", "turne", "feriado", "o que abre e fecha", "abre e fecha", "horario de funcionamento",
+    "loteria", "mega-sena", "sorteio", "programacao", "veja como", "saiba como",  # "bets/apostas" é tema, não agenda
+)
+# Incidente operacional que o vocabulário de impacto (substantivos) não pegava: verbos/particípios e telecom.
+OPERATIONAL = (
+    "circulacao interrompida", "interrompida", "interrompido", "paralisada", "paralisado", "paralisacao",
+    "sem internet", "sem sinal", "sem energia", "fora do ar", "pane", "bloqueiam", "bloqueada", "bloqueado",
+    "interditada", "interditado", "evacuado", "evacuada", "evacuados", "tumulto", "feridos", "ferido",
+)
+_SCHEDULED = _compile(SCHEDULED)
+_OPERATIONAL = _compile(OPERATIONAL)
+
+
+@dataclass(frozen=True)
+class Context:
+    scheduled: bool  # agenda/esporte/serviço SEM nenhum sinal de impacto, ruptura ou incidente operacional
+    operational: tuple[str, ...]  # termos de incidente operacional encontrados
+
+
+def context(text: str) -> Context:
+    folded = _fold(text)
+    operational = tuple(term for term, pat in _OPERATIONAL if pat.search(folded))
+    impact = any(pat.search(folded) for pats in _TIERS.values() for _, pat in pats)
+    disruption = any(pat.search(folded) for _, pat in _DISRUPTION)
+    scheduled = any(pat.search(folded) for _, pat in _SCHEDULED) and not (impact or disruption or operational)
+    return Context(scheduled, operational)
