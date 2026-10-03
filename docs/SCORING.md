@@ -67,5 +67,12 @@ Regra de honestidade: com menos de **12 horas** de histórico o baseline é **in
 
 Limitações conhecidas: o baseline ainda não separa hora do dia e dia da semana (precisa de semanas de dados); e a clusterização é recalculada a cada rodada, então o `event_id` de uma história pode mudar quando a notícia mais antiga sai dos feeds (a solução é clusterização com estado, a próxima etapa).
 
+## Portão de ruído (atrás da flag `NOISE_GATE`, padrão DESLIGADO)
+Corrige QA-001..004 de `docs/reliability/BACKEND_ADVERSARIAL_QA.md`. Com a flag desligada, nada muda (suíte idêntica).
+- **Teto de nível 1** (`events.is_noise`, `NOISE_GATE_MAX_LEVEL`) quando TODOS os relatos são agenda/esporte/serviço (`importance.SCHEDULED`: "onde assistir", "vence o", "show", "feriado", "Mega-Sena", "saiba como"...) sem nenhum termo de impacto, ruptura ou incidente operacional; ou quando o evento é `OTHER` sem nenhum termo de impacto nem operacional. Volume de veículos sozinho não vira alerta. O teto aparece no "POR QUE?" ("Agenda/serviço sem impacto", 0 pontos).
+- **Incidente operacional** (`importance.OPERATIONAL`: "interrompida", "paralisada", "sem internet", "fora do ar", "bloqueiam", "evacuado", "tumulto", "feridos"...) usa severidade-base 45 e impacto mínimo 45, como um evento físico de nível B.
+- **Independência**: repost social com a MESMA manchete de outro relato não conta como fonte independente (conta 1 por veículo não social + 1 por manchete social distinta). Relato social com palavras próprias continua contando.
+- **Velocidade**: conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
+
 ## Rotina de campanha pesa pouco
 Textos de campanha e rotina eleitoral (`importance.ROUTINE`: comício, carreata, caminhada, debate, sabatina, horário eleitoral, pesquisas Datafolha/Quaest/Ipec etc.) são eventos agendados e esperados. Quando TODOS os textos de um evento são rotina e nenhum traz sinal de impacto (tiers A/B) ou de ruptura (`importance.DISRUPTION`: tumulto, ataque, feridos, tiros, bomba...), a severidade fica limitada a `ROUTINE_SEVERITY_CAP` (20). "Comício termina em tumulto com feridos" NÃO é rotina e pontua normalmente.

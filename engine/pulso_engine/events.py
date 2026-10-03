@@ -7,14 +7,19 @@ from datetime import datetime
 
 from .models import EventStats, Signal, SOCIAL_CLASSES
 from .processing.clustering import Cluster
+from . import flags
 from .processing.importance import (EDITORIAL_ONLY, OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT,
-                                     SCHEDULED_CONTEXT, assess)
+                                     SCHEDULED_CONTEXT, assess, context)
 from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
 ROUTINE_SEVERITY_CAP = 20  # teto de severidade de um evento cujos textos são todos rotina de campanha (importance.ROUTINE)
 IMPACT_WEIGHT = 0.3  # pontos de severidade por ponto de importância do texto (importance.assess: 0-100)
+# NOISE_GATE: incidente operacional (metrô parado, sem internet, bloqueio, tumulto) pesa como um evento físico de nível B.
+OPERATIONAL_BASE = 45
+OPERATIONAL_IMPACT = 45
+NOISE_GATE_MAX_LEVEL = 1  # teto de nível de agenda/esporte/serviço e de OTHER sem nenhum termo de impacto
 
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
 BASE_SEVERITY = {
@@ -34,23 +39,40 @@ def dominant_category(signals: list[Signal]) -> str:
 
 def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
+    gate = flags.enabled("NOISE_GATE")
     sources = {s.source_id for s in signals}
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
     last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
     prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
+    independent = len(sources)
+    if gate:
+        # QA-003: repost social com o MESMO título não é evidência independente. Conta cada veículo não social, mais um
+        # por título social distinto que não repete nenhuma manchete não social.
+        non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
+        news_titles = {normalized_title(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES}
+        social_titles = {normalized_title(s.title) for s in signals if s.source_class in SOCIAL_CLASSES} - news_titles
+        independent = len(non_social) + len(social_titles)
+        # QA-004: velocidade conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
+        def distinct(lo: float, hi: float) -> int:
+            return len({(s.source_id, normalized_title(s.title)) for s in signals
+                        if lo < (now - s.timestamp).total_seconds() <= hi})
+        last_hour, prev_hour = distinct(-1, 3600), distinct(3600, 7200)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
     assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
     impact = max(a.score for a in assessed)
-    severity = BASE_SEVERITY.get(category, 15) + min(20, 4 * (len(sources) - 1)) + round(IMPACT_WEIGHT * impact)
+    base = BASE_SEVERITY.get(category, 15)
+    if gate and any(context(f"{s.title}. {s.text or ''}").operational for s in signals):
+        base, impact = max(base, OPERATIONAL_BASE), max(impact, OPERATIONAL_IMPACT)  # QA-002
+    severity = base + min(20, 4 * (independent - 1)) + round(IMPACT_WEIGHT * impact)
     if all(a.routine for a in assessed):  # comício, carreata, agenda de candidato: esperado e agendado, não é impacto
         severity = min(severity, ROUTINE_SEVERITY_CAP)
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
-        independent_sources=len(sources),
+        independent_sources=independent,
         source_classes=frozenset(s.source_class for s in signals),
         newest_age_min=max(0.0, (now - max(times)).total_seconds() / 60),
         persistence_min=(max(times) - min(times)).total_seconds() / 60,
@@ -104,6 +126,17 @@ def is_publishable(cluster: Cluster) -> bool:
         assess(f"{s.title}. {s.text or ''}").is_important() for s in sigs)
 
 
+def is_noise(sigs: list[Signal]) -> bool:
+    """NOISE_GATE (QA-001): agenda/esporte/serviço em TODOS os relatos, ou OTHER sem nenhum termo de impacto nem de
+    incidente operacional. Volume de veículos sozinho não transforma isso em alerta."""
+    texts = [f"{s.title}. {s.text or ''}" for s in sigs]
+    ctx = [context(t) for t in texts]
+    if all(c.scheduled for c in ctx):
+        return True
+    return (dominant_category(sigs) == "OTHER" and not any(c.operational for c in ctx)
+            and max(assess(t).score for t in texts) == 0)
+
+
 def event_place(sigs: list[Signal]) -> Signal | None:
     """Sinal que representa o lugar do evento: o estado MAIORITÁRIO (ponderado pela confiança da geo).
     Se os sinais se espalham por vários estados (pauta nacional), o evento fica sem lugar, e não em um
@@ -138,6 +171,9 @@ def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id:
     if stats.contradiction > 0:  # explícito no "POR QUE?": a divergência já está descontada da confiança, não do score
         breakdown = [*breakdown, {"key": "contradiction", "label": "Fontes divergem (reduz a confiança)", "points": 0}]
     level = alert_level(score, conf, stats)
+    if flags.enabled("NOISE_GATE") and level > NOISE_GATE_MAX_LEVEL and is_noise(sigs):  # QA-001
+        level = NOISE_GATE_MAX_LEVEL
+        breakdown = [*breakdown, {"key": "noise_gate", "label": "Agenda/serviço sem impacto (teto nível 1)", "points": 0}]
     # Alerta OFICIAL de risco extremo (INMET "Grande Perigo", Defesa Civil "Extreme": o adaptador os classifica como
     # EMERGENCY) nunca fica abaixo de "Elevado": o próprio órgão já declarou o perigo, e o score ainda não enxerga isso
     # (anomalia só existe com 12 h de histórico). O piso é explícito no "POR QUE?" (0 pontos) e não altera o score.

@@ -135,3 +135,37 @@ def assess(text: str) -> Importance:
     # Editorial sports language never masks physical impact: "jogo interrompido
     # por apagão" remains operational.
     return Importance(max(0, min(100, score)), tuple(matched), noise, False, role)
+
+
+# ---------------------------------------------------------------- NOISE_GATE (QA-001/002), só lido com a flag ligada
+# Nomes GATE_* de propósito: não colidem com SCHEDULED_PATTERNS/_SCHEDULED que `assess` usa para o papel do sinal.
+# Agenda, esporte, entretenimento e serviço: muitos veículos noticiam, mas sozinho não é incidente operacional.
+GATE_SCHEDULED = (
+    "onde assistir", "assistir ao vivo", "escalacao", "escalacoes", "vence o", "vence a", "venceu", "empata", "empatou",
+    "goleia", "goleada", "rodada", "brasileirao", "libertadores", "copa do brasil", "amistoso", "classico",
+    "show", "festival", "ingressos", "turne", "feriado", "o que abre e fecha", "abre e fecha", "horario de funcionamento",
+    "loteria", "mega-sena", "sorteio", "programacao", "veja como", "saiba como",  # "bets/apostas" é tema, não agenda
+)
+# Incidente operacional que o vocabulário de impacto (substantivos) não pegava: verbos/particípios e telecom.
+GATE_OPERATIONAL = (
+    "circulacao interrompida", "interrompida", "interrompido", "paralisada", "paralisado", "paralisacao",
+    "sem internet", "sem sinal", "sem energia", "fora do ar", "pane", "bloqueiam", "bloqueada", "bloqueado",
+    "interditada", "interditado", "evacuado", "evacuada", "evacuados", "tumulto", "feridos", "ferido",
+)
+_GATE_SCHEDULED = _compile(GATE_SCHEDULED)
+_GATE_OPERATIONAL = _compile(GATE_OPERATIONAL)
+
+
+@dataclass(frozen=True)
+class Context:
+    scheduled: bool  # agenda/esporte/serviço SEM nenhum sinal de impacto, ruptura ou incidente operacional
+    operational: tuple[str, ...]  # termos de incidente operacional encontrados
+
+
+def context(text: str) -> Context:
+    folded = _fold(text)
+    operational = tuple(term for term, pat in _GATE_OPERATIONAL if pat.search(folded))
+    impact = any(pat.search(folded) for pats in _TIERS.values() for _, pat in pats)
+    disruption = any(pat.search(folded) for _, pat in _DISRUPTION)
+    scheduled = any(pat.search(folded) for _, pat in _GATE_SCHEDULED) and not (impact or disruption or operational)
+    return Context(scheduled, operational)

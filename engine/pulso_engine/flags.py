@@ -31,6 +31,7 @@ FLAGS: dict[str, tuple[bool, str, str]] = {
     "RUNTIME_PERSIST": (True, "SHADOW", "envia ao Worker o estado por fonte (frescor + circuit breaker, só o que mudou ou batimento de 6 h) e o resumo do ciclo; observabilidade: não muda evento, Pulso nem alerta"),
     "CIRCUIT_BREAKER": (True, "SHADOW", "calcula o estado do circuit breaker por fonte e o persiste, mas NÃO pula nenhuma fonte (só CIRCUIT_BREAKER_ENFORCE pula)"),
     "CIRCUIT_BREAKER_ENFORCE": (False, "OFF", "fonte com breaker ABERTO é pulada até a hora da próxima tentativa (respeita Retry-After); exige o estado vindo do Worker"),
+    "NOISE_GATE": (False, "OFF", "QA-001..004 (docs/reliability/BACKEND_ADVERSARIAL_QA.md): agenda/esporte/serviço e OTHER sem impacto não passam de N1; incidente operacional (metrô parado, sem internet, bloqueio, tumulto) ganha severidade; repost social idêntico e cópias da mesma fonte não contam como fonte independente nem velocidade"),
     "CONTEXT_ENGINE": (False, "OFF", "feriados, jogos e eventos ajustam baseline/anomalia (nunca viram confirmação)"),
 }
 
