@@ -85,13 +85,28 @@ export function App() {
 		[feedEvents, filters.uf],
 	);
 
-	const selected = useMemo(
-		() => events.find((e) => e.event_id === selectedId) ?? null,
-		[events, selectedId],
+	// Dossiê completo: só pelo "ver dossiê completo" da sanfona (o resumo abre no próprio item do feed/briefing).
+	const [dossierId, setDossierId] = useState<string | null>(null);
+	const dossier = useMemo(
+		() => allEvents.find((e) => e.event_id === dossierId) ?? null,
+		[allEvents, dossierId],
 	);
+	const onDossier = useCallback((id: string) => {
+		setDossierId(id);
+		requestAnimationFrame(() =>
+			document.getElementById("dossie")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+		);
+	}, []);
 
-
-	const onSelect = useCallback((id: string) => setSelectedId(id), []);
+	// Item do feed é sanfona: clicar abre o resumo, clicar de novo fecha. Esc fecha o que estiver aberto.
+	const onSelect = useCallback((id: string) => setSelectedId((cur) => (cur === id ? null : id)), []);
+	useEffect(() => {
+		const onKey = (ev: KeyboardEvent) => {
+			if (ev.key === "Escape") setSelectedId(null);
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 	const onStateSelect = useCallback((uf: string) => {
 		setUfPanel(uf);
 		setFeedUf(uf);
@@ -172,7 +187,7 @@ export function App() {
 							uf={ufPanel}
 							events={allEvents}
 							onSelect={(id) => {
-								onSelect(id);
+								setSelectedId(id); // vindo do painel do estado: sempre abre (não alterna)
 								document.getElementById("feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
 							}}
 							onClose={() => {
@@ -188,7 +203,7 @@ export function App() {
 					id="feed"
 					kicker="monitoramento"
 					title="feed osint"
-					desc="relatos brutos das fontes públicas, agregados em eventos pelo motor · atualiza a cada 15 segundos · clique em um relato para abrir o dossiê"
+					desc="relatos brutos das fontes públicas, agregados em eventos pelo motor · atualiza a cada 15 segundos · clique em um relato para ver o resumo e as fontes"
 				>
 					<div className="feedcols">
 						<OsintFeed
@@ -200,6 +215,7 @@ export function App() {
 							onlineSources={onlineSources}
 							uf={filters.uf}
 							onUfChange={setFeedUf}
+							onDossier={onDossier}
 						/>
 						{/* coluna ao lado do feed: briefings (mercados só quando há modelo) */}
 						<aside id="mercados" className="feedside">
@@ -209,16 +225,16 @@ export function App() {
 									<span className="mkt-title">BRIEFINGS</span>
 									<span className="dim">ANÁLISE · EVENTOS MAIS QUENTES</span>
 								</div>
-								<Briefings events={events} onSelect={onSelect} pageSize={5} minLevel={2} />
+								<Briefings events={events} onDossier={onDossier} pageSize={5} minLevel={2} />
 							</div>
 						</aside>
 					</div>
 
-					{selected && (
-						<div className="evdetail-wrap">
+					{dossier && (
+						<div className="evdetail-wrap" id="dossie">
 							<div className="evdetail-head">
 								<span className="kicker">DOSSIÊ</span>
-								<span className="dim">{selected.event_id.toUpperCase()}</span>
+								<span className="dim">{dossier.event_id.toUpperCase()}</span>
 								<button
 									className="evshare"
 									onClick={() =>
@@ -227,11 +243,11 @@ export function App() {
 								>
 									COPIAR LINK ⧉
 								</button>
-								<button className="evclose" onClick={() => setSelectedId(null)} aria-label="fechar dossiê">
+								<button className="evclose" onClick={() => setDossierId(null)} aria-label="fechar dossiê">
 									FECHAR ✕
 								</button>
 							</div>
-							<EventDetail event={selected} />
+							<EventDetail event={dossier} />
 						</div>
 					)}
 				</Section>
