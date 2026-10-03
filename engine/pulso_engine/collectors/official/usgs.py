@@ -35,7 +35,9 @@ class UsgsAdapter:
         now = self._now()
         ts = aware(datetime.fromtimestamp(p["time"] / 1000, tz=timezone.utc), now)
         lon, lat = (raw.get("geometry") or {}).get("coordinates", [None, None])[:2]
-        in_br = lat is not None and -34 <= lat <= 6 and -74 <= lon <= -34
+        # Só o próprio USGS sabe o país: o título termina em ", Brazil". Uma caixa de coordenadas pegaria Chile,
+        # Argentina, Bolívia e Peru, que ficam dentro dela.
+        in_br = lat is not None and "brazil" in title.lower()
         digest = content_hash(url, title)
         return Signal(
             signal_id=f"sig-{digest}", source_id=self.source_id, source_class=self.source_class,  # type: ignore[arg-type]

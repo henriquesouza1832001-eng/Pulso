@@ -87,14 +87,16 @@ def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
         if not base.valid or len(counts) - 1 < MIN_PAIRS:
             continue
         deltas = [float(b - a) for a, b in zip(counts, counts[1:])]
-        thresholds = {max(math.ceil(current * 1.5), current + 3)}
+        # Dois "espaços" por série e por hora, com id ESTÁVEL (o limiar muda a cada ciclo porque o volume muda; um id com o
+        # limiar criaria uma previsão nova a cada rodada). A primeira da hora vale; as seguintes já estão abertas.
+        slots = {"x15": max(math.ceil(current * 1.5), current + 3)}
         high = math.ceil(base.mean + 2 * base.std)
-        if high > current:
-            thresholds.add(high)
-        for t in sorted(thresholds)[:2]:
+        if high > current and high != slots["x15"]:
+            slots["hi"] = high
+        for slot, t in slots.items():
             p, lo, hi, k = prob_at_least(float(current), deltas, float(t))
             out.append({
-                "forecast_id": f"fc-surge-{_scope_slug(scope)}-{category.lower()}-gte-{t}-h{HORIZON_MIN}-{now.strftime('%Y%m%d%H')}",
+                "forecast_id": f"fc-surge-{_scope_slug(scope)}-{category.lower()}-{slot}-h{HORIZON_MIN}-{now.strftime('%Y%m%d%H')}",
                 "kind": "NOWCAST",
                 "question": f"Haverá {t} ou mais sinais de {_label(category)} {_scope_text(scope)} na próxima hora?",
                 "scope": scope, "metric": f"{METRIC_PREFIX}{category.lower()}", "comparator": "gte", "threshold": float(t),

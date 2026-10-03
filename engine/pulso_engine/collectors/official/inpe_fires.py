@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
+import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -17,11 +18,36 @@ from ...models import Signal
 from ...processing.geo import state_place, uf_from_state_name
 from ...processing.keyword_engine import KeywordEngine
 from ...processing.normalizer import clean_text, content_hash
-from ..news.rss import RELIABILITY, http_fetch
+from ..news.rss import RELIABILITY, USER_AGENT
 
 PORTAL = "https://terrabrasilis.dpi.inpe.br/queimadas/situacao-atual/"
 DEFAULT_MIN_FOCOS = 150
 DEFAULT_WINDOW_H = 3
+TAIL_BYTES = 4_000_000  # o arquivo é cronológico: as últimas horas ficam no FINAL. 4 MB cobrem > 3 h mesmo no pico (~0,7 MB/h)
+MAX_FULL_BYTES = 40_000_000  # se o servidor ignorar o Range e mandar o arquivo todo
+HEADER_BYTES = 1024
+
+
+def _get(url: str, rng: str, limit: int) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Range": f"bytes={rng}"})
+    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - URL fixa de config/sources.json
+        status = getattr(resp, "status", 200)
+        data = resp.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("arquivo do INPE excede o tamanho máximo")
+    return status, data
+
+
+def fetch_tail(url: str, tail_bytes: int = TAIL_BYTES) -> bytes:
+    """Cabeçalho + final do CSV do dia, por HTTP Range (o arquivo de um dia de pico passa de 5 MB e só as últimas horas
+    importam). Se o servidor não aceitar Range, lê o arquivo inteiro (com teto de 40 MB)."""
+    status, tail = _get(url, f"-{tail_bytes}", MAX_FULL_BYTES)
+    if status != 206:  # 200: o servidor mandou o arquivo todo
+        return tail
+    _, head = _get(url, f"0-{HEADER_BYTES - 1}", HEADER_BYTES)
+    header = head.split(b"\n", 1)[0]
+    body = tail.split(b"\n", 1)[1] if b"\n" in tail else b""  # a 1ª linha da cauda vem cortada
+    return header + b"\n" + body
 
 
 def _day_url(base: str, day: datetime) -> str:
@@ -32,12 +58,12 @@ class InpeFiresAdapter:
     adapter = "inpe_fires"
 
     def __init__(self, source: dict[str, Any], keywords: KeywordEngine | None = None,
-                 fetcher: Callable[[str], bytes] = http_fetch,
+                 fetcher: Callable[[str], bytes] | None = None,
                  now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
         self.source = source
         self.source_id: str = source["id"]
         self.source_class: str = source["source_class"]
-        self._fetch = fetcher
+        self._fetch = fetcher or fetch_tail
         self._now = now
         self._min = int(source.get("min_focos", DEFAULT_MIN_FOCOS))
         self._window = timedelta(hours=int(source.get("window_h", DEFAULT_WINDOW_H)))

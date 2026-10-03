@@ -86,6 +86,7 @@ def _ensure_utf8(data: bytes) -> bytes:
 _XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 _MARKUP = {"<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;"}
 _NAMED_ENTITY = re.compile(rb"&([A-Za-z][A-Za-z0-9]*);")
+_CDATA = re.compile(rb"(<!\[CDATA\[.*?\]\]>)", re.DOTALL)
 _BARE_AMP = re.compile(rb"&(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#[xX][0-9a-fA-F]+;)")
 
 
@@ -104,8 +105,11 @@ def _sanitize_xml(data: bytes) -> bytes:
         # `&LT;`/`&AMP;` em maiúsculas viram caracteres de marcação: reescapa, nunca injeta markup no XML.
         return "".join(_MARKUP.get(c, c) for c in char).encode("utf-8")
 
-    data = _NAMED_ENTITY.sub(named, data)
-    return _BARE_AMP.sub(b"&amp;", data)
+    # Dentro de <![CDATA[...]]> o texto é LITERAL: um "&" ali (ex.: URL com ?a=1&b=2) não pode virar "&amp;".
+    parts = _CDATA.split(data)
+    for i in range(0, len(parts), 2):  # índices pares = fora do CDATA
+        parts[i] = _BARE_AMP.sub(b"&amp;", _NAMED_ENTITY.sub(named, parts[i]))
+    return b"".join(parts)
 
 
 def _text(el: ET.Element | None) -> str | None:
