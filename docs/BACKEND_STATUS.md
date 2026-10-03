@@ -80,6 +80,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 - [x] **Catálogo de ~110 fontes (103 ativas)** com leitor RSS tolerante e coleta paralela; ver `docs/sources/CATALOGO_FONTES.md` (gerado) e ADR 0006. Rodada real medida: ~45 s para 81 fontes
 - [x] **Frescor por categoria** no Pulso (o impactante de agora vale mais que o de 12 h atrás) e **qualidade de eventos** (agrupamento sem encadeamento, estado por maioria, publicação criteriosa): de 1793 para 466 eventos na mesma coleta
 - [x] **Previsão de volume por categoria** (`signals_<tema>`) + backtest walk-forward; só prevê com histórico (ADR 0006)
+- [x] **Orçamento do D1** (ADR 0006): o motor escreve só o que mudou (~40 linhas/ciclo em regime estável, antes ~850) e o Worker aceita 500 fontes por lote (o limite 100 derrubaria a ingestão com 110 fontes)
 - [x] Verificação ponta a ponta local (2026-10-03): Worker local + migrações + rodada real do motor com `--push` + `GET /api/health`, `/api/stats`, `/api/events`, `/api/forecasts`, `/api/pulse/states` respondendo corretamente
 
 **Em andamento / aguardando**
@@ -101,6 +102,8 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
 6. **Token exposto**: um token da Cloudflare foi colado em chat; deve ser **revogado**. O token em uso no GitHub é outro, criado depois.
 7. **Previsões: v1 NOWCAST do Pulso do Brasil (60 min) e de volume por categoria**, EXPERIMENTAL e sem histórico de acertos ainda. Só começa a prever com ~3,5 h de histórico contínuo do Pulso; precisa de 100 previsões resolvidas para deixar de ser experimental.
+13. **Limite do D1 gratuito**: 100 mil escritas e 5 milhões de leituras por dia. Hoje ~12 mil escritas/dia estimadas e ~3–4 milhões de leituras/dia (a leitura é o que mais aperta; ver ADR 0006). Se o plano for gratuito, acompanhar o consumo no painel da Cloudflare nos primeiros dias; a saída é espaçar o ciclo (10 min) ou migrar para o plano pago.
+14. **Deploy**: o Worker novo (limite de 500 fontes, `/api/admin/events-digest`) precisa estar publicado antes do primeiro envio do catálogo completo; nos ciclos comuns o motor já manda < 100 fontes, então a janela de risco é só o horário de revisão (minutos 0–4 e 30–34).
 9. **Lacunas de cobertura regional**: sem RSS utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018; o do governo de SP está atrás de desafio anti-robô e não será contornado).
 10. **GDELT não validado** (429 persistente, consulta vazia) e **X nunca chamado ao vivo** (sem token). Reddit aguarda aprovação. Raspagem de redes sociais e captcha: não implementados.
 11. **Limiares heurísticos** (frescor, 25% de semelhança, importância) validados em 1 coleta real e em testes; precisam de recalibração com semanas de dados. O backtest da previsão é **sintético**: prova a mecânica, não a acurácia.
