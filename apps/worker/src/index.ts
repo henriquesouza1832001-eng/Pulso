@@ -10,7 +10,7 @@ import { forecasts } from "./routes/forecasts";
 import { stats } from "./routes/stats";
 import { history } from "./routes/history";
 import type { AppEnv, Bindings } from "./env";
-import { dispatchCollection } from "./lib/dispatch";
+import { dispatchCollection, dispatchHealthcheck, isHealthcheckSlot } from "./lib/dispatch";
 
 const app = new Hono<AppEnv>();
 
@@ -38,11 +38,18 @@ app.onError((err, c) => {
 export default {
 	fetch: app.fetch,
 	// Cron Trigger (wrangler.jsonc > triggers.crons): aciona a coleta no minuto certo.
-	async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+	async scheduled(event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
 		ctx.waitUntil(
 			dispatchCollection(env).then((r) =>
 				r.ok ? console.log("coleta acionada") : console.error("falha ao acionar coleta:", r.reason ?? r.status),
 			),
 		);
+		if (isHealthcheckSlot(new Date(event.scheduledTime))) {
+			ctx.waitUntil(
+				dispatchHealthcheck(env).then((r) =>
+					r.ok ? console.log("verificação de saúde acionada") : console.error("falha ao acionar a saúde:", r.reason ?? r.status),
+				),
+			);
+		}
 	},
 } satisfies ExportedHandler<Bindings>;
