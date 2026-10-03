@@ -2,7 +2,7 @@
 
 > Gerado de `engine/config/sources.json` por `py -m pulso_engine.catalog_doc`. **Não edite à mão**: mude a configuração e gere de novo. Fichas detalhadas (termos, limites, retenção) estão em `SOURCES.md`.
 
-**113 fontes cadastradas, 106 ativas.** Ativas por classe: Imprensa nacional/internacional 61, Imprensa regional 29, Oficial 16.
+**113 fontes cadastradas, 107 ativas.** Ativas por classe: Imprensa nacional/internacional 61, Imprensa regional 29, Oficial 17.
 
 Critérios: feed público oficial do veículo/órgão, testado ao vivo com o coletor real; publicação recente; sem filiação política declarada (para não enviesar a amostra); feeds em inglês ficam de fora enquanto o vocabulário do motor for em português. `revisão pendente` = ainda falta uma pessoa conferir os termos (COLLECTION_PROTOCOL §4).
 
@@ -24,7 +24,7 @@ Critérios: feed público oficial do veículo/órgão, testado ao vivo com o col
 | `inmet-avisos` | INMET — avisos meteorológicos | BR | 900 s | ativa |
 | `inpe-queimadas` | INPE Queimadas (focos de calor) | BR | 600 s | ativa, revisão pendente |
 | `tcu` | TCU | BR | 900 s | ativa, revisão pendente |
-| `usgs-terremotos` | USGS terremotos significativos | BR | 900 s | desligada |
+| `usgs-terremotos` | USGS terremotos significativos | BR | 900 s | ativa, revisão pendente |
 | `governo-goias` | Governo de Goiás | GO | 900 s | ativa, revisão pendente |
 | `prefeitura-rio` | Prefeitura do Rio | RJ | 600 s | ativa, revisão pendente |
 

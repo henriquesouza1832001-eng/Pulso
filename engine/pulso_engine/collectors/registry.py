@@ -35,7 +35,7 @@ ADAPTERS: dict[str, Callable] = {
 }
 
 # Adaptadores que buscam URLs com o `fetcher` injetado (os sociais usam requisições autenticadas próprias).
-URL_FETCH_ADAPTERS = frozenset({"rss", "inmet", "inpe_fires", "bcb_ptax"})
+URL_FETCH_ADAPTERS = frozenset({"rss", "inmet", "inpe_fires", "bcb_ptax", "mastodon", "usgs", "gdelt"})
 
 
 def build_adapter(source: dict, keywords, fetcher, now):
