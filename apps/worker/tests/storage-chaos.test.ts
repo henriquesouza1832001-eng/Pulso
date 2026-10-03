@@ -63,12 +63,41 @@ describe("ensaio de falha: ingest sobre Turso", () => {
 		expect(s.counts()).toEqual(expected);
 	});
 
-	it("limitação conhecida e VISÍVEL: com a resposta perdida, o contador de orçamento fica abaixo do real (subestima, nunca superestima)", async () => {
-		let armed = true;
-		const s = setup((n, body) => (armed ? onlyWrite("after")(n, body) : undefined));
-		await s.post(BATCH);
-		const spent = (s.sqlite.prepare("SELECT COALESCE(SUM(rows),0) AS r FROM write_budget").get() as { r: number }).r;
-		expect(spent).toBe(0); // gravou linhas, mas não contou: o governador pode ser otimista por um lote (documentado em BACKEND_HARDENING.md)
+	describe("contador do orçamento de escrita (write_budget): nunca subconta", () => {
+		const spent = (s: ReturnType<typeof setup>) => (s.sqlite.prepare("SELECT COALESCE(SUM(rows),0) AS r FROM write_budget").get() as { r: number }).r;
+
+		it("caminho normal: a reserva é trocada pelo valor REAL e o contador fica exato", async () => {
+			const s = setup();
+			const body = (await (await s.post(BATCH)).json()) as { budget: { written: number } };
+			expect(body.budget.written).toBeGreaterThan(0);
+			expect(spent(s)).toBe(body.budget.written);
+		});
+
+		it("resposta PERDIDA depois do commit: o contador NÃO fica abaixo do que foi gravado (a reserva está na mesma transação)", async () => {
+			const clean = setup();
+			const real = ((await (await clean.post(BATCH)).json()) as { budget: { written: number } }).budget.written;
+			let armed = true;
+			const s = setup((n, body) => (armed ? onlyWrite("after")(n, body) : undefined));
+			await s.post(BATCH); // 500: o servidor gravou, a resposta se perdeu, ninguém acertou o contador
+			expect(spent(s)).toBeGreaterThanOrEqual(real); // erra para MAIS, nunca para menos
+			armed = false;
+			await s.post(BATCH); // o Engine reenvia: o contador volta a ser trocado pelo valor real do reenvio
+			expect(spent(s)).toBeGreaterThanOrEqual(real);
+		});
+
+		it("rede cai ANTES do commit: a reserva some junto com o lote (atômica), nada fica contado", async () => {
+			const s = setup(onlyWrite("before"));
+			await s.post(BATCH);
+			expect(spent(s)).toBe(0);
+		});
+
+		it("sem a tabela write_budget (D1 sem a migration 0005) o ingest segue: 200, dado gravado, sem contagem", async () => {
+			const s = setup();
+			s.sqlite.exec("DROP TABLE write_budget;");
+			const r = await s.post(BATCH);
+			expect(r.status).toBe(200);
+			expect((s.sqlite.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n).toBe(1);
+		});
 	});
 
 	it("lote que falha NO MEIO desfaz tudo (transação do adaptador)", async () => {

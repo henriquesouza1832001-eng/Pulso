@@ -12,6 +12,10 @@ export const ECONOMY_FROM = 60_000; // a partir daqui só o que tem relevância
 export const CRITICAL_FROM = 85_000; // a partir daqui só alertas altos e o indicador nacional
 export const RESERVE = 5_000; // folga para o que não passa pelo ingest (migrations, ajustes manuais)
 
+// Reserva do orçamento (ver ingest.ts): estimativa POR CIMA do que um item pode custar (linha + índices no D1) e linhas fixas do contador.
+export const RESERVE_ROWS_PER_ITEM = 3;
+export const RESERVE_FIXED = 2;
+
 export type BudgetMode = "normal" | "economy" | "critical";
 
 export function budgetMode(usedToday: number): BudgetMode {

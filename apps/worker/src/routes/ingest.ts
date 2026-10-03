@@ -14,7 +14,7 @@ import {
 	SOURCE_HEALTH,
 } from "@pulso/shared";
 import type { AppEnv } from "../env";
-import { budgetMode, shedBatch, utcDay } from "../lib/budget";
+import { budgetMode, RESERVE_FIXED, RESERVE_ROWS_PER_ITEM, shedBatch, utcDay } from "../lib/budget";
 import { engineAuthorized } from "../lib/auth";
 
 export const ingest = new Hono<AppEnv>();
@@ -329,12 +329,16 @@ ingest.post("/", async (c) => {
 	// Orçamento diário de escrita do D1 (lib/budget.ts): conforme o consumo do dia, descarta o que é de baixa prioridade
 	// ANTES de gravar, em vez de deixar a cota estourar e derrubar tudo com erro 500. Se a tabela ainda não existe, segue normal.
 	const day = utcDay();
+	let budgetTable = true; // a tabela pode não existir (D1 sem a migration 0005): então não há reserva nem contagem, e o ingest segue
 	const used = await db
 		.prepare("SELECT rows FROM write_budget WHERE day = ?1")
 		.bind(day)
 		.first<{ rows: number }>()
 		.then((r) => r?.rows ?? 0)
-		.catch(() => 0);
+		.catch(() => {
+			budgetTable = false;
+			return 0;
+		});
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
 	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations, investigations } = plan;
@@ -629,10 +633,38 @@ ingest.post("/", async (c) => {
 				.bind(json(forecasts)),
 		);
 	}
+	// CONTAGEM DO ORÇAMENTO sem subcontar (RT-005/A1b). Antes: contava DEPOIS do lote, em separado; se a resposta se perdia depois do
+	// commit, o dado estava salvo e o orçamento não. Agora: uma RESERVA (estimativa por cima) entra na MESMA transação do lote; se a
+	// resposta se perder, a reserva já está lá (erra para MAIS, a direção segura para um governador). No caminho normal a reserva é
+	// trocada pelo valor real logo depois, então fica exata. O orçamento continua sendo uma cortesia do governador, não a garantia
+	// forte: quem barra de verdade é o limite do próprio banco.
+	const estimate =
+		RESERVE_ROWS_PER_ITEM *
+			(sources.length + events.length + 2 * signals.length + pulses.length + source_health.length + series.length + forecasts.length +
+				observations.length + investigations.length + forecast_registry.length + shadow_results.length + driver_registry.length +
+				calibrators.length + source_runtime.length + (engine_cycle ? 1 : 0)) +
+		RESERVE_FIXED;
+	const reserve = budgetTable && (stmts.length > 0 || obsStmts.length > 0);
 	let written = 0;
 	if (stmts.length) {
+		if (reserve) {
+			stmts.unshift(
+				db
+					.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
+					.bind(day, estimate),
+			);
+		}
 		const results = await db.batch(stmts);
-		written = results.reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+		written = results.slice(reserve ? 1 : 0).reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+	} else if (reserve) {
+		// só observabilidade neste lote: a reserva vai sozinha (best-effort, não derruba nada)
+		await db
+			.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
+			.bind(day, estimate)
+			.run()
+			.catch(() => {
+				budgetTable = false;
+			});
 	}
 	let observability: "ok" | "skipped" | "failed" = obsStmts.length ? "ok" : "skipped";
 	if (obsStmts.length) {
@@ -644,12 +676,14 @@ ingest.post("/", async (c) => {
 			console.error("observability_write_failed", c.get("requestId"), e instanceof Error ? e.message.slice(0, 200) : "erro");
 		}
 	}
-	// Soma o consumo do dia (1 a 2 linhas por ciclo). Falhar aqui nunca derruba a ingestão.
-	await db
-		.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
-		.bind(day, written)
-		.run()
-		.catch(() => undefined);
+	// Troca a reserva pelo consumo REAL do dia. Falhar aqui nunca derruba a ingestão e só deixa o contador a MAIS (reserva mantida).
+	if (reserve && budgetTable) {
+		await db
+			.prepare("UPDATE write_budget SET rows = MAX(0, rows - ?2 + ?3) WHERE day = ?1")
+			.bind(day, estimate, written)
+			.run()
+			.catch(() => undefined);
+	}
 	return c.json({
 		ok: true,
 		sources: sources.length,
