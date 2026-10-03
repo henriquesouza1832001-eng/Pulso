@@ -1,0 +1,26 @@
+name: Verificar chaves sociais
+
+# Confere, rede por rede, se as chaves guardadas nos segredos do repositório funcionam (Reddit, X, Bluesky).
+# Só lê. O log é público: o script mostra apenas contagens e o estado, nunca conteúdo nem segredos.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+      X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+      BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+      BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python engine/scripts/social_check.py
