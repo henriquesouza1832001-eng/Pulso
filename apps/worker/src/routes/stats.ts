@@ -19,7 +19,7 @@ stats.get("/", async (c) => {
 		   (SELECT COUNT(*) FROM events WHERE resolved_at IS NULL AND updated_at >= ?1 AND alert_level >= 3) AS alerts,
 		   (SELECT COUNT(*) FROM signals WHERE timestamp >= ?2) AS signals_2h,
 		   (SELECT COUNT(*) FROM signals WHERE timestamp >= ?1) AS signals_24h,
-		   (SELECT COUNT(*) FROM source_health WHERE status = 'ONLINE') AS sources_online,
+		   (SELECT COUNT(*) FROM source_health h JOIN sources s ON s.id = h.source_id WHERE h.status = 'ONLINE' AND s.enabled = 1) AS sources_online,
 		   (SELECT COUNT(*) FROM sources WHERE enabled = 1) AS sources_total,
 		   (SELECT MAX(timestamp) FROM pulse_history WHERE scope = 'BR') AS last_pulse_at`,
 	)

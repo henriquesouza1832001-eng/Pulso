@@ -24,14 +24,19 @@ interface Row {
 const COLS =
 	"id,kind,question,scope,metric,comparator,threshold,method,method_version,probability,interval_low,interval_high,horizon_minutes,created_at,resolves_at,evidence,status,outcome,observed_value,resolved_at,brier";
 
+/** Chave de contagem das previsões resolvidas: método E versão (uma versão nova recomeça como EXPERIMENTAL). */
+export const methodKey = (method: string, version: string) => `${method}|${version}`;
+
 async function resolvedByMethod(db: D1Database): Promise<Map<string, number>> {
 	const { results } = await db
-		.prepare("SELECT method, COUNT(*) AS n FROM forecasts WHERE status = 'resolved' GROUP BY method")
-		.all<{ method: string; n: number }>();
-	return new Map(results.map((r) => [r.method, r.n]));
+		.prepare(
+			"SELECT method, method_version, COUNT(*) AS n FROM forecasts WHERE status = 'resolved' GROUP BY method, method_version",
+		)
+		.all<{ method: string; method_version: string; n: number }>();
+	return new Map(results.map((r) => [methodKey(r.method, r.method_version), r.n]));
 }
 
-function toForecast(r: Row, resolved: Map<string, number>): Forecast {
+export function toForecast(r: Row, resolved: Map<string, number>): Forecast {
 	let evidence: Record<string, unknown> = {};
 	try {
 		evidence = JSON.parse(r.evidence);
@@ -43,7 +48,7 @@ function toForecast(r: Row, resolved: Map<string, number>): Forecast {
 		forecast_id: id,
 		...rest,
 		evidence,
-		experimental: (resolved.get(r.method) ?? 0) < MIN_RESOLVED,
+		experimental: (resolved.get(methodKey(r.method, r.method_version)) ?? 0) < MIN_RESOLVED,
 	} as Forecast;
 }
 
