@@ -1,0 +1,58 @@
+name: Prévia por branch
+
+# Publica o front da branch pessoal em https://pulso-web-<branch>.henriquesouza.workers.dev,
+# para revisar antes do PR/merge na main. Só leitura: a prévia repassa GET /api/* público à API.
+on:
+  push:
+    branches: [art, hen, thig, isar]
+    paths:
+      - "apps/web/**"
+      - "packages/shared/**"
+      - ".github/workflows/preview.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Publicar prévia
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Falhar cedo se faltar o token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN indisponível para esta branch (segredo só no ambiente production?)"; exit 1
+          fi
+      - name: Build (API pela própria prévia)
+        working-directory: apps/web
+        env:
+          VITE_API_BASE: ""
+          VITE_PREVIEW_BRANCH: ${{ github.ref_name }}
+        run: npm run build
+      - name: Deploy da prévia
+        working-directory: apps/web
+        run: npx wrangler deploy --config wrangler.preview.jsonc --name "pulso-web-${{ github.ref_name }}"
+      - name: Verificar prévia
+        run: |
+          url="https://pulso-web-${{ github.ref_name }}.henriquesouza.workers.dev"
+          # Worker recém-criado pode levar ~1 min para responder no workers.dev.
+          for i in $(seq 1 24); do
+            if curl -fsS -o /dev/null "$url/" && curl -fsS -o /dev/null "$url/api/pulse/br"; then ok=1; break; fi
+            sleep 5
+          done
+          if [ -z "$ok" ]; then echo "::error::prévia não respondeu em $url (página ou /api)"; exit 1; fi
+          curl -fsS "$url/api/pulse/br"; echo
+          echo "### Prévia publicada: $url" >> "$GITHUB_STEP_SUMMARY"

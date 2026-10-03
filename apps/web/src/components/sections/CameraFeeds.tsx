@@ -1,7 +1,51 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CameraFeed } from "@pulso/shared";
+import { fold } from "../../lib/text";
+import { Pager } from "../ui/Pager";
 
-const PAGE = 12;
+const UF_NAME: Record<string, string> = {
+	AC: "acre", AL: "alagoas", AP: "amapa", AM: "amazonas", BA: "bahia", CE: "ceara", DF: "distrito federal",
+	ES: "espirito santo", GO: "goias", MA: "maranhao", MT: "mato grosso", MS: "mato grosso do sul", MG: "minas gerais",
+	PA: "para", PB: "paraiba", PR: "parana", PE: "pernambuco", PI: "piaui", RJ: "rio de janeiro",
+	RN: "rio grande do norte", RS: "rio grande do sul", RO: "rondonia", RR: "roraima", SC: "santa catarina",
+	SP: "sao paulo", SE: "sergipe", TO: "tocantins",
+};
+
+/** Apelidos comuns de cidade na busca ("alagamento BH"). */
+const CITY_ALIAS: Record<string, string> = {
+	bh: "belo horizonte",
+	poa: "porto alegre",
+	bsb: "brasilia",
+	ssa: "salvador",
+	sampa: "sao paulo",
+	floripa: "florianopolis",
+	cwb: "curitiba",
+};
+
+/**
+ * Lê a busca do topo do painel como LUGAR: cidade citada (inteira, ou começo dela enquanto digita), nome de estado ou
+ * sigla de UF escrita em maiúsculas ("SE" e "TO" também são palavras). Usa o recorte mais específico que achar
+ * (cidade > estado > texto parcial). Devolve null quando a busca não cita nenhum lugar com câmera: aí ela não recorta.
+ */
+function placeFilter(query: string, feeds: CameraFeed[]): ((c: CameraFeed) => boolean) | null {
+	const q = fold(query).trim().replace(/[^a-z0-9]+/g, " ");
+	if (q.length < 2) return null;
+	const words = q.split(" ");
+	const text = ` ${words.map((w) => CITY_ALIAS[w] ?? w).join(" ")} `;
+	const codes = new Set(
+		query
+			.split(/[^A-Za-z]+/)
+			.filter((w) => w.length === 2 && (w === w.toUpperCase() || words.length === 1))
+			.map((w) => w.toUpperCase()),
+	);
+	const byCity = (c: CameraFeed) => {
+		const city = fold(c.city);
+		return city.length >= 3 && text.includes(` ${city} `);
+	};
+	const byState = (c: CameraFeed) => codes.has(c.state) || (!!UF_NAME[c.state] && text.includes(` ${UF_NAME[c.state]} `));
+	const partial = (c: CameraFeed) => q.length >= 3 && (fold(c.city).startsWith(q) || fold(c.label).includes(q));
+	return [byCity, byState, partial].find((f) => feeds.some(f)) ?? null;
+}
 
 /** Ordem FIXA (com prévia primeiro, depois UF, cidade e nome): a lista nunca se reembaralha quando o catálogo é rebaixado. */
 function sortFeeds(feeds: CameraFeed[]): CameraFeed[] {
@@ -15,58 +59,107 @@ function sortFeeds(feeds: CameraFeed[]): CameraFeed[] {
 	);
 }
 
-function countBy(items: CameraFeed[], key: (c: CameraFeed) => string): [string, number][] {
-	const m = new Map<string, number>();
-	for (const c of items) m.set(key(c), (m.get(key(c)) ?? 0) + 1);
-	return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
+/**
+ * Cidade como chave de filtro: UF + nome sem acento/caixa. O catálogo traz grafias diferentes da mesma cidade
+ * ("Rio De Janeiro" / "Rio de Janeiro"), e a UF separa homônimas de estados diferentes.
+ */
+const cityKey = (c: CameraFeed) => `${c.state}|${fold(c.city).trim()}`;
+
+/** Conta por chave e guarda o primeiro rótulo visto de cada uma. Ordem alfabética do rótulo. */
+function countBy(items: CameraFeed[], key: (c: CameraFeed) => string, label: (c: CameraFeed) => string) {
+	const m = new Map<string, { label: string; n: number }>();
+	for (const c of items) {
+		const k = key(c);
+		const cur = m.get(k);
+		if (cur) cur.n++;
+		else m.set(k, { label: label(c), n: 1 });
+	}
+	return [...m.entries()]
+		.map(([k, v]) => ({ key: k, ...v }))
+		.sort((x, y) => x.label.localeCompare(y.label, "pt-BR"));
 }
 
-/** Câmeras reais: filtro por estado e cidade + paginação. Só os cartões da página atual existem (e ficam ativos). */
-export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
-	const [uf, setUf] = useState("");
-	const [city, setCity] = useState("");
+const ufLabel = (u: string) => (u === "BR" ? "NACIONAL" : u);
+
+/**
+ * Câmeras reais: recorte pela busca do topo (cidade/estado), filtro por estado e cidade + paginação.
+ * Só os cartões da página atual existem (e ficam ativos).
+ *
+ * O seletor de estado é a única verdade do que aparece: o que está escrito nele é o que filtra (nunca volta sozinho
+ * para "todos" escondendo a escolha). O estado escolhido no topo do painel ou no mapa é copiado para cá quando muda;
+ * se ele não tem câmera, a seção diz isso e oferece ver todas.
+ */
+export function CameraFeeds({
+	feeds,
+	focusUf = null,
+	query = "",
+	pageSize = 12,
+}: {
+	feeds: CameraFeed[];
+	focusUf?: string | null;
+	query?: string;
+	pageSize?: number;
+}) {
+	const PAGE = pageSize;
+	const [uf, setUfRaw] = useState(focusUf ?? "");
+	const [city, setCityRaw] = useState("");
 	const [page, setPage] = useState(0);
-	const all = useMemo(() => sortFeeds(feeds), [feeds]);
-	const ufs = useMemo(() => countBy(all, (c) => c.state), [all]);
+	const sorted = useMemo(() => sortFeeds(feeds), [feeds]);
+	const place = useMemo(() => placeFilter(query, sorted), [query, sorted]);
+	const all = useMemo(() => (place ? sorted.filter(place) : sorted), [sorted, place]);
+	const ufs = useMemo(() => {
+		const list = countBy(all, (c) => c.state, (c) => c.state);
+		// o estado escolhido continua na lista mesmo sem câmera (senão o <select> mostraria outra coisa)
+		if (uf && !list.some((o) => o.key === uf)) list.push({ key: uf, label: uf, n: 0 });
+		return list.sort((x, y) => Number(x.key === "BR") - Number(y.key === "BR") || x.label.localeCompare(y.label));
+	}, [all, uf]);
+	const inUf = useMemo(() => (uf ? all.filter((c) => c.state === uf) : all), [all, uf]);
+	// sem estado escolhido, a lista de cidades traz todas (com a UF); escolher uma já fixa o estado dela
 	const cities = useMemo(
-		() =>
-			uf
-				? countBy(
-						all.filter((c) => c.state === uf),
-						(c) => c.city,
-					)
-				: [],
-		[all, uf],
+		() => countBy(inUf, cityKey, (c) => (uf ? c.city : `${c.city} (${ufLabel(c.state)})`)),
+		[inUf, uf],
 	);
-	const filtered = useMemo(() => all.filter((c) => (!uf || c.state === uf) && (!city || c.city === city)), [all, uf, city]);
+	const filtered = useMemo(() => (city ? inUf.filter((c) => cityKey(c) === city) : inUf), [inUf, city]);
 	const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
 	const cur = Math.min(page, pages - 1); // a lista encolheu: fica na última página válida
 	const shown = filtered.slice(cur * PAGE, (cur + 1) * PAGE);
 
-	const reset = () => {
-		setUf("");
-		setCity("");
+	const setUf = (v: string) => {
+		setUfRaw(v);
+		setCityRaw("");
 		setPage(0);
 	};
+	const setCity = (v: string) => {
+		if (v && !uf) setUfRaw(v.slice(0, v.indexOf("|")));
+		setCityRaw(v);
+		setPage(0);
+	};
+	const reset = () => setUf("");
+
+	// Estado escolhido no topo do painel ou no mapa: copia para cá quando ele MUDA (os seletores daqui refinam depois).
+	const lastFocus = useRef(focusUf);
+	useEffect(() => {
+		if (lastFocus.current === focusUf) return;
+		lastFocus.current = focusUf;
+		setUf(focusUf ?? "");
+	}, [focusUf]);
+	// busca nova = recorte novo: volta para a primeira página
+	useEffect(() => setPage(0), [query]);
+	// cidade que sumiu do recorte (busca nova, catálogo novo) não pode ficar filtrando escondida
+	useEffect(() => {
+		if (city && !cities.some((o) => o.key === city)) setCityRaw("");
+	}, [city, cities]);
 
 	return (
 		<div className="camfeeds">
 			<div className="osf-uf">
 				<label>
 					<span className="dim">ESTADO</span>
-					<select
-						value={uf}
-						onChange={(e) => {
-							setUf(e.target.value);
-							setCity("");
-							setPage(0);
-						}}
-						aria-label="filtrar câmeras por estado"
-					>
+					<select value={uf} onChange={(e) => setUf(e.target.value)} aria-label="filtrar câmeras por estado">
 						<option value="">TODOS · {all.length}</option>
-						{ufs.map(([u, n]) => (
-							<option key={u} value={u}>
-								{u === "BR" ? "NACIONAL" : u} · {n}
+						{ufs.map((o) => (
+							<option key={o.key} value={o.key}>
+								{ufLabel(o.key)} · {o.n}
 							</option>
 						))}
 					</select>
@@ -75,17 +168,14 @@ export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
 					<span className="dim">CIDADE</span>
 					<select
 						value={city}
-						disabled={!uf}
-						onChange={(e) => {
-							setCity(e.target.value);
-							setPage(0);
-						}}
+						disabled={cities.length === 0}
+						onChange={(e) => setCity(e.target.value)}
 						aria-label="filtrar câmeras por cidade"
 					>
-						<option value="">{uf ? `TODAS · ${all.filter((c) => c.state === uf).length}` : "escolha um estado"}</option>
-						{cities.map(([c, n]) => (
-							<option key={c} value={c}>
-								{c.toUpperCase()} · {n}
+						<option value="">TODAS · {inUf.length}</option>
+						{cities.map((o) => (
+							<option key={o.key} value={o.key}>
+								{o.label.toUpperCase()} · {o.n}
 							</option>
 						))}
 					</select>
@@ -96,8 +186,20 @@ export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
 					</button>
 				)}
 			</div>
+			{place && (
+				<p className="camq dim">
+					BUSCA “{query.trim()}” · {all.length} CÂMERA{all.length === 1 ? "" : "S"}
+				</p>
+			)}
 			{shown.length === 0 ? (
-				<p className="state">NENHUMA CÂMERA NESTE FILTRO</p>
+				<p className="state">
+					{uf ? `NENHUMA CÂMERA EM ${ufLabel(uf)}${place ? " NESTA BUSCA" : ""} · ` : "NENHUMA CÂMERA NESTE FILTRO · "}
+					{uf && (
+						<button className="osf-ufchip" onClick={reset}>
+							VER TODAS ✕
+						</button>
+					)}
+				</p>
 			) : (
 				<div className="camgrid">
 					{shown.map((f) => (
@@ -105,29 +207,7 @@ export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
 					))}
 				</div>
 			)}
-			{pages > 1 && (
-				<nav className="osf-pages" aria-label="páginas das câmeras">
-					<button disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="página anterior">
-						‹
-					</button>
-					{Array.from({ length: pages }, (_, i) => (
-						<button
-							key={i}
-							className={i === cur ? "on" : ""}
-							aria-current={i === cur ? "page" : undefined}
-							onClick={() => setPage(i)}
-						>
-							{i + 1}
-						</button>
-					))}
-					<button disabled={cur === pages - 1} onClick={() => setPage(cur + 1)} aria-label="próxima página">
-						›
-					</button>
-					<span className="dim">
-						{cur * PAGE + 1}–{Math.min((cur + 1) * PAGE, filtered.length)} de {filtered.length}
-					</span>
-				</nav>
-			)}
+			<Pager page={cur} pages={pages} onPage={setPage} pageSize={PAGE} total={filtered.length} label="páginas das câmeras" />
 		</div>
 	);
 }
@@ -138,7 +218,7 @@ export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
  *
  * Contra o "piscar": o cartão é memoizado (o App re-renderiza a cada 10 s e o catálogo é rebaixado a cada 10 min sem mudar);
  * a prévia é montada UMA vez, quando o cartão chega perto da tela, e fica ativa (não desmonta ao rolar). O player HLS não
- * depende de callbacks que mudam a cada render e se reconecta sozinho. Só a página atual (12 cartões) tem player.
+ * depende de callbacks que mudam a cada render e se reconecta sozinho. Só a página atual tem player.
  */
 const CameraFeedTile = memo(
 	function CameraFeedTile({ cam }: { cam: CameraFeed }) {

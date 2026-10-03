@@ -14,7 +14,20 @@ export interface CameraDef {
  * Câmeras ao vivo: "still" gerado localmente em canvas (ruído + faixas +
  * timestamp), aparência de CCTV. Nenhuma imagem externa, nenhum dado real.
  */
-export function Cameras({ cameras, feeds = [] }: { cameras: CameraDef[]; feeds?: CameraFeed[] }) {
+export function Cameras({
+	cameras,
+	feeds = [],
+	focusUf = null,
+	query = "",
+	pageSize,
+}: {
+	cameras: CameraDef[];
+	feeds?: CameraFeed[];
+	focusUf?: string | null;
+	/** busca do topo do painel: se citar cidade/estado, recorta as câmeras */
+	query?: string;
+	pageSize?: number;
+}) {
 	if (cameras.length === 0 && feeds.length === 0)
 		return <p className="state">NENHUMA CÂMERA AUTORIZADA NO ACERVO · AGUARDANDO PARCERIAS</p>;
 	return (
@@ -26,7 +39,7 @@ export function Cameras({ cameras, feeds = [] }: { cameras: CameraDef[]; feeds?:
 					))}
 				</div>
 			)}
-			{feeds.length > 0 && <CameraFeeds feeds={feeds} />}
+			{feeds.length > 0 && <CameraFeeds feeds={feeds} focusUf={focusUf} query={query} pageSize={pageSize} />}
 		</>
 	);
 }

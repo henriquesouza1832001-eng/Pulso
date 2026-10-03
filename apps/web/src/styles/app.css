@@ -288,7 +288,11 @@
 .srclist { max-height: 240px; overflow-y: auto; padding: 2px 9px; }
 
 /* ---------- feed osint + mercados ---------- */
-.feedcols { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+.feedcols { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: stretch; }
+/* feed e briefings com a mesma altura e a paginação no rodapé de cada coluna: as duas ficam na mesma linha */
+.feedcols > .osf, .feedside #briefings { display: flex; flex-direction: column; }
+.feedside #briefings { flex: 1; }
+.feedcols .osf-pages { margin-top: auto; }
 .osf-head { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--ln0); padding-bottom: 7px; }
 .osf-title { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: var(--tx0); display: inline-flex; align-items: center; gap: 8px; }
 .osf-meta { font-size: 10px; letter-spacing: 0.08em; }
@@ -400,7 +404,6 @@
 	display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; /* no máx. 2 linhas */
 }
 .osf-meta2 { margin-top: 2px; font-size: 9.5px; color: var(--tx2); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.osf-foot { margin-top: 7px; font-size: 10px; letter-spacing: 0.04em; }
 
 .lvtag { padding: 0 4px; border: 1px solid; font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; }
 .lvtag.n1 { color: var(--lv1); border-color: rgba(61,220,132,0.4); }
@@ -424,6 +427,31 @@
 .spark { width: 100%; height: 24px; display: block; margin-top: 8px; }
 .mkt-drivers { margin-top: 6px; font-size: 9.5px; letter-spacing: 0.04em; }
 .mkt-note { margin-top: 10px; font-size: 10px; }
+
+/* coluna ao lado do feed: briefings, compactos */
+.feedside { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.feedside .briefs { margin-top: 0; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.feedside .brief { padding: 11px 0; border-top: 0; border-bottom: 1px solid var(--ln0); }
+.feedside .brief h3 { margin-top: 5px; font-size: 13px; }
+.feedside .brief p {
+	margin-top: 5px; font-size: 11.5px; line-height: 1.5;
+	display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.feedside .brief-foot { margin-top: 7px; }
+/* desktop: o feed dita a altura do bloco (a coluna dos briefings não conta para a altura, `contain: size`) e os
+   briefings dividem essa altura em cartões iguais, uma linha por item da página: as duas listas fecham na mesma linha */
+@media (min-width: 1101px) {
+	.feedcols .osf-list { max-height: none; overflow: visible; }
+	.feedside { contain: size; }
+	.feedside #briefings { min-height: 0; }
+	.feedside .briefs { flex: 1; min-height: 0; grid-template-rows: repeat(var(--brief-rows, 5), minmax(0, 1fr)); }
+	/* cartão de altura fixa: título até 2 linhas, resumo em 1 ou 2, rodapé sempre na base (nada cortado no meio da linha) */
+	.feedside .brief { min-height: 0; overflow: hidden; padding: 8px 0; }
+	.feedside .brief h3 { margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: none; }
+	.feedside .brief p { margin-top: 3px; flex: none; } /* 1 ou 2 linhas: decidido em Briefings conforme o espaço */
+	.feedside .brief-foot { margin-top: auto; padding-top: 5px; }
+}
+.camq { margin-top: 8px; font-size: 9.5px; letter-spacing: 0.08em; }
 
 /* dossiê do evento selecionado */
 .evdetail-wrap { margin-top: 20px; border: 1px solid var(--ln1); background: var(--bg1); padding: 16px 20px; }
@@ -574,3 +602,4 @@
 	.osf-place { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 	.osf-time, .osf-ago { white-space: nowrap; }
 }
+.osf-gap { min-width: 18px; text-align: center; color: var(--tx2); font-size: 10px; }
