@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import math
 import uuid
 import zlib
 from collections import Counter
@@ -166,6 +167,12 @@ def is_due(src: dict, now: datetime, tick_s: int = 300) -> bool:
 
     Sem estado: a janela é derivada do relógio (ex.: 900 s → rodadas de :00, :15, :30, :45).
     """
+    tick, every, offset, window = _schedule(src, tick_s, now)
+    return (tick - offset) % every < window
+
+
+def _schedule(src: dict, tick_s: int = 300, now: datetime | None = None) -> tuple[int, int, int, int]:
+    """(rodada atual, rodadas por intervalo, deslocamento estável da fonte, tamanho da janela em rodadas)."""
     every = max(1, int(src.get("interval_s", tick_s)) // tick_s)
     # Fonte muito lenta (>= 1 h): janela de DUAS rodadas. O agendador do GitHub atrasa e, se a única rodada da janela
     # escorregasse para a seguinte, uma fonte de 6 h ficaria 6 h sem rodar. Rodar duas vezes é inofensivo (idempotente).
@@ -174,7 +181,16 @@ def is_due(src: dict, now: datetime, tick_s: int = 300) -> bool:
     # fontes de 10 min nas rodadas pares (32 fontes numa, 87 na outra, 109 a cada 6 h) e as de um mesmo servidor juntas.
     # Sem `id` (testes, fontes avulsas) o deslocamento é 0: a janela cai no relógio redondo (:00, :15, :30, :45).
     offset = zlib.crc32(str(src.get("id", "")).encode()) % every
-    return (int(now.timestamp()) // tick_s - offset) % every < window
+    return int((now or datetime.now(timezone.utc)).timestamp()) // tick_s, every, offset, window
+
+
+def health_due(src: dict, now: datetime, tick_s: int = 300, health_every_ticks: int = 6) -> bool:
+    """A saúde ONLINE de uma fonte é gravada a cada ~30 min, NO HORÁRIO PRÓPRIO dela: um subconjunto das rodadas em que ela
+    de fato roda (a periodicidade é o menor múltiplo comum entre as 6 rodadas e o ritmo da fonte). Um horário único para
+    todas deixaria de fora as fontes cujo deslocamento nunca cai nele (ficariam eternamente sem saúde)."""
+    tick, every, offset, window = _schedule(src, tick_s, now)
+    period = math.lcm(health_every_ticks, every)
+    return (tick - offset) % period < window
 
 
 def run_once(
@@ -335,9 +351,14 @@ def select_sources(batch: dict, now: datetime, full_every_min: int = 30, slot_mi
     batch["catalog_complete"] = False
 
 
-def select_health(health: list[dict], now: datetime, full_every_min: int = 30, slot_min: int = 5) -> list[dict]:
-    """Saúde: o que NÃO está ONLINE vai sempre (alerta imediato); o que está ONLINE só a cada `full_every_min`
-    minutos (uma rodada), para não reescrever dezenas de linhas iguais a cada ciclo."""
+def select_health(health: list[dict], now: datetime, full_every_min: int = 30, slot_min: int = 5,
+                  sources: list[dict] | None = None) -> list[dict]:
+    """Saúde: o que NÃO está ONLINE vai sempre (alerta imediato); o que está ONLINE só a cada ~`full_every_min` minutos,
+    para não reescrever dezenas de linhas iguais a cada ciclo. Com `sources`, cada fonte relata no SEU horário
+    (`health_due`); sem ele, todas num horário único (minutos 0 a 4 e 30 a 34)."""
+    if sources is not None:
+        by_id = {src["id"]: src for src in sources}
+        return [h for h in health if h["status"] != "ONLINE" or (h["source_id"] in by_id and health_due(by_id[h["source_id"]], now))]
     if now.minute % full_every_min < slot_min:
         return health
     return [h for h in health if h["status"] != "ONLINE"]
@@ -362,6 +383,7 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
     parts: list[dict] = []
     cur_e: list[dict] = []
     cur_s: list[dict] = []
+    overflow: list[dict] = []
     for e in batch["events"]:
         es = sigs_by_event.get(e["event_id"], [])
         if cur_e and (len(cur_e) >= max_events or len(cur_s) + len(es) > max_signals):
@@ -369,11 +391,12 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
             cur_e, cur_s = [], []
         cur_e.append(e)
         cur_s.extend(es[:max_signals])
+        overflow.extend(es[max_signals:])  # o excedente de um evento enorme vai em partes próprias, não se perde
     parts.append({"events": cur_e, "signals": cur_s})
     # Sinais sem evento (matéria isolada de tema irrelevante) E sinais de um evento que não foi reenviado (nada mudou nele,
     # mas o sinal é novo ou trocou de evento): gravados em lotes próprios. O evento já existe no banco (chave estrangeira).
     sent_events = {e["event_id"] for e in batch["events"]}
-    orphans = [g for g in batch["signals"] if g["event_id"] is None or g["event_id"] not in sent_events]
+    orphans = [g for g in batch["signals"] if g["event_id"] is None or g["event_id"] not in sent_events] + overflow
     for i in range(0, len(orphans), max_signals):
         parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
@@ -448,7 +471,9 @@ def main(argv: list[str] | None = None) -> int:
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
         print(f"  {h['source_id']:<16} {h['status']:<9} {h['detail'] or ''}")
-    if any(s["display"] == "metrics_only" for s in sources):
+    # Vale o CATÁLOGO ATIVO, não só as fontes da rodada: os eventos impressos incluem sinais gravados de uma fonte
+    # metrics_only mesmo na rodada em que ela não está na vez.
+    if any(s["display"] == "metrics_only" for s in (catalog if catalog is not None else sources)):
         # Conteúdo de fonte metrics_only não aparece em log (os logs do Actions são públicos).
         cats: dict[str, int] = {}
         for g in batch["signals"]:
@@ -465,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.push:
         from .client import push_batch
         now_push = datetime.now(timezone.utc)
-        batch["source_health"] = select_health(batch["source_health"], now_push)
+        batch["source_health"] = select_health(batch["source_health"], now_push, sources=catalog if catalog is not None else sources)
         # as linhas de saúde enviadas também precisam das suas fontes registradas (chave estrangeira)
         select_sources(batch, now_push, extra_ids={h["source_id"] for h in batch["source_health"]})
         for part in chunks(batch):
