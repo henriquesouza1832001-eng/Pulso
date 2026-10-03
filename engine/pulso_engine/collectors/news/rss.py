@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import html
 import re
+import threading
 import urllib.request
 import xml.etree.ElementTree as ET
 import zlib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from ...models import Signal
 from ...processing.geo import locate, state_place
@@ -28,11 +30,23 @@ RELIABILITY = {
 }
 
 
+PER_HOST_MAX = 2  # no máximo 2 requisições simultâneas ao MESMO servidor (o G1 tem ~20 feeds no mesmo host)
+_host_gates: dict[str, threading.BoundedSemaphore] = {}
+_host_gates_lock = threading.Lock()
+
+
+def _host_gate(url: str) -> threading.BoundedSemaphore:
+    host = (urlsplit(url).hostname or "").lower()
+    with _host_gates_lock:
+        return _host_gates.setdefault(host, threading.BoundedSemaphore(PER_HOST_MAX))
+
+
 def http_fetch(url: str) -> bytes:
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml, text/xml", "Accept-Encoding": "gzip"})
-    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URLs vêm de config/sources.json
-        data = resp.read(MAX_BYTES + 1)
+    with _host_gate(url):  # coleta em paralelo, mas educada: nunca martela um servidor só
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URLs vêm de config/sources.json
+            data = resp.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("feed excede o tamanho máximo")
     if data[:2] == b"\x1f\x8b":  # gzip (alguns servidores comprimem mesmo sem pedido)
