@@ -28,6 +28,7 @@ Exigem `Authorization: Bearer <INGEST_TOKEN>` (fail-closed) e nunca são cachead
 |---|---|
 | `POST /api/ingest` | Lote do Engine. Agora aceita `series` (`SeriesPoint[]`): contagem por escopo×categoria×janela de 5 min, gravada com o MAIOR valor já visto e retida por 90 dias. |
 | `GET /api/admin/series?hours=48&scope=BR` | Histórico de contagens para o baseline do Engine. |
+| `GET /api/admin/signals?hours=24` | Sinais recentes gravados (até 5000), para o Engine agrupar com estado e reaproveitar `event_id`. |
 | `GET /api/admin/overview` | Painel: eventos ativos, sinais nas últimas 24 h, último Pulso, e por fonte: estado, último sucesso e volume. |
 
 `GET /api/events` e `GET /api/map` só listam eventos com atividade nas últimas 24 h; o evento antigo continua acessível por `GET /api/events/:id`.

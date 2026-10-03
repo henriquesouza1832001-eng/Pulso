@@ -66,7 +66,7 @@ def is_publishable(cluster: Cluster) -> bool:
     return dominant_category(sigs) != "OTHER" or len({s.source_id for s in sigs}) >= 2
 
 
-def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0) -> dict:
+def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
     stats = stats_for(sigs, now, anomaly)
     conf = confidence(stats)
@@ -74,7 +74,8 @@ def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0) -> dict:
     level = alert_level(score, conf, stats)
     located = next((s for s in sigs if s.latitude is not None), None)
     first = sigs[0]
-    event_id = "ev-" + hashlib.sha1(first.hash.encode()).hexdigest()[:12]
+    # Id estável: reaproveita o de um evento já gravado; só gera novo se for uma história nova.
+    event_id = event_id or "ev-" + hashlib.sha1(first.hash.encode()).hexdigest()[:12]
     best = max(sigs, key=lambda s: (s.source_class == "OFFICIAL", s.reliability, -s.timestamp.timestamp()))
     for s in cluster.signals:
         object.__setattr__(s, "event_id", event_id)
