@@ -2,7 +2,7 @@
 
 > Gerado de `engine/config/sources.json` por `py -m pulso_engine.catalog_doc`. **Não edite à mão**: mude a configuração e gere de novo. Fichas detalhadas (termos, limites, retenção) estão em `SOURCES.md`.
 
-**113 fontes cadastradas, 107 ativas.** Ativas por classe: Imprensa nacional/internacional 61, Imprensa regional 29, Oficial 17.
+**113 fontes cadastradas, 106 ativas.** Ativas por classe: Imprensa nacional/internacional 60, Imprensa regional 29, Oficial 17.
 
 Critérios: feed público oficial do veículo/órgão, testado ao vivo com o coletor real; publicação recente; sem filiação política declarada (para não enviesar a amostra); feeds em inglês ficam de fora enquanto o vocabulário do motor for em português. `revisão pendente` = ainda falta uma pessoa conferir os termos (COLLECTION_PROTOCOL §4).
 
@@ -74,7 +74,7 @@ Critérios: feed público oficial do veículo/órgão, testado ao vivo com o col
 | `metropoles-brasil` | Metrópoles Brasil | BR | 300 s | ativa, revisão pendente |
 | `metropoles-mundo` | Metrópoles Mundo | BR | 600 s | ativa, revisão pendente |
 | `metropoles-saude` | Metrópoles Saúde | BR | 600 s | ativa, revisão pendente |
-| `metsul` | MetSul Meteorologia | BR | 600 s | ativa, revisão pendente |
+| `metsul` | MetSul Meteorologia | BR | 600 s | desligada |
 | `money-times` | Money Times | BR | 600 s | ativa, revisão pendente |
 | `nexo` | Nexo Jornal | BR | 900 s | ativa, revisão pendente |
 | `olhar-digital` | Olhar Digital | BR | 600 s | ativa, revisão pendente |
