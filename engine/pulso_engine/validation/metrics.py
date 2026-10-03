@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import statistics
+from datetime import datetime
 
 EPS = 1e-9
 
@@ -67,3 +68,44 @@ def base_rate_reference(outcomes: list[int]) -> float | None:
         return None
     p = sum(outcomes) / len(outcomes)
     return round(sum((p - o) ** 2 for o in outcomes) / len(outcomes), 6)
+
+
+def brier_skill(model_brier: float | None, reference_brier: float | None) -> float | None:
+    """Ganho relativo sobre uma referência; positivo é melhor, None não finge base válida."""
+    if model_brier is None or reference_brier is None or reference_brier <= 0:
+        return None
+    return round(1 - model_brier / reference_brier, 6)
+
+
+def false_negative_rate(pairs: list[tuple[float, int]], cutoff: float = 0.5) -> float | None:
+    c = confusion(pairs, cutoff)
+    return _ratio(c["fn"], c["fn"] + c["tp"])
+
+
+def coverage(detections: list[object | None]) -> float | None:
+    """Fração de casos para os quais o sistema entregou uma detecção/previsão."""
+    return _ratio(sum(value is not None for value in detections), len(detections))
+
+
+def abstention_rate(predictions: list[object | None]) -> float | None:
+    """Fração de casos em que o sistema corretamente se absteve, em vez de chutar."""
+    value = coverage(predictions)
+    return None if value is None else round(1 - value, 4)
+
+
+def lead_time(first_known_at: datetime | None, confirmed_at: datetime | None) -> float | None:
+    """Minutos entre primeira detecção e confirmação; positivo significa antecedência."""
+    if first_known_at is None or confirmed_at is None:
+        return None
+    if first_known_at.tzinfo is None or confirmed_at.tzinfo is None:
+        raise ValueError("lead_time requer timestamps com timezone")
+    return round((confirmed_at - first_known_at).total_seconds() / 60, 3)
+
+
+def detection_delay(event_time: datetime | None, detected_at: datetime | None) -> float | None:
+    """Minutos entre ocorrência e detecção; negativo indica timestamp inconsistente."""
+    if event_time is None or detected_at is None:
+        return None
+    if event_time.tzinfo is None or detected_at.tzinfo is None:
+        raise ValueError("detection_delay requer timestamps com timezone")
+    return round((detected_at - event_time).total_seconds() / 60, 3)
