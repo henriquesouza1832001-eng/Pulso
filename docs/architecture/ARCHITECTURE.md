@@ -23,6 +23,17 @@ Implementado e testado: contratos compartilhados, schema D1 v2, API de leitura (
 
 Próximos módulos (branches independentes): `collector/news-rss`, geolocalização, deduplicação, clustering, mapa MapLibre, SSE.
 
+## Mapa de módulos do Engine (2026-10-03)
+| Camada | Módulos | O que faz |
+|---|---|---|
+| Coleta | `collectors/registry.py` (+ `news/`, `official/`, `social/`) | Um adaptador por tipo de fonte (RSS/Atom/RDF, INMET, INPE, Banco Central, Defesa Civil CAP, USGS, Reddit, X...). `config/sources.json` é a fonte da verdade (o catálogo em `docs/sources/CATALOGO_FONTES.md` é gerado dela). Coleta em paralelo, no máximo 2 requisições simultâneas por servidor. |
+| Entendimento | `processing/` (`keyword_engine`, `importance`, `geo`, `normalizer`, `clustering`) | Categoria (título primeiro), importância (impacto x fofoca x outro país), lugar, deduplicação e agrupamento em eventos. |
+| Pontuação | `events.py`, `scoring/` | Severidade (categoria + fontes + impacto do texto), confiança, Pulso explicável com **frescor por categoria**, nível 1-5. |
+| Séries e previsão | `series.py`, `baseline.py`, `anomaly.py`, `forecast.py`, `forecast_surge.py`, `drivers.py`, `backtest.py` | Contagens por tema/UF, baseline (EWMA), anomalia, previsão do Pulso e do volume por categoria, indicadores antecedentes, backtest em janela deslizante. |
+| Operação | `pipeline.py`, `client.py`, `healthcheck.py`, `audit.py`, `catalog_doc.py` | Ciclo completo e envio ao Worker (só o que mudou: orçamento do D1), verificação de saúde da produção, auditoria de fontes, geração do catálogo. |
+
+Fluxo de um ciclo: coletar (paralelo) → descartar o que passou de 24 h → agrupar com o estado já gravado → publicar eventos (critério) → pontuar → séries e previsões → enviar só o novo ao `/api/ingest`.
+
 ## Princípios
 - Cloudflare first, sem overengineering: KV, Queues, R2 e Durable Objects entram quando houver necessidade medida (ADR por decisão).
 - Mensagens de fila (futuro) sempre com ID: processamento idempotente, nunca "exatamente uma vez".

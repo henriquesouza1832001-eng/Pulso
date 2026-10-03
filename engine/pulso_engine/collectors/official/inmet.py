@@ -13,6 +13,7 @@ from ...models import Signal
 from ...processing.geo import state_place, uf_from_state_name
 from ...processing.keyword_engine import KeywordEngine
 from ...processing.normalizer import clean_text, content_hash
+from .._json import loads as json_loads
 from ..news.rss import http_fetch
 
 # Graus oficiais do INMET (padrão CAP), do menor para o maior.
@@ -40,7 +41,7 @@ class InmetAdapter:
         self.allowed = set(SEVERITIES[SEVERITIES.index(floor):])
 
     def run(self) -> list[Signal]:
-        data = json.loads(self.fetcher(self.source["url"]))
+        data = json_loads(self.fetcher(self.source["url"]))
         now = self.now()
         signals: list[Signal] = []
         # Só "hoje" (avisos vigentes); "futuro" ainda não aconteceu e não vira sinal de evento.

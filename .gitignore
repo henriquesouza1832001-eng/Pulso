@@ -37,3 +37,6 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .venv/
+
+# Quadro de coordenação entre agentes (barramento local, não vai para o git)
+.agents/

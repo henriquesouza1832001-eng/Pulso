@@ -60,3 +60,9 @@ Necessário (uma vez): um token **fino** do GitHub, só para o repositório Puls
 cd apps/worker && npx wrangler secret put GH_DISPATCH_TOKEN
 ```
 Saúde: `GET /api/health` mostra `collection.age_seconds`, `stale` (sem Pulso novo há mais de 15 min) e `scheduler_configured`. Falha de disparo aparece nos logs do Worker (`falha ao acionar coleta`).
+
+## Prévia por branch (antes do merge)
+Cada push em `art`, `hen`, `thig` ou `isar` que mexa em `apps/web/**` ou `packages/shared/**` roda `.github/workflows/preview.yml` e publica o front da branch em `https://pulso-web-<branch>.henriquesouza.workers.dev`.
+- Worker próprio (`apps/web/preview/worker.js`, `apps/web/wrangler.preview.jsonc`): serve o build e repassa **só** `GET /api/*` público para a API de produção, do lado do servidor (a API não precisa liberar CORS para a prévia). `POST` e `/api/admin/*` respondem 403.
+- O front mostra a faixa "PRÉVIA DA BRANCH …" (`VITE_PREVIEW_BRANCH`).
+- Usa os mesmos segredos do deploy (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`). Para remover uma prévia: `npx wrangler delete --name pulso-web-<branch>`.

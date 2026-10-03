@@ -49,6 +49,7 @@ _AMBIGUOUS_CITY = {"Natal", "Palmas", "Vitória", "Salvador", "Recife"}
 _CONTEXT = r"(?:no|na|do|da|ao|em|pelo|pelos|estado d[oe]|governo d[oe]|capital d[oe]|prefeitura d[oe]|policia d[oe])"
 _SPECIAL_STATES: dict[str, tuple[str, int]] = {
     "PA": (r"\bPará\b", 0),  # sensível a maiúsculas e ao acento
+    "MT": (r"\bMato\s+Grosso\b(?!\s+do\s+Sul\b)", re.IGNORECASE),  # "Mato Grosso do Sul" é o MS
     "AC": (rf"\b{_CONTEXT}\s+Acre\b", re.IGNORECASE),
     # "do/da Espírito Santo" é quase sempre religioso (missa, igreja): só contextos geográficos inequívocos.
     "ES": (r"\b(?:no|ao|em|pelo|estado d[oe]|governo d[oe]|prefeitura d[oe]|policia d[oe])\s+Espírito\s+Santo\b", re.IGNORECASE),
@@ -56,7 +57,21 @@ _SPECIAL_STATES: dict[str, tuple[str, int]] = {
 # Cidade cujo nome homônimo existe fora do Brasil: ignorada se o texto indicar o outro contexto.
 _CITY_EXCLUDE: dict[str, re.Pattern[str]] = {
     "Belém": re.compile(r"cisjord|israel|palestin|gaza|jesus|presepio|natividade"),
+    "Marília": re.compile(r"mendonca"),  # "Marília Mendonça" é a cantora, não a cidade
+    "Santarém": re.compile(r"portugal|portugues|lisboa|ribatejo|\btejo\b"),  # há uma Santarém em Portugal
 }
+
+# Sigla "MS" também é o Ministério da Saúde ("Saúde (MS)"): com essa palavra no texto, a sigla não é Mato Grosso do Sul.
+_MS_HEALTH = re.compile(r"saude|ministerio")
+# Marcadores/gentílicos de estado que são nome de torneio ou clube: "Campeonato Paulista", "Atlético Mineiro".
+_CLUB_CONTEXT = re.compile(
+    r"campeonato (?:paulista|mineiro|gaucho|carioca|baiano|cearense|pernambucano|paranaense|catarinense|goiano|capixaba)"
+    r"|atletico[- ]mineiro|athletico[- ]paranaense|paulistao|mineirao|gauchao")
+
+# "(AP)" e "da AP" são a agência Associated Press ("WASHINGTON (AP) —"), não o Amapá. Uma cidade em CAIXA ALTA antes de
+# "(AP)" é a linha de data da agência; "Macapá (AP)" (cidade em caixa normal) continua sendo Amapá.
+_AP_AGENCY = re.compile(
+    r"[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ .'-]{2,}\s*\(AP\)|\b(?:da|pela|pelo|segundo a|diz a|informa a)\s+AP\b|\bAP News\b")
 
 # (padrão, lugar, aplica ao texto original?)
 _PATTERNS: list[tuple[re.Pattern[str], Place, bool]] = []
@@ -83,7 +98,14 @@ def locate(text: str) -> Place | None:
             continue
         if not place.uf:  # padrão de sigla: a UF é o próprio texto casado
             uf = found.group(1)
+            if uf == "MS" and _MS_HEALTH.search(folded):
+                continue
+            if uf == "AP" and _AP_AGENCY.search(text):
+                continue
             return state_place(uf, confidence=place.confidence)
+        is_marker = place.confidence == 50 or (place.precision == "CITY" and place.confidence == 60)  # gentílico/marcador
+        if is_marker and _CLUB_CONTEXT.search(folded):
+            continue
         exclude = _CITY_EXCLUDE.get(place.city or "")
         if exclude and exclude.search(folded):
             continue
@@ -100,7 +122,7 @@ _STATE_MARKERS = {
     "SP": r"paulistas?|alesp", "MG": r"mineir[oa]s?|almg", "RS": r"gauch[oa]s?", "BA": r"baian[oa]s?",
     "PE": r"pernambucan[oa]s?|alepe", "CE": r"cearenses?|alece", "PR": r"paranaenses?|alep",
     "SC": r"catarinenses?|alesc", "GO": r"goian[oa]s?|alego", "ES": r"capixabas?", "AM": r"amazonenses?|aleam",
-    "PA": r"paraenses?|alepa", "MA": r"maranhenses?|alema", "RN": r"potiguar(?:es)?", "PB": r"paraiban[oa]s?",
+    "PA": r"paraenses?|alepa", "MA": r"maranhenses?", "RN": r"potiguar(?:es)?", "PB": r"paraiban[oa]s?",
     "AL": r"alagoan[oa]s?", "SE": r"sergipan[oa]s?", "PI": r"piauienses?|alepi", "TO": r"tocantinenses?",
     "RO": r"rondonienses?", "RR": r"roraimenses?", "AC": r"acrean[oa]s?|acrian[oa]s?", "AP": r"amapaenses?",
     "MS": r"sul-mato-grossenses?", "MT": r"(?<!sul-)mato-grossenses?", "RJ": r"alerj", "DF": r"cldf",
@@ -132,21 +154,21 @@ def uf_from_state_name(name: str) -> str | None:
 # Principais cidades do interior -> UF. Precisão honesta: STATE (o ponto no mapa é a capital), com o nome
 # da cidade em `city`. Nomes que também são palavra comum, sobrenome, clube ou empresa exigem contexto.
 _INTERIOR = {
-    "SP": "Campinas Guarulhos Osasco Sorocaba Ribeirão_Preto São_José_dos_Campos São_Bernardo_do_Campo Santo_André "
-          "Mauá Diadema Carapicuíba Mogi_das_Cruzes São_José_do_Rio_Preto Jundiaí Piracicaba Bauru Praia_Grande "
-          "Guarujá Taubaté Limeira Barueri Presidente_Prudente Araraquara Marília *Santos *Franca *Suzano",
+    "SP": "Campinas Guarulhos Osasco Sorocaba Ribeirão_Preto São_José_dos_Campos São_Bernardo_do_Campo *Santo_André "
+          "*Mauá Diadema Carapicuíba Mogi_das_Cruzes São_José_do_Rio_Preto Jundiaí Piracicaba Bauru Praia_Grande "
+          "Guarujá Taubaté Limeira Barueri Presidente_Prudente Araraquara *Marília *Santos *Franca *Suzano",
     "RJ": "Niterói Duque_de_Caxias Nova_Iguaçu São_Gonçalo Belford_Roxo Campos_dos_Goytacazes Petrópolis "
           "Volta_Redonda Macaé Angra_dos_Reis Cabo_Frio Teresópolis Nova_Friburgo",
     "MG": "Uberlândia Juiz_de_Fora Betim Montes_Claros Ribeirão_das_Neves Uberaba Governador_Valadares Ipatinga "
           "Sete_Lagoas Divinópolis Poços_de_Caldas Teófilo_Otoni *Contagem",
     "PR": "Londrina Maringá Ponta_Grossa Foz_do_Iguaçu São_José_dos_Pinhais Apucarana Guarapuava Paranaguá Toledo_(PR) *Cascavel",
     "SC": "Joinville Blumenau Chapecó Itajaí Criciúma Balneário_Camboriú Jaraguá_do_Sul *Lages",
-    "RS": "Caxias_do_Sul Santa_Maria Gravataí Novo_Hamburgo Passo_Fundo São_Leopoldo *Canoas *Pelotas",
-    "BA": "Feira_de_Santana Vitória_da_Conquista Camaçari Itabuna Ilhéus Lauro_de_Freitas Juazeiro_(BA) Barreiras Porto_Seguro",
+    "RS": "Caxias_do_Sul *Santa_Maria Gravataí Novo_Hamburgo Passo_Fundo São_Leopoldo *Canoas *Pelotas",
+    "BA": "Feira_de_Santana Vitória_da_Conquista Camaçari Itabuna Ilhéus Lauro_de_Freitas Juazeiro_(BA) *Barreiras *Porto_Seguro",
     "CE": "Juazeiro_do_Norte Caucaia Maracanaú Crato *Sobral",
-    "PE": "Jaboatão_dos_Guararapes Olinda Caruaru Petrolina Garanhuns Cabo_de_Santo_Agostinho",
-    "PB": "Campina_Grande Patos Santa_Rita_(PB)", "RN": "Mossoró Parnamirim Caicó", "AL": "Arapiraca",
-    "SE": "Nossa_Senhora_do_Socorro Lagarto_(SE)", "PI": "Parnaíba Picos", "MA": "Caxias_(MA) Timon *Imperatriz",
+    "PE": "Jaboatão_dos_Guararapes *Olinda Caruaru Petrolina Garanhuns Cabo_de_Santo_Agostinho",
+    "PB": "Campina_Grande *Patos Santa_Rita_(PB)", "RN": "Mossoró Parnamirim Caicó", "AL": "Arapiraca",
+    "SE": "Nossa_Senhora_do_Socorro Lagarto_(SE)", "PI": "Parnaíba *Picos", "MA": "Caxias_(MA) *Timon *Imperatriz",
     "PA": "Ananindeua Santarém Marabá Parauapebas Castanhal Altamira", "AM": "Parintins Itacoatiara",
     "RO": "Ariquemes Ji-Paraná Vilhena Cacoal", "AC": "Cruzeiro_do_Sul_(AC)", "TO": "Araguaína Gurupi",
     "GO": "Aparecida_de_Goiânia Anápolis Rio_Verde Luziânia Águas_Lindas_de_Goiás", "MT": "Várzea_Grande Rondonópolis Sinop",

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "purpose": "Corpus editorial adversarial para medir geo V1/V2; não é dataset histórico nem valida uma flag.",
+  "cases": [
+    {"id":"poa-explicit","text":"Temporal alaga ruas em Porto Alegre, RS","expected":{"precision":"CITY","city":"Porto Alegre","state":"RS"}},
+    {"id":"brumadinho-explicit","text":"Incêndio atinge mata em Brumadinho (MG), diz Bombeiros","expected":{"precision":"CITY","city":"Brumadinho","state":"MG"}},
+    {"id":"itauna-explicit","text":"Acidente em Itaúna, MG, deixa feridos","expected":{"precision":"CITY","city":"Itaúna","state":"MG"}},
+    {"id":"bom-jesus-explicit","text":"Chuva forte em Bom Jesus, RS deixa desabrigados","expected":{"precision":"CITY","city":"Bom Jesus","state":"RS"}},
+    {"id":"rio-branco-ambiguous","text":"Obras em Rio Branco afetam o trânsito","expected":{"precision":"DISPUTED"}},
+    {"id":"sao-jose-ambiguous","text":"Acidente em São José deixa feridos","expected":{"precision":"UNKNOWN"}},
+    {"id":"artist","text":"Marília Mendonça anuncia turnê nacional","expected":{"precision":"UNKNOWN"}},
+    {"id":"club","text":"O Santos venceu o campeonato","expected":{"precision":"UNKNOWN"}},
+    {"id":"airport","text":"Aeroporto de Congonhas tem filas","expected":{"precision":"UNKNOWN"}},
+    {"id":"road","text":"BR-101 bloqueada por acidente","expected":{"precision":"UNKNOWN"}},
+    {"id":"river","text":"Rio Grande sobe após chuva","expected":{"precision":"UNKNOWN"}},
+    {"id":"neighborhood","text":"Bairro da Liberdade recebe feira","expected":{"precision":"UNKNOWN"}},
+    {"id":"state-only","text":"Chuvas atingem o estado de Minas Gerais","expected":{"precision":"STATE","state":"MG"}},
+    {"id":"national","text":"Notícias nacionais sobre a economia","expected":{"precision":"UNKNOWN"}}
+  ]
+}

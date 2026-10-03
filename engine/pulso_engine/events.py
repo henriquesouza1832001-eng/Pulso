@@ -12,6 +12,9 @@ from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
+ROUTINE_SEVERITY_CAP = 20  # teto de severidade de um evento cujos textos são todos rotina de campanha (importance.ROUTINE)
+IMPACT_WEIGHT = 0.3  # pontos de severidade por ponto de importância do texto (importance.assess: 0-100)
+
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
 BASE_SEVERITY = {
     "EMERGENCY": 70, "SECURITY": 60, "WEATHER": 55, "INFRASTRUCTURE": 55, "PROTEST": 45,
@@ -28,14 +31,21 @@ def dominant_category(signals: list[Signal]) -> str:
     return counts.most_common(1)[0][0] if counts else "OTHER"
 
 
-def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> EventStats:
+def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
     sources = {s.source_id for s in signals}
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
     last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
-    severity = BASE_SEVERITY.get(category, 15) + min(20, 4 * (len(sources) - 1))
+    prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
+    # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
+    # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
+    assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
+    impact = max(a.score for a in assessed)
+    severity = BASE_SEVERITY.get(category, 15) + min(20, 4 * (len(sources) - 1)) + round(IMPACT_WEIGHT * impact)
+    if all(a.routine for a in assessed):  # comício, carreata, agenda de candidato: esperado e agendado, não é impacto
+        severity = min(severity, ROUTINE_SEVERITY_CAP)
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
@@ -50,6 +60,8 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> Eve
         geo_consistency=1.0 if len({s.state for s in signals if s.state}) <= 1 else 0.3,
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
+        contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
+        extra={"acceleration": float(last_hour - prev_hour)},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
@@ -98,20 +110,34 @@ def event_place(sigs: list[Signal]) -> Signal | None:
     top, w = weight.most_common(1)[0]
     if len(weight) >= 4 or w / sum(weight.values()) < 0.6:
         return None
-    # Um estado herdado da fonte regional (confiança baixa) em meio a muitos sinais sem lugar não define o evento.
-    confident = any((s.geo_confidence or 0) >= 60 for s in located if s.state == top)
-    if not confident and len(located) / len(sigs) < 0.5:
+    # Em um grupo de 4+ sinais, o lugar só vale se uma parte relevante deles o tem: um único sinal que cita um estado
+    # (ou um estado herdado da fonte regional) em meio a vários sem lugar não faz de uma pauta nacional um evento local.
+    # Grupos pequenos (1-3 sinais) são o caso comum de notícia local e podem ser definidos por um sinal só.
+    if len(sigs) >= 4 and len(located) / len(sigs) < 0.4:
         return None
     candidates = [s for s in located if s.state == top]
     return max(candidates, key=lambda s: (s.latitude is not None, s.geo_confidence or 0))
 
 
-def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None) -> dict:
+OFFICIAL_ALERT_FLOOR = 3  # piso do nível PULSO quando o órgão oficial declara risco EXTREMO
+
+
+def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None,
+                alert_sources: frozenset[str] = frozenset(), contradiction: float = 0.0) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
-    stats = stats_for(sigs, now, anomaly)
+    stats = stats_for(sigs, now, anomaly, contradiction)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
+    if stats.contradiction > 0:  # explícito no "POR QUE?": a divergência já está descontada da confiança, não do score
+        breakdown = [*breakdown, {"key": "contradiction", "label": "Fontes divergem (reduz a confiança)", "points": 0}]
     level = alert_level(score, conf, stats)
+    # Alerta OFICIAL de risco extremo (INMET "Grande Perigo", Defesa Civil "Extreme": o adaptador os classifica como
+    # EMERGENCY) nunca fica abaixo de "Elevado": o próprio órgão já declarou o perigo, e o score ainda não enxerga isso
+    # (anomalia só existe com 12 h de histórico). O piso é explícito no "POR QUE?" (0 pontos) e não altera o score.
+    official_extreme = any(s.source_id in alert_sources and s.category == "EMERGENCY" for s in sigs)
+    if official_extreme and level < OFFICIAL_ALERT_FLOOR:
+        level = OFFICIAL_ALERT_FLOOR
+        breakdown = [*breakdown, {"key": "official_alert", "label": "Alerta oficial de risco extremo (piso nível 3)", "points": 0}]
     located = event_place(sigs)
     first = sigs[0]
     # Id estável: reaproveita o de um evento já gravado; só gera novo se for uma história nova.

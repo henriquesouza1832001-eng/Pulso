@@ -175,6 +175,162 @@ export interface IngestBatch {
 	source_health: SourceHealth[];
 	series?: SeriesPoint[];
 	forecasts?: Forecast[];
+	/** Histórico agregado por HORA (docs/research/SPEC_01_HISTORY.md): só contagens, só horas fechadas. */
+	observations?: ObservationPoint[];
+	/** Investigações do Sentinela que MUDARAM nesta rodada (docs/research/SPEC_05_SENTINEL.md). */
+	investigations?: InvestigationPoint[];
+	/** Trilha de auditoria das previsões (imutável). docs/engineering/ENGINE_V2_PLAN.md. */
+	forecast_registry?: ForecastRegistryEntry[];
+	/** Comparação V1 x V2 x desfecho (só linhas já resolvidas, imutáveis). */
+	shadow_results?: ShadowResultRow[];
+	/** Registro de drivers antecedentes validados. */
+	driver_registry?: DriverRegistryRow[];
+	/** Artefatos de calibração versionados (artefato imutável; só o status evolui). */
+	calibrators?: CalibratorArtifact[];
+	/** Estado por fonte (frescor + circuit breaker): só o que mudou ou o batimento periódico. */
+	source_runtime?: SourceRuntimeRow[];
+	/** Resumo do ciclo do Engine (uma linha 'latest'). */
+	engine_cycle?: EngineCycle | null;
+}
+
+export const FRESHNESS_STATES = ["FRESH", "STALE", "EMPTY", "QUIET", "UNKNOWN", "UNAVAILABLE"] as const;
+export type FreshnessState = (typeof FRESHNESS_STATES)[number];
+export const BREAKER_STATES = ["CLOSED", "OPEN", "HALF_OPEN"] as const;
+export type BreakerState = (typeof BREAKER_STATES)[number];
+
+export interface SourceRuntimeRow {
+	source_id: string;
+	transport: string; // ONLINE | DEGRADED | RATE_LIMITED | OFFLINE | AUTH_ERROR
+	freshness_state: FreshnessState; // UNKNOWN != 0: o transporte falhou, nada se afirma sobre o dado
+	newest_item_age_min: number | null; // no instante updated_at
+	last_content_advance: string | null;
+	records: number;
+	new_records: number;
+	duplicate_records: number;
+	breaker_state: BreakerState;
+	consecutive_failures: number;
+	next_attempt_at: string | null;
+	opened_count: number;
+	breaker_reason: string | null;
+	updated_at: string;
+}
+
+export interface EngineCycle {
+	cycle_at: string;
+	duration_s: number;
+	sources_due: number;
+	sources_skipped: number; // puladas pelo breaker (só com CIRCUIT_BREAKER_ENFORCE)
+	records: number;
+	new_records: number;
+	duplicate_records: number;
+	signals_sent: number;
+	events: number;
+	freshness: Record<string, number>; // FRESH/STALE/EMPTY/QUIET/UNKNOWN -> contagem
+	coverage: Record<string, unknown>; // por família
+	age: { n: number; p50: number | null; p95: number | null; max: number | null };
+	breakers_open: number;
+	flags: Record<string, boolean>;
+	engine_ref: string | null;
+}
+
+export const CALIBRATOR_STATUSES = ["candidate", "active", "retired"] as const;
+export type CalibratorStatus = (typeof CALIBRATOR_STATUSES)[number];
+
+export interface CalibratorArtifact {
+	id: string; // cal-<método>-<versão>
+	method: string; // platt, isotonic, identity...
+	version: string;
+	fit_start: string; // janela de ajuste: nunca inclui dado de teste/futuro
+	fit_end: string;
+	sample_count: number;
+	artifact: string; // JSON com os parâmetros (até 20 KB)
+	status: CalibratorStatus; // candidate -> active -> retired (terminal)
+	created_at: string;
+}
+
+export interface ForecastRegistryEntry {
+	forecast_id: string;
+	created_at: string;
+	snapshot: string; // JSON canônico: features, versões, flags, probabilidade, método, escopo, limiar
+	snapshot_hash: string; // sha256 do snapshot
+}
+
+export interface ShadowResultRow {
+	item_id: string; // forecast_id ou event_id
+	method: string;
+	scope: string;
+	p_v1: number;
+	p_v2: number;
+	outcome: 0 | 1;
+}
+
+export const DRIVER_STATES = ["CANDIDATE", "TESTING", "ACTIVE", "DEGRADED", "DISABLED"] as const;
+export type DriverState = (typeof DRIVER_STATES)[number];
+
+export interface DriverRegistryRow {
+	driver: string;
+	target: string;
+	scope: string;
+	lag_hours: number;
+	correlation: number;
+	pairs: number;
+	samples: number;
+	brier_without: number | null;
+	brier_with: number | null;
+	state: DriverState; // só ACTIVE pode alterar a probabilidade de uma previsão
+	reason: string;
+}
+
+export const INVESTIGATION_STATUSES = [
+	"NEW", "INVESTIGATING", "CORRELATING", "WAITING_CONFIRMATION", "CONFIRMED", "DISPUTED", "RESOLVING", "CLOSED",
+] as const;
+export type InvestigationStatus = (typeof INVESTIGATION_STATUSES)[number];
+
+/** Investigação proativa do Sentinela (rota interna; não é parte da API pública). Não confundir com `EventStatus`. */
+export interface InvestigationPoint {
+	id: string; // inv-<sha1(scope|category|hora de abertura)[:10]>
+	scope: string; // "BR" | "UF:MG"
+	category: Category;
+	status: InvestigationStatus;
+	started_at: string;
+	last_update: string;
+	last_anomalous_at: string | null;
+	initial_anomaly: number;
+	anomaly: number;
+	evidence_count: number;
+	official_confirmation: boolean;
+	reasons: string[]; // por que o Sentinela investigou
+}
+
+/** Contagem de sinais por hora × escopo × categoria × classe de fonte. O Worker só sobe valores (MAX), nunca diminui. */
+export interface ObservationPoint {
+	scope: string; // "BR" | "UF:MG"
+	category: Category;
+	source_class: SourceClass;
+	hour: string; // início da hora, ISO-8601 UTC (HH:00:00Z)
+	signals: number; // sinais distintos (já deduplicados por hash)
+	sources: number; // fontes distintas
+	duplicates: number; // cópias descartadas na deduplicação
+}
+
+/** Prévia ao vivo de uma câmera, servida pelo PRÓPRIO provedor (o PULSO não copia nem retransmite o vídeo). */
+export interface CameraPreview {
+	type: "iframe" | "hls";
+	url: string;
+}
+
+/** Câmera do catálogo (`GET /api/cameras`): prévia opcional + link obrigatório para a página de origem. */
+export interface CameraFeed {
+	id: string;
+	label: string;
+	city: string;
+	state: string; // UF, ou "BR" para painéis nacionais
+	provider: string;
+	attribution: string;
+	page_url: string; // clique leva para cá
+	preview: CameraPreview | null; // null = só o cartão-placeholder com o link
+	lat: number | null;
+	lon: number | null;
 }
 
 export interface ApiError {

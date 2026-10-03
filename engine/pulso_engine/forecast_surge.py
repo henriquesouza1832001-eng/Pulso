@@ -11,11 +11,13 @@ suficiente não se prevê nada.
 """
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime, timedelta, timezone
 
 from .baseline import ewma_baseline, hourly_counts
 from .drivers import leading_indicators
+from .processing.event_types import active_precursors
 from .forecast import HORIZON_MIN, VOID_AFTER_MIN, _iso, _scope_slug, _ts, brier, prob_at_least
 from .series import BUCKET_MIN, bucket_start
 
@@ -32,6 +34,16 @@ LABELS = {
     "PROTEST": "protestos", "POLITICS": "política", "ECONOMY": "economia", "HEALTH": "saúde",
     "INTERNATIONAL": "assuntos internacionais", "TECH": "tecnologia", "EVENT": "eventos", "EMERGENCY": "emergências",
 }
+
+
+def _parse_evidence(raw) -> dict:
+    """A rota /api/admin/forecasts/open devolve `evidence` como texto JSON (coluna crua); o Engine reenvia a resolução
+    junto com a evidência registrada, então ela precisa ser lida, e não descartada."""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, (str, bytes)) else {}
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def merge_series(*groups: list[dict]) -> list[dict]:
@@ -70,7 +82,7 @@ def _scope_text(scope: str) -> str:
     return "no Brasil" if scope == "BR" else f"em {scope.split(':')[1]}"
 
 
-def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
+def make_surge_forecasts(rows: list[dict], now: datetime, events: list[dict] | None = None) -> list[dict]:
     """Novas previsões de volume. [] se não houver histórico (nunca se inventa)."""
     now = now.astimezone(timezone.utc)
     candidates = sorted({(r["scope"], r["category"]) for r in rows if r["category"] != "OTHER"})
@@ -87,14 +99,16 @@ def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
         if not base.valid or len(counts) - 1 < MIN_PAIRS:
             continue
         deltas = [float(b - a) for a, b in zip(counts, counts[1:])]
-        thresholds = {max(math.ceil(current * 1.5), current + 3)}
+        # Dois "espaços" por série e por hora, com id ESTÁVEL (o limiar muda a cada ciclo porque o volume muda; um id com o
+        # limiar criaria uma previsão nova a cada rodada). A primeira da hora vale; as seguintes já estão abertas.
+        slots = {"x15": max(math.ceil(current * 1.5), current + 3)}
         high = math.ceil(base.mean + 2 * base.std)
-        if high > current:
-            thresholds.add(high)
-        for t in sorted(thresholds)[:2]:
+        if high > current and high != slots["x15"]:
+            slots["hi"] = high
+        for slot, t in slots.items():
             p, lo, hi, k = prob_at_least(float(current), deltas, float(t))
             out.append({
-                "forecast_id": f"fc-surge-{_scope_slug(scope)}-{category.lower()}-gte-{t}-h{HORIZON_MIN}-{now.strftime('%Y%m%d%H')}",
+                "forecast_id": f"fc-surge-{_scope_slug(scope)}-{category.lower()}-{slot}-h{HORIZON_MIN}-{now.strftime('%Y%m%d%H')}",
                 "kind": "NOWCAST",
                 "question": f"Haverá {t} ou mais sinais de {_label(category)} {_scope_text(scope)} na próxima hora?",
                 "scope": scope, "metric": f"{METRIC_PREFIX}{category.lower()}", "comparator": "gte", "threshold": float(t),
@@ -106,6 +120,8 @@ def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
                     "current_hour_signals": current, "baseline_mean": round(base.mean, 2), "baseline_std": round(base.std, 2),
                     "history_hours": base.hours, "pairs": len(deltas), "hits": k,
                     "leading_indicators": leading_indicators(rows, category, scope, now),  # contexto; não altera p
+                    # tipos de evento ativos que a hipótese editorial liga a esta categoria (config/event_types.json); só contexto
+                    "event_types": active_precursors(events or [], category.upper(), scope),
                     "note": "variações hora a hora observadas no próprio histórico de sinais deste tema e escopo",
                 },
                 "status": "open", "outcome": None, "observed_value": None, "resolved_at": None, "brier": None,
@@ -127,7 +143,7 @@ def resolve_surge_due(open_forecasts: list[dict], rows: list[dict], points: list
         end = start + timedelta(minutes=HORIZON_MIN)
         if now < end + timedelta(minutes=BUCKET_MIN):  # espera a última janela fechar
             continue
-        evidence = f["evidence"] if isinstance(f["evidence"], dict) else {}
+        evidence = f["evidence"] if isinstance(f["evidence"], dict) else _parse_evidence(f["evidence"])
         base = {**f, "evidence": evidence}
         category = f["metric"][len(METRIC_PREFIX):].upper()
         covered = sum(1 for t in pulse_times if start <= t < end) >= MIN_COVERAGE_POINTS

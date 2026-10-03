@@ -12,8 +12,15 @@ from typing import Callable
 
 from .news.rss import RssAdapter
 from .news.gdelt import GdeltAdapter
+from .official.bcb_ptax import BcbPtaxAdapter
+from .official.idap_cap import IdapCapAdapter
+from .official.infodengue import InfoDengueAdapter
 from .official.inmet import InmetAdapter
+from .official.inpe_fires import InpeFiresAdapter
+from .official.ons_ear import OnsEarAdapter
 from .official.usgs import UsgsAdapter
+from .social.bluesky import BlueskyAdapter
+from .social.google_trends import GoogleTrendsAdapter
 from .social.mastodon import MastodonAdapter
 from .social.reddit import RedditAdapter
 from .social.x import XAdapter
@@ -21,12 +28,22 @@ from .social.x import XAdapter
 ADAPTERS: dict[str, Callable] = {
     "rss": RssAdapter,
     "reddit": RedditAdapter,
+    "bluesky": BlueskyAdapter,
     "x": XAdapter,
     "inmet": InmetAdapter,
     "gdelt": GdeltAdapter,
     "mastodon": MastodonAdapter,
     "usgs": UsgsAdapter,
+    "inpe_fires": InpeFiresAdapter,
+    "bcb_ptax": BcbPtaxAdapter,
+    "idap_cap": IdapCapAdapter,
+    "infodengue": InfoDengueAdapter,
+    "ons_ear": OnsEarAdapter,
+    "google_trends": GoogleTrendsAdapter,
 }
+
+# Adaptadores que buscam URLs com o `fetcher` injetado (os sociais usam requisições autenticadas próprias).
+URL_FETCH_ADAPTERS = frozenset({"rss", "inmet", "bcb_ptax", "mastodon", "usgs", "gdelt", "infodengue", "ons_ear", "google_trends"})
 
 
 def build_adapter(source: dict, keywords, fetcher, now):

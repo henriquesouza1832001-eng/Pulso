@@ -1,0 +1,27 @@
+name: Turso check
+
+# Valida a conexão e o protocolo com o Turso usando os segredos do repositório (sem expô-los).
+# Roda só quando este arquivo ou o script mudam, ou manualmente.
+on:
+  push:
+    paths:
+      - .github/workflows/turso-check.yml
+      - engine/scripts/turso_check.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Conectar ao Turso
+        env:
+          TURSO_URL: ${{ secrets.TURSO_URL }}
+          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: python engine/scripts/turso_check.py

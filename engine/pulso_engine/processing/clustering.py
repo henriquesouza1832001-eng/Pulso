@@ -15,14 +15,18 @@ from .normalizer import normalized_title
 _STOP = frozenset(
     """de da do das dos em no na nos nas um uma uns umas para por com sem sobre apos ate entre como mais
     menos que quem foi ser sao tem tera diz fala afirma pode deve vai contra desde ainda ja ao aos seu sua
-    seus suas esta este essa esse nao sim""".split()
-)
+    seus suas esta este essa esse nao sim
+    veja saiba entenda confira assista quem mostra explica sobre apos entre durante""".split()
+) | frozenset({"2026", "2025", "eleicoes", "eleicao", "video", "videos", "audio", "fotos"})  # enchimento editorial: não liga matérias
 
 WINDOW = timedelta(hours=12)
 JACCARD_MIN = 0.34
 MIN_SHARED = 3
 MIN_HIT_RATIO = 0.25  # fração dos membros com que a matéria nova deve se parecer (evita ligação em cadeia)
-CONFIDENT_GEO = 60
+# Faixas da geolocalização: cidade 70, nome de estado 60, sigla com contexto ("São Borja, RS", "(MG)") 55, gentílico 50,
+# estado herdado da fonte 35. Até a sigla é uma menção EXPLÍCITA de estado: conta como bem localizado para a trava de
+# "estados diferentes nunca se juntam". (Com 60, um alerta de São Borja/RS se fundia com os de Manaus/AM.)
+CONFIDENT_GEO = 55
 
 
 def tokens(title: str) -> frozenset[str]:

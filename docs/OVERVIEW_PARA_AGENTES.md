@@ -34,13 +34,13 @@ Cron da Cloudflare (*/5 min) → workflow_dispatch → GitHub Actions executa o 
 Em produção: API `https://pulso-api.henriquesouza.workers.dev`, Web `https://pulso-web.henriquesouza.workers.dev`, D1 `pulso`. Deploy automático pelo GitHub Actions a cada merge na `main`.
 
 ## 3. O que já está feito (resumo)
-Monorepo e CI; Cloudflare (Worker, D1, front) com deploy automático; coleta RSS de 5 fontes com dedup, geo (cidade/estado), clusterização e eventos; confiança, Pulso Score explicável e níveis 1–5; API pública e rotas internas (`/api/ingest`, `/api/admin/series`, `/api/admin/overview`); histórico em séries, baseline (EWMA) e anomalia; protocolo de coleta validado em código; `/api/health` com atraso da coleta; Cron Trigger registrado; registro de coletores; ~37 testes Python e 4 do Worker.
+Monorepo e CI; Cloudflare (Worker, D1, front) com deploy automático; coleta de ~112 fontes (RSS de imprensa nacional, regional e internacional, e órgãos oficiais; avisos do INMET, focos de calor do INPE e dólar PTAX do Banco Central) em paralelo, com dedup, geo (cidade/estado), clusterização e eventos; confiança, Pulso Score explicável e níveis 1–5; API pública e rotas internas (`/api/ingest`, `/api/admin/series`, `/api/admin/overview`); histórico em séries, baseline (EWMA) e anomalia; protocolo de coleta validado em código; `/api/health` com atraso da coleta; Cron Trigger registrado; registro de coletores; frescor por categoria, eventos com agrupamento e publicação criteriosos, previsões de pulso e de volume por categoria (EXPERIMENTAIS), healthcheck e auditoria de fontes; ~172 testes Python e 7 do Worker. Ver `docs/BACKEND_STATUS.md` (estado vivo) e `docs/RUNBOOK.md` (operação).
 
 ## 4. Pendências e riscos (não os esconda ao priorizar)
 1. **Coleta contínua ainda não verificada de ponta a ponta.** O `schedule` do GitHub não dispara com confiança; o Cron da Cloudflare foi implementado e o segredo `GH_DISPATCH_TOKEN` foi criado, mas **o disparo automático ainda não foi confirmado**. Sem coleta contínua não há histórico, e sem histórico não há baseline nem previsão.
 2. Clusterização **sem estado** (ids de evento podem mudar entre rodadas).
 3. Classificação por keywords com falsos positivos; geo só reconhece capitais/estados.
-4. Conformidade das 5 fontes RSS **pendente** (`terms_url`/`reviewed_by` = `PENDENTE`).
+4. Conformidade de ~95 fontes **pendente** (`terms_url`/`reviewed_by` = `PENDENTE`); o catálogo foi ativado por decisão do dono (ADR 0006).
 5. Não existem ainda: previsões (`forecasts`), SSE, `/api/trending`, `/api/search`, `/api/timeline`, fontes oficiais/sociais, rate limiting, staging.
 6. Limite do D1 gratuito (~50 consultas por requisição): gravações em lote usam `json_each`, uma instrução por tabela. Não volte a um comando por linha.
 

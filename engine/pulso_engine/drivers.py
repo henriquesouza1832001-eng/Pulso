@@ -79,6 +79,8 @@ def leading_indicators(rows: list[dict], target: str, scope: str, now: datetime)
         if r < MIN_R:
             continue
         base = ewma_baseline(counts[c])
+        if not base.valid:  # categoria esparsa (quase só zeros): 4 sinais dariam z enorme e um indicador espúrio
+            continue
         z = (rolling_hour(rows, scope, c, now) - base.mean) / max(base.std, 1.0)
         if z >= MIN_Z:
             out.append({"category": c, "lag_hours": lag, "correlation": round(r, 2), "current_z": round(z, 1)})

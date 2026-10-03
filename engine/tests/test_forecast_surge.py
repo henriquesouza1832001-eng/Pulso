@@ -47,7 +47,7 @@ def test_makes_valid_forecasts_with_evidence():
         assert f["metric"] == "signals_weather" and f["scope"] == "BR" and f["comparator"] == "gte"
         assert 0 < f["probability"] < 1 and f["interval_low"] <= f["probability"] <= f["interval_high"]
         assert f["evidence"]["pairs"] >= 24 and f["evidence"]["history_hours"] >= 12
-        assert f["forecast_id"].startswith("fc-surge-br-weather-gte-") and f["status"] == "open"
+        assert f["forecast_id"].startswith("fc-surge-br-weather-") and f["forecast_id"].split("-")[4] in ("x15", "hi") and f["status"] == "open"
         assert f["threshold"] > f["evidence"]["current_hour_signals"]
         assert "clima" in f["question"] and "no Brasil" in f["question"]
 

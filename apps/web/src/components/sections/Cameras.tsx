@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { CameraFeeds } from "./CameraFeeds";
+import type { CameraFeed } from "@pulso/shared";
 
 export interface CameraDef {
 	id: string;
@@ -12,15 +14,33 @@ export interface CameraDef {
  * Câmeras ao vivo: "still" gerado localmente em canvas (ruído + faixas +
  * timestamp), aparência de CCTV. Nenhuma imagem externa, nenhum dado real.
  */
-export function Cameras({ cameras }: { cameras: CameraDef[] }) {
-	if (cameras.length === 0)
+export function Cameras({
+	cameras,
+	feeds = [],
+	focusUf = null,
+	query = "",
+	pageSize,
+}: {
+	cameras: CameraDef[];
+	feeds?: CameraFeed[];
+	focusUf?: string | null;
+	/** busca do topo do painel: se citar cidade/estado, recorta as câmeras */
+	query?: string;
+	pageSize?: number;
+}) {
+	if (cameras.length === 0 && feeds.length === 0)
 		return <p className="state">NENHUMA CÂMERA AUTORIZADA NO ACERVO · AGUARDANDO PARCERIAS</p>;
 	return (
-		<div className="camgrid">
-			{cameras.map((c) => (
-				<CameraTile key={c.id} cam={c} />
-			))}
-		</div>
+		<>
+			{cameras.length > 0 && (
+				<div className="camgrid">
+					{cameras.map((c) => (
+						<CameraTile key={c.id} cam={c} />
+					))}
+				</div>
+			)}
+			{feeds.length > 0 && <CameraFeeds feeds={feeds} focusUf={focusUf} query={query} pageSize={pageSize} />}
+		</>
 	);
 }
 

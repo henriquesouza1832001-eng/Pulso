@@ -3,6 +3,8 @@ import type { PulsoEvent } from "@pulso/shared";
 import { ago, brTime, CATEGORY_PT, evtId } from "../../lib/format";
 import { identicon } from "../../lib/identicon";
 import { LevelTag } from "../ui/LevelTag";
+import { EventPeek } from "../events/EventPeek";
+import { Pager } from "../ui/Pager";
 
 /**
  * Feed OSINT — timeline operacional densa no molde do pizzint:
@@ -47,6 +49,7 @@ export function OsintFeed({
 	onlineSources,
 	uf,
 	onUfChange,
+	onDossier,
 }: {
 	events: PulsoEvent[];
 	onSelect: (id: string) => void;
@@ -57,6 +60,8 @@ export function OsintFeed({
 	/** Estado em foco ("SP"), "BR" = só notícias sem UF (nacionais/internacionais), null = todos. */
 	uf: string | null;
 	onUfChange: (uf: string | null) => void;
+	/** "ver dossiê completo" dentro da sanfona */
+	onDossier: (id: string) => void;
 }) {
 	const [tab, setTab] = useState<"live" | "top">("live");
 	const [cat, setCat] = useState<string>("ALL");
@@ -163,32 +168,59 @@ export function OsintFeed({
 		.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour12: false })
 		.slice(0, 2);
 
-	const renderItem = (e: PulsoEvent) => (
-		<article
-			key={e.event_id}
-			data-evid={e.event_id}
-			className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${e.event_id === selectedId ? " sel" : ""}`}
-			onClick={() => onSelect(e.event_id)}
-		>
-			<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={20} height={20} />
-			<div className="osf-body">
-				<div className="osf-line">
-					<span className="osf-time">{brTime(e.updated_at)}</span>
-					<span className="osf-src">{sourceFor(e, demo)}</span>
-					{demo && <span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>}
-					<span className="osf-id dim">{evtId(e.event_id)}</span>
-					<span className="osf-ago dim">{ago(e.updated_at)}</span>
-					<LevelTag level={e.alert_level} compact />
+	// Item = sanfona: clicar abre o resumo ali mesmo, clicar de novo fecha (quem alterna é o App, via onSelect).
+	const renderItem = (e: PulsoEvent) => {
+		const open = e.event_id === selectedId;
+		return (
+			<article
+				key={e.event_id}
+				data-evid={e.event_id}
+				className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${open ? " sel open" : ""}`}
+				onClick={() => onSelect(e.event_id)}
+				onKeyDown={(ev) => {
+					if (ev.target === ev.currentTarget && (ev.key === "Enter" || ev.key === " ")) {
+						ev.preventDefault();
+						onSelect(e.event_id);
+					}
+				}}
+				role="button"
+				tabIndex={0}
+				aria-expanded={open}
+			>
+				<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={16} height={16} />
+				<div className="osf-body">
+					{/* Uma linha só: hora · local · volume/confiança … há X · nível. Código EVT fica no dossiê e no title. */}
+					<div className="osf-line" title={evtId(e.event_id)}>
+						<span className="osf-time">{brTime(e.updated_at)}</span>
+						<span className="osf-place">
+							{[e.city, e.state].filter(Boolean).join("/") ||
+								(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
+						</span>
+						{demo ? (
+							<>
+								<span className="osf-src">{sourceFor(e, demo)}</span>
+								<span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>
+							</>
+						) : (
+							<span className="osf-stats dim">
+								{e.source_count} fonte{e.source_count === 1 ? "" : "s"} · {e.signal_count} sina
+								{e.signal_count === 1 ? "l" : "is"} · conf {e.confidence}%
+							</span>
+						)}
+						<span className="osf-ago dim">{ago(e.updated_at)}</span>
+						<LevelTag level={e.alert_level} compact />
+					</div>
+					<p className="osf-text">
+						<span className="osf-caret" aria-hidden>
+							{open ? "▾" : "▸"}
+						</span>
+						{e.title}
+					</p>
+					{open && <EventPeek event={e} onDossier={onDossier} />}
 				</div>
-				<p className="osf-text">{e.title}</p>
-				<div className="osf-meta2">
-					{e.signal_count} sinais · {e.source_count} fonte(s) · conf {e.confidence}% ·{" "}
-					{[e.city, e.state].filter(Boolean).join("/") ||
-						(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
-				</div>
-			</div>
-		</article>
-	);
+			</article>
+		);
+	};
 
 	const shown = rest.slice(curPage * PAGE, (curPage + 1) * PAGE);
 
@@ -199,7 +231,9 @@ export function OsintFeed({
 					<i className="dot-live" /> FEED OSINT
 				</span>
 				<span className="osf-meta dim">AUTO</span>
-				<span className="osf-meta dim">MONITORANDO {sourcesCount || "--"} FONTES</span>
+				<span className="osf-meta dim">
+					MONITORANDO {sourcesCount || "--"} FONTES · {onlineSources || "--"} ONLINE
+				</span>
 				<span className="osf-meta">
 					{reports} RELATÓRIOS · <b className="l4">{alerts} ALERTAS</b>
 				</span>
@@ -245,6 +279,9 @@ export function OsintFeed({
 								{u} · {n}
 							</option>
 						))}
+						{/* estado escolhido sem evento (topo/mapa) também aparece: senão o seletor mostraria "TODOS" com o
+						    filtro ainda ativo, e escolher "TODOS" não dispararia nada (não daria para voltar) */}
+						{uf && uf !== "BR" && !ufCounts.some(([u]) => u === uf) && <option value={uf}>{uf} · 0</option>}
 						<option value="BR">NACIONAL/SEM UF · {nationalCount}</option>
 					</select>
 				</label>
@@ -274,39 +311,20 @@ export function OsintFeed({
 			)}
 
 			{shown.length === 0 && pinned.length === 0 ? (
-				<p className="state">AGUARDANDO COLETA · NENHUM RELATO COM ESSE FILTRO</p>
+				<p className="state">
+					{uf ? `NENHUM RELATO EM ${uf === "BR" ? "NACIONAL" : uf} AGORA · ` : "AGUARDANDO COLETA · NENHUM RELATO COM ESSE FILTRO"}
+					{uf && (
+						<button className="osf-ufchip" onClick={() => onUfChange(null)}>
+							VER TODOS ✕
+						</button>
+					)}
+				</p>
 			) : (
 				<div className="osf-list" ref={listRef}>
 					{shown.map(renderItem)}
 				</div>
 			)}
-			{pages > 1 && (
-				<nav className="osf-pages" aria-label="páginas do feed">
-					<button disabled={curPage === 0} onClick={() => setPage(curPage - 1)} aria-label="página anterior">
-						‹
-					</button>
-					{Array.from({ length: pages }, (_, i) => (
-						<button
-							key={i}
-							className={i === curPage ? "on" : ""}
-							aria-current={i === curPage ? "page" : undefined}
-							onClick={() => setPage(i)}
-						>
-							{i + 1}
-						</button>
-					))}
-					<button disabled={curPage === pages - 1} onClick={() => setPage(curPage + 1)} aria-label="próxima página">
-						›
-					</button>
-					<span className="dim">
-						{curPage * PAGE + 1}–{Math.min((curPage + 1) * PAGE, rest.length)} de {rest.length}
-					</span>
-				</nav>
-			)}
-			<p className="osf-foot dim">
-				relatos brutos de fontes públicas, agregados pelo motor · clique para abrir o dossiê ·{" "}
-				{onlineSources || "--"} fontes online agora
-			</p>
+			<Pager page={curPage} pages={pages} onPage={setPage} pageSize={PAGE} total={rest.length} label="páginas do feed" />
 		</div>
 	);
 }

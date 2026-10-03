@@ -65,5 +65,9 @@ class GdeltAdapter:
     validate = staticmethod(valid)
 
     def run(self) -> list[Signal]:
-        sigs = (self.normalize(r) for r in self.fetch())
-        return [s for s in sigs if s is not None and valid(s)]
+        out: dict[str, Signal] = {}
+        for r in self.fetch():
+            s = self.normalize(r)
+            if s is not None and valid(s):
+                out.setdefault(s.hash, s)  # a mesma URL repetida não gera dois sinais com o mesmo id
+        return list(out.values())

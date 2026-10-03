@@ -73,3 +73,123 @@ class EventStats:
     duplicate_ratio: float = 0.0  # 0-1
     half_life_min: float = 90.0  # meia-vida do frescor (depende da categoria; ver scoring/pulse.py)
     extra: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CameraPreview:
+    """Espelho de `CameraPreview` em packages/shared/src/contracts.ts: prévia servida pelo PRÓPRIO provedor."""
+    type: str  # "iframe" | "hls"
+    url: str
+
+
+@dataclass(frozen=True)
+class CameraFeed:
+    """Espelho de `CameraFeed` (GET /api/cameras). `preview=None` = só cartão-placeholder com o link de origem."""
+    id: str
+    label: str
+    city: str
+    state: str  # UF, ou "BR" para painéis nacionais
+    provider: str
+    attribution: str
+    page_url: str
+    preview: CameraPreview | None = None
+    lat: float | None = None
+    lon: float | None = None
+
+
+@dataclass(frozen=True)
+class ObservationPoint:
+    """Espelho de `ObservationPoint` em packages/shared/src/contracts.ts (campo opcional `observations` do IngestBatch)."""
+    scope: str  # "BR" | "UF:MG"
+    category: str
+    source_class: str
+    hour: str  # início da hora, ISO-8601 UTC
+    signals: int
+    sources: int
+    duplicates: int = 0
+
+
+@dataclass(frozen=True)
+class InvestigationPoint:
+    """Espelho de `InvestigationPoint` em packages/shared/src/contracts.ts (campo opcional `investigations` do IngestBatch)."""
+    id: str
+    scope: str
+    category: str
+    status: str
+    started_at: str
+    last_update: str
+    initial_anomaly: float
+    anomaly: float
+    evidence_count: int
+    official_confirmation: bool
+    reasons: tuple[str, ...] = ()
+    last_anomalous_at: str | None = None
+
+
+@dataclass(frozen=True)
+class ForecastRegistryEntry:
+    """Espelho de `ForecastRegistryEntry` (contracts.ts): trilha de auditoria imutável da previsão."""
+    forecast_id: str
+    created_at: str
+    snapshot: str  # JSON canônico
+    snapshot_hash: str  # sha256 do snapshot
+
+
+@dataclass(frozen=True)
+class ShadowResultRow:
+    """Espelho de `ShadowResultRow` (contracts.ts): V1 x V2 x desfecho de uma previsão ou evento já resolvido."""
+    item_id: str
+    method: str
+    scope: str
+    p_v1: float
+    p_v2: float
+    outcome: int  # 0 | 1
+
+
+@dataclass(frozen=True)
+class DriverRegistryRow:
+    """Espelho de `DriverRegistryRow` (contracts.ts). Só state == "ACTIVE" altera a probabilidade."""
+    driver: str
+    target: str
+    scope: str
+    lag_hours: int
+    correlation: float
+    pairs: int
+    samples: int
+    state: str  # CANDIDATE | TESTING | ACTIVE | DEGRADED | DISABLED
+    brier_without: float | None = None
+    brier_with: float | None = None
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class CalibratorArtifact:
+    """Espelho de `CalibratorArtifact` (contracts.ts): calibrador versionado. Artefato imutável; só o status evolui (retired é terminal)."""
+    id: str  # cal-<método>-<versão>
+    method: str
+    version: str
+    fit_start: str
+    fit_end: str  # a janela de ajuste nunca inclui dado de teste/futuro
+    sample_count: int
+    artifact: str  # JSON
+    created_at: str
+    status: str = "candidate"  # candidate | active | retired
+
+
+@dataclass(frozen=True)
+class SourceRuntimeRow:
+    """Espelho de `SourceRuntimeRow` (contracts.ts): estado por fonte (frescor + circuit breaker), valores no instante `updated_at`."""
+    source_id: str
+    transport: str  # ONLINE | DEGRADED | RATE_LIMITED | OFFLINE | AUTH_ERROR
+    freshness_state: str  # FRESH | STALE | EMPTY | QUIET | UNKNOWN | UNAVAILABLE (UNKNOWN != 0: o transporte falhou)
+    newest_item_age_min: float | None
+    last_content_advance: str | None
+    records: int
+    new_records: int
+    duplicate_records: int
+    breaker_state: str  # CLOSED | OPEN | HALF_OPEN
+    consecutive_failures: int
+    next_attempt_at: str | None
+    opened_count: int
+    breaker_reason: str | None
+    updated_at: str

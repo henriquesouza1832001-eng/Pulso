@@ -131,6 +131,10 @@ export function BrazilMap({
 		let raf = 0;
 		let stopped = false;
 		let last = 0;
+		// Camada estática (terra, sombra, terreno, divisas, siglas…) desenhada UMA vez por mudança de
+		// estado/tamanho; por quadro só se copia a imagem e se desenha o pulso dos alertas.
+		const base = document.createElement("canvas");
+		let baseKey = "";
 
 		const draw = (ts: number) => {
 			if (stopped) return;
@@ -158,16 +162,17 @@ export function BrazilMap({
 			inv(cx + (x - pan[0] - cx) / z, cy + (y - pan[1] - cy) / z);
 		(canvas as HTMLCanvasElement & { __inv?: Inv }).__inv = invZoom;
 
-		const traceState = (rings: number[][][]) => {
-			g.beginPath();
+		// recebe o contexto de destino: a base estática é desenhada num canvas próprio
+		const traceState = (rings: number[][][], c: CanvasRenderingContext2D) => {
+			c.beginPath();
 			for (const r of rings) {
 				if (r.length < 6) continue;
 				r.forEach(([lon, lat], i) => {
 					const [x, y] = S(fwd(lon, lat));
-					if (i === 0) g.moveTo(x, y);
-					else g.lineTo(x, y);
+					if (i === 0) c.moveTo(x, y);
+					else c.lineTo(x, y);
 				});
-				g.closePath();
+				c.closePath();
 			}
 		};
 
@@ -187,6 +192,7 @@ export function BrazilMap({
 		};
 		(canvas as HTMLCanvasElement & { __stateAt?: (lon: number, lat: number) => string | null }).__stateAt = stateAt;
 
+		const paintBase = (g: CanvasRenderingContext2D) => {
 		// fundo oceânico + halo externo do país (sombra cartográfica)
 		g.fillStyle = "#070a0e";
 		g.fillRect(0, 0, w, h);
@@ -194,7 +200,7 @@ export function BrazilMap({
 		g.shadowColor = "rgba(59,164,255,0.18)";
 		g.shadowBlur = 26;
 		for (const st of BR_STATES) {
-			traceState(st.rings);
+			traceState(st.rings, g);
 			g.fillStyle = LAND;
 			g.fill();
 		}
@@ -204,7 +210,7 @@ export function BrazilMap({
 		const terrain = makeTerrainPattern(g);
 		if (terrain) {
 			for (const st of BR_STATES) {
-				traceState(st.rings);
+				traceState(st.rings, g);
 				g.fillStyle = terrain;
 				g.fill();
 			}
@@ -241,7 +247,7 @@ export function BrazilMap({
 			for (const st of BR_STATES) {
 				const info = perState.get(st.uf);
 				if (!info || info.level < 2) continue;
-				traceState(st.rings);
+				traceState(st.rings, g);
 				g.globalAlpha = info.level >= 4 ? 0.20 : info.level === 3 ? 0.14 : 0.09;
 				g.fillStyle = LVC[info.level];
 				g.fill();
@@ -297,7 +303,7 @@ export function BrazilMap({
 		for (const st of BR_STATES) {
 			const isHover = hover === `uf:${st.uf}`;
 			const isSel = st.uf === selUF;
-			traceState(st.rings);
+			traceState(st.rings, g);
 			g.strokeStyle = isSel ? ACC : isHover ? ACC : BORDER;
 			g.lineWidth = isSel ? 2 : isHover ? 1.6 : 1;
 			g.stroke();
@@ -311,7 +317,7 @@ export function BrazilMap({
 		g.strokeStyle = BORDER_HI;
 		g.lineWidth = 1.2;
 		for (const st of BR_STATES) {
-			traceState(st.rings);
+			traceState(st.rings, g);
 			g.stroke();
 		}
 
@@ -359,6 +365,43 @@ export function BrazilMap({
 			}
 		}
 
+		// barra de escala (km) — canto inferior esquerdo
+		{
+			const kmPerPx = (111.32 * Math.cos((-14 * Math.PI) / 180)) / (pscale * z);
+			let km = z >= 2 ? 200 : 500;
+			let barW = km / kmPerPx;
+			while (barW > 130) {
+				km /= 2;
+				barW = km / kmPerPx;
+			}
+			const bx = 14;
+			const by = h - 16;
+			g.strokeStyle = "rgba(237,237,237,0.75)";
+			g.lineWidth = 1;
+			g.beginPath();
+			g.moveTo(bx, by - 4);
+			g.lineTo(bx, by);
+			g.lineTo(bx + barW, by);
+			g.lineTo(bx + barW, by - 4);
+			g.stroke();
+			g.font = '8px "JetBrains Mono", monospace';
+			g.fillStyle = "rgba(237,237,237,0.7)";
+			g.fillText(`${km} KM`, bx + barW + 6, by - 1);
+		}
+		};
+		const key = `${canvas.width}x${canvas.height}`;
+		if (key !== baseKey) {
+			base.width = canvas.width;
+			base.height = canvas.height;
+			const bg = base.getContext("2d")!;
+			bg.setTransform(dpr, 0, 0, dpr, 0, 0);
+			paintBase(bg);
+			baseKey = key;
+		}
+		g.setTransform(1, 0, 0, 1, 0, 0);
+		g.drawImage(base, 0, 0);
+		g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
 		// alertas: marcador de nível + anel duplo + pulso respirando
 		if (layers.alertas) {
 			geoEvents.forEach((e, i) => {
@@ -404,29 +447,6 @@ export function BrazilMap({
 			});
 		}
 
-		// barra de escala (km) — canto inferior esquerdo
-		{
-			const kmPerPx = (111.32 * Math.cos((-14 * Math.PI) / 180)) / (pscale * z);
-			let km = z >= 2 ? 200 : 500;
-			let barW = km / kmPerPx;
-			while (barW > 130) {
-				km /= 2;
-				barW = km / kmPerPx;
-			}
-			const bx = 14;
-			const by = h - 16;
-			g.strokeStyle = "rgba(237,237,237,0.75)";
-			g.lineWidth = 1;
-			g.beginPath();
-			g.moveTo(bx, by - 4);
-			g.lineTo(bx, by);
-			g.lineTo(bx + barW, by);
-			g.lineTo(bx + barW, by - 4);
-			g.stroke();
-			g.font = '8px "JetBrains Mono", monospace';
-			g.fillStyle = "rgba(237,237,237,0.7)";
-			g.fillText(`${km} KM`, bx + barW + 6, by - 1);
-		}
 		};
 
 		// anima enquanto a aba está visível (pulso dos alertas); ~35fps é suficiente
@@ -438,16 +458,27 @@ export function BrazilMap({
 			}
 			raf = requestAnimationFrame(loop);
 		};
-		raf = requestAnimationFrame(loop);
-		const onVis = () => {
+		// Só anima com a aba visível E o mapa na tela; "reduzir movimento" desenha um quadro parado.
+		const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+		let onScreen = true;
+		const sync = () => {
 			cancelAnimationFrame(raf);
-			if (!document.hidden) raf = requestAnimationFrame(loop);
+			if (stopped) return;
+			if (still || document.hidden || !onScreen) raf = requestAnimationFrame((ts) => draw(ts)); // um quadro estático
+			else raf = requestAnimationFrame(loop);
 		};
-		document.addEventListener("visibilitychange", onVis);
+		const io = new IntersectionObserver(([en]) => {
+			onScreen = en?.isIntersecting ?? true;
+			sync();
+		});
+		io.observe(wrap);
+		sync();
+		document.addEventListener("visibilitychange", sync);
 		return () => {
 			stopped = true;
 			cancelAnimationFrame(raf);
-			document.removeEventListener("visibilitychange", onVis);
+			io.disconnect();
+			document.removeEventListener("visibilitychange", sync);
 		};
 	}, [bb, layers, zi, pan, perState, geoEvents, cityDots, selectedId, hover]);
 
@@ -594,7 +625,9 @@ export function BrazilMap({
 			/>
 
 			<div className="map-layers">
-				<span className="ml-title">CAMADAS</span>
+				<span className="ml-title" tabIndex={0}>
+					CAMADAS
+				</span>
 				{LAYER_ITEMS.map(([key, label]) => (
 					<label key={key} className="ml-item">
 						<input

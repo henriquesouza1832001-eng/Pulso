@@ -19,7 +19,7 @@ UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "
 DISPLAY = {"headline_link", "metrics_only", "full"}
 REQUIRED = ("id", "name", "adapter", "source_class", "url", "access", "terms_url", "interval_s",
             "retention_days", "display", "reviewed_by", "reviewed_at")
-MIN_INTERVAL_S = {"rss": 300, "sitemap": 300, "api": 60, "social": 60, "x": 300, "inmet": 300, "gdelt": 900, "mastodon": 600, "usgs": 600}
+MIN_INTERVAL_S = {"rss": 300, "sitemap": 300, "api": 60, "social": 60, "x": 300, "inmet": 300, "gdelt": 900, "mastodon": 600, "usgs": 600, "inpe_fires": 300, "bcb_ptax": 900, "idap_cap": 600, "infodengue": 3600, "ons_ear": 3600, "google_trends": 600, "bluesky": 300}
 
 
 PENDING = "PENDENTE"
@@ -59,10 +59,16 @@ def validate_source(src: dict) -> None:
         raise SourceConfigError(f"{sid}: authorized_scrape exige authorization_ref (autorização escrita)")
     if not (1 <= int(src["retention_days"]) <= 3650):
         raise SourceConfigError(f"{sid}: retention_days fora de 1–3650")
-    if src["adapter"] in ("reddit", "x"):
+    # Conformidade (docs/maturity/COMPLIANCE_REPORT.md): APPROVED/RESTRICTED só com decisão HUMANA e evidência; nunca automático.
+    if (decision := src.get("review_status")) is not None:
+        if decision not in ("APPROVED", "RESTRICTED", "PENDING", "DISABLED"):
+            raise SourceConfigError(f"{sid}: review_status deve ser APPROVED, RESTRICTED, PENDING ou DISABLED")
+        if decision in ("APPROVED", "RESTRICTED") and pending_items(src):
+            raise SourceConfigError(f"{sid}: {decision} exige terms_url, reviewed_by e reviewed_at reais (revisão humana)")
+    if src["adapter"] in ("reddit", "x", "bluesky"):
         if src["access"] != "official_api" or src["source_class"] != "SOCIAL":
             raise SourceConfigError(f"{sid}: sensor social exige official_api e SOCIAL")
-        needed = "subreddit" if src["adapter"] == "reddit" else "query"
+        needed = {"reddit": "subreddit", "bluesky": "queries"}.get(src["adapter"], "query")
         if not src.get(needed):
             raise SourceConfigError(f"{sid}: adapter {src['adapter']} exige '{needed}'")
         if (regional := src.get("subreddit_states")) is not None:

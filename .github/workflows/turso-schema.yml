@@ -1,0 +1,35 @@
+name: Turso schema
+
+# Aplica no Turso as migrations novas (database/migrations e database/pending). Idempotente: cada arquivo roda uma vez
+# (tabela _pulso_migrations) e NÃO copia dados. Roda quando as migrations mudam, na hen (antes do merge, para o Worker novo
+# nunca encontrar uma tabela ausente) e na main, ou manualmente.
+on:
+  workflow_dispatch:
+  push:
+    branches: [hen, main]
+    paths:
+      - database/migrations/**
+      - database/pending/**
+      - engine/scripts/turso_migrate.py
+      - .github/workflows/turso-schema.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: turso-schema
+  cancel-in-progress: false
+
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    env:
+      TURSO_URL: ${{ secrets.TURSO_URL }}
+      TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Aplicar migrations no Turso
+        run: python engine/scripts/turso_migrate.py

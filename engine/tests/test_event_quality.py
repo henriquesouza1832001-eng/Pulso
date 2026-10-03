@@ -72,8 +72,13 @@ def test_publishability_policy():
 def test_inherited_source_state_does_not_place_a_national_story():
     sigs = [sig(i, "x", source=f"s{i}") for i in range(5)] + [sig(9, "x", source="rn", state="RN", conf=35)]
     assert event_place(sigs) is None
-    confident = [sig(i, "x", source=f"s{i}") for i in range(5)] + [sig(9, "x", source="rn", state="RN", conf=90)]
-    assert event_place(confident).state == "RN"  # lugar explícito no texto vale mesmo sendo um só sinal
+    assert event_place([sig(1, "x", source="a"), sig(9, "x", source="rn", state="RN", conf=90)]).state == "RN"  # notícia local pequena
+    # pauta nacional (7 fontes) em que UM sinal cita o Amazonas: não vira evento do AM
+    national = [sig(i, "x", source=f"s{i}") for i in range(6)] + [sig(9, "x", source="am", state="AM", conf=90)]
+    assert event_place(national) is None
+    # mas quando uma parte relevante dos sinais cita o estado, ele vale
+    local = [sig(i, "x", source=f"s{i}", state="AM", conf=90) for i in range(3)] + [sig(9, "x", source="z"), sig(10, "x", source="y")]
+    assert event_place(local).state == "AM"
 
 
 def test_title_decides_the_category_before_the_summary():
@@ -84,3 +89,37 @@ def test_title_decides_the_category_before_the_summary():
     src = {"id": "t", "source_class": "NEWS_HIGH", "url": "https://x"}
     (s,) = RssAdapter(src, None, lambda u: xml.encode(), lambda: NOW).run()
     assert s.category == "POLITICS"
+
+
+def test_text_impact_raises_severity_within_the_same_category():
+    from pulso_engine.events import stats_for
+    routine = [sig(1, "Chuva forte molha a cidade nesta sexta-feira", cat="WEATHER")]
+    deadly = [sig(2, "Enchente deixa 3 mortos e desabrigados na cidade", cat="WEATHER")]
+    gossip = [sig(3, "Famosos comentam o casamento da novela e a fofoca do BBB", cat="WEATHER")]
+    r, d, g = (stats_for(x, NOW).severity for x in (routine, deadly, gossip))
+    assert d >= r + 10  # mortes pesam bem mais que o relato de rotina
+    assert g <= r       # entretenimento nunca sobe a severidade
+    assert d <= 100
+
+
+def test_explicit_state_sigla_counts_as_well_located_so_different_states_never_merge():
+    """Caso real de produção: 'Defesa Civil: Inundações (extremo) em São Borja/RS' (sigla, conf. 55) se fundia com os
+    alertas de Manaus/AM porque a trava exigia confiança 60. Sigla é menção explícita de estado: tem que valer."""
+    rs = sig(1, "Defesa Civil: Inundações (extremo) em São Borja/RS", source="idap", cls="OFFICIAL", cat="EMERGENCY", state="RS", conf=55)
+    am = sig(2, "Defesa Civil: Corridas de massa (extremo) em Manaus/AM", source="idap", cls="OFFICIAL", cat="EMERGENCY", state="AM", conf=70)
+    assert len(cluster_signals([rs, am])) == 2
+    # um estado só herdado da fonte regional (35) ou por gentílico (50) continua sem travar o agrupamento
+    inherited = sig(3, "Defesa Civil: Inundações (extremo) em São Borja/RS", source="g1-rs", state="RS", conf=35)
+    assert len(cluster_signals([inherited, am])) == 1
+
+
+def test_idap_alert_with_only_state_known_gets_full_state_confidence():
+    from pulso_engine.collectors.official.idap_cap import IdapCapAdapter
+    xml = ("<feed xmlns='http://www.w3.org/2005/Atom'><entry><content type='text/xml'>"
+           "<alert xmlns='urn:oasis:names:tc:emergency:cap:1.2'><identifier>1/2026</identifier><sent>2026-10-03T00:10:00-03:00</sent>"
+           "<status>Actual</status><msgType>Alert</msgType><info><event>INUNDAÇÕES</event><severity>Extreme</severity>"
+           "<expires>2026-10-03T23:55:00-03:00</expires><description>x</description>"
+           "<area><areaDesc>São Borja/RS</areaDesc></area></info></alert></content></entry></feed>").encode()
+    src = {"id": "idap", "adapter": "idap_cap", "source_class": "OFFICIAL", "url": "https://x"}
+    (s,) = IdapCapAdapter(src, None, lambda u: xml, lambda: NOW).run()
+    assert s.state == "RS" and s.geo_confidence == 70 and s.geo_precision == "STATE"

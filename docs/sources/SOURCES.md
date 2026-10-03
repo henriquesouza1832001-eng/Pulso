@@ -12,8 +12,12 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
 | GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 desligada: **não validada ao vivo** (429 persistente mesmo a 7 s de intervalo e consulta vazia em 2026-10-03) |
-| Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
-| USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | ⏸ desligada **por medição** (ver ficha): sem atividade recente sobre desastres em português |
+| USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | ✅ ativa (2026-10-03); entra como INTERNATIONAL, coordenadas só dentro do Brasil |
+| **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
+| **Banco Central, dólar PTAX** (choque cambial) | OFFICIAL | Olinda OData aberto (`bcb_ptax`) | ✅ ativa; só emite com variação ≥ 1% |
+| **Defesa Civil Nacional** (alertas oficiais IDAP/CAP) | OFFICIAL | feed Atom/CAP aberto (`idap_cap`) | ✅ ativa, revisão de termos pendente (ver ficha) |
+| **InfoDengue** (Fiocruz/FGV): alerta de dengue nas 27 capitais | OFFICIAL | API aberta (`infodengue`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
 | Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
@@ -141,7 +145,7 @@ Limites e custo: gratuito; o feed atualiza a cada minuto, usamos 900 s.
 Dados coletados e retenção: título, link, data; coordenadas só se dentro do Brasil. Retenção 90 dias.
 Termos relevantes: domínio público do governo dos EUA, citar a fonte.
 Exibição pública permitida: sim (headline_link).
-Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional.
+Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional. As coordenadas só são guardadas quando o PRÓPRIO USGS diz que o abalo é no Brasil (o título termina em ", Brazil"); uma caixa de coordenadas pegaria Chile, Argentina, Bolívia e Peru.
 ```
 
 ## Catálogo RSS em escala (2026-10-03)
@@ -161,4 +165,120 @@ Critérios de entrada: testado ao vivo com o coletor real; publicação recente;
 Leitor tolerante: gzip (com limite na saída), RSS 1.0/RDF (gov.br), '&' solto e entidades HTML; declarações <!ENTITY seguem recusadas.
 Cobertura regional: G1 de 17 estados; ES, SC, PA, MA, AM, RN, BA, DF, SP (Metrópoles), RJ (prefeitura) e GO (governo) por portais locais.
   Lacunas: não há RSS regional utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018).
+```
+
+## Ficha: INPE Queimadas (`inpe-queimadas`)
+```
+Fonte / URL: https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/diario/Brasil/focos_diario_br_AAAAMMDD.csv
+Tipo de acesso: dados abertos (CSV por dia UTC, atualizado ao longo do dia; sem chave). Portal: https://terrabrasilis.dpi.inpe.br/queimadas/situacao-atual/
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. O arquivo do dia é cronológico e pode passar de 5 MB na temporada de pico; por isso o coletor lê só o **cabeçalho e o final** por HTTP `Range` (até 4 MB, que cobrem mais de 3 h mesmo no pico, ~0,8 s por leitura; se o servidor ignorar o Range, lê o arquivo inteiro com teto de 40 MB). Perto da meia-noite UTC lê também o do dia anterior.
+Dados coletados e retenção: nenhum foco individual é guardado: só um sinal por UF e por janela de 3 h quando passa de `min_focos` (150) detecções, com a contagem, as 3 cidades de maior concentração, o bioma e a potência radiativa somada. Retenção 90 dias.
+Frequência: 600 s.
+Fallback se cair: a fonte fica OFFLINE (o arquivo do dia pode não existir logo após 00:00 UTC; o coletor tenta o do dia anterior). As demais seguem.
+Termos relevantes: dados abertos do INPE; citar a fonte. Confirmar a política de uso no portal antes de tratar a revisão como concluída (terms_url = PENDENTE).
+Exibição pública permitida: headline_link, sempre com atribuição ao INPE.
+Calibração: com 150 detecções em 3 h por UF, o dia 2026-10-02 (20 392 detecções no Brasil, temporada seca) teria dado ~25 sinais em 9 estados; limiares mais baixos geram dezenas de sinais por dia. Ajustável em `min_focos` e `window_h`.
+Papel: fonte OFICIAL e objetiva da frente de fogo (e da fumaça sobre as cidades). Um foco é uma detecção de calor por satélite, não um incêndio confirmado: o texto diz "detecções".
+```
+
+## Ficha: Banco Central, dólar PTAX (`bcb-ptax`)
+```
+Fonte / URL: https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo (OData, JSON)
+Tipo de acesso: dados abertos do Banco Central, sem chave. Termos: https://www.bcb.gov.br/acessoinformacao/dadosabertos
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Uma consulta de ~10 dias por rodada (poucos bytes).
+Dados coletados e retenção: título e texto curtos calculados com as duas últimas cotações PTAX de venda; só quando a variação diária passa de `min_pct` (1,0%) e a cotação tem menos de 48 h. Retenção 90 dias.
+Frequência: 1800 s (a PTAX é divulgada uma vez por dia útil, por volta das 13h de Brasília).
+Fallback se cair: a fonte fica OFFLINE; as demais seguem. Dia calmo = sem sinal, e isso é normal (quiet_ok: aparece ONLINE, não DEGRADED).
+Observação: `api.bcb.gov.br` (série SGS) não resolveu DNS no ambiente de teste; o serviço `olinda.bcb.gov.br` respondeu e é o usado.
+Exibição pública permitida: headline_link, com atribuição ao Banco Central do Brasil.
+Papel: sinal econômico oficial e objetivo (o dólar pressiona combustível, alimentos e viagens). Cobre a categoria ECONOMY sem depender da imprensa.
+```
+
+## Ficha: ONS, energia armazenada nos reservatórios (`ons-ear`)
+```
+Fonte / URL: https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/ear_subsistema_di/EAR_DIARIO_SUBSISTEMA_<ano>.csv (CSV anual, ";" como separador). Catálogo: https://dados.ons.org.br/dataset/ear-diario-por-subsistema
+Tipo de acesso: dados abertos do Operador Nacional do Sistema Elétrico, sem chave. Termos: https://dados.ons.org.br/
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Um arquivo de ~55 KB por rodada.
+Dados coletados e retenção: só o percentual de energia armazenada por subsistema (SE/CO, S, NE, N); título e texto curtos calculados; só quando algum subsistema fica abaixo de `min_level` (30%) ou cai `min_drop_pp` (8 p.p.) em 7 dias. Dado com mais de 5 dias é ignorado.
+Frequência: 3600 s (o ONS publica diariamente, com 1 a 2 dias de atraso).
+Fallback se cair: a fonte fica OFFLINE; as demais seguem. Situação normal = sem sinal (quiet_ok).
+Observação: validado com o CSV real (último dia 2026-10-01; SE 56,3%, S 83,2%, NE 68,2%, N 71,8%). O id do subsistema vem com espaço à direita ("N ", "S "); o adaptador faz strip.
+Exibição pública permitida: headline_link, com atribuição ao ONS.
+Papel: sinal oficial de INFRASTRUCTURE (bandeira tarifária, risco de racionamento), antes da imprensa.
+```
+
+## Ficha: Google Trends Brasil, em alta (`google-trends-br`)
+```
+Fonte / URL: https://trends.google.com/trending/rss?geo=BR (RSS público das buscas em alta no Brasil)
+Tipo de acesso: feed público, sem chave e sem login. Termos: https://policies.google.com/terms (PENDENTE de revisão do dono).
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Uma requisição de ~20 KB a cada 15 min (o feed atualiza a cada poucos minutos, ~10 termos).
+Dados coletados e retenção: termo em alta, volume aproximado (`approx_traffic`) e título/URL das notícias que o Google associa; sem dado de usuário. 30 dias.
+Frequência: 900 s.
+Fallback se cair: fica OFFLINE; as demais seguem. Sem termo importante = sem sinal (quiet_ok).
+Observação: validado ao vivo em 2026-10-03 (10 termos; filtro de importância deixa passar eleição, segurança, clima e derruba celebridade/entretenimento). A geolocalização usa só termo + manchete principal.
+Exibição pública permitida: headline_link (link da notícia original), com atribuição ao Google Trends.
+Papel: termômetro de ATENÇÃO (estilo pizza index). Classe SOCIAL (confiabilidade baixa): detecta, nunca confirma; só pesa quando casa com imprensa/oficial.
+```
+
+## Ficha: Bluesky, busca de posts (`bluesky-politics`, `bluesky-clima`)
+```
+Fonte / URL: https://bsky.social/xrpc/app.bsky.feed.searchPosts (API oficial AT Protocol, PDS bsky.social)
+Tipo de acesso: API oficial, conta dedicada do projeto + SENHA DE APP (nunca a senha da conta). Termos: https://bsky.social/about/support/tos (PENDENTE de revisão do dono).
+Autenticação e secrets: BLUESKY_HANDLE e BLUESKY_APP_PASSWORD (segredos do GitHub; nunca no repositório).
+Limites e custo: gratuito. Uma sessão (`createSession`) + uma busca por termo a cada 15 min (até 8 termos, 25 posts cada). A criação de sessão tem limite próprio (dezenas por 5 min), longe do nosso uso.
+Dados coletados e retenção: título curto do post sem links e @menções; link pelo DID da conta (opaco); sem autor, sem texto integral, sem métricas. 1 dia. Posts com rótulo de moderação ou fora do português são descartados.
+Frequência: 900 s.
+Fallback se cair: fica OFFLINE/AUTH_ERROR; as demais seguem.
+Observação: NÃO validado contra o serviço real (sem a conta ainda): a busca pública sem login devolveu HTTP 403 em 2026-10-03. Validar com o workflow "Verificar chaves sociais" assim que a conta existir.
+Exibição pública permitida: metrics_only (só contagem/agregado); classe SOCIAL, detecta e nunca confirma.
+Papel: detector rápido de eventos de clima, emergência e política.
+```
+
+## Fontes de alerta (`alert_source`)
+As fontes marcadas com `"alert_source": true` (`inmet-avisos`, `defesa-civil-idap`) são canais oficiais de alerta de desastre: um alerta delas classificado como EMERGENCY (risco extremo) dá ao evento um piso de nível PULSO 3 (ver `docs/SCORING.md`). Não marque como `alert_source` uma fonte de comunicados ou notícias.
+
+## Fontes de limiar (`quiet_ok`)
+Fontes que só emitem quando passam de um limiar (`inmet-avisos`, `inpe-queimadas`, `bcb-ptax`) levam `"quiet_ok": true` em `sources.json`: sem ocorrência no limiar a saúde é ONLINE ("sem ocorrências no limiar"), e não DEGRADED. Fonte de feed contínuo (RSS) sem itens continua DEGRADED.
+
+## Ficha: Defesa Civil Nacional, alertas IDAP/CAP (`defesa-civil-idap`)
+```
+Fonte / URL: https://idapfile.mdr.gov.br/idap/api/rss/cap (feed Atom com mensagens CAP 1.2 da Interface de Divulgação de Alertas Públicos, do MIDR)
+Tipo de acesso: feed público, sem chave. É o mesmo canal que os alertas oficiais de celular e que projetos de Defesas Civis estaduais já consomem.
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. O feed é GRANDE (~22 MB, sem compressão, ~11 s por leitura) porque cada alerta carrega polígonos; o servidor mantém cache de 5 min (`X-Feed-Cache: NGINX - 5 minutes`). Por isso a leitura é em fluxo (pico de ~5 MB de memória) e o intervalo é de 900 s (~2 GB/dia de banda do GitHub Actions; reduzir se o MIDR pedir).
+Dados coletados e retenção: um sinal por alerta vigente (identifier), só severidade Moderate ou maior: evento, severidade, áreas, descrição curta e data. Nenhum polígono é guardado. Alertas vencidos, cancelados (msgType Cancel) ou de teste (status != Actual) não entram. Retenção 90 dias.
+Frequência: 900 s.
+Fallback se cair: a fonte fica OFFLINE; INMET e as demais seguem. Sem alerta vigente = ONLINE ("sem ocorrências no limiar", `quiet_ok`).
+Segurança: o leitor recusa DOCTYPE/ENTITY, impõe teto de 60 MB e lê em pedaços de 64 KB.
+Termos relevantes: feed público do MIDR; confirmar a política de uso antes de tratar a revisão como concluída (terms_url = PENDENTE). Atribuição: Defesa Civil Nacional / MIDR.
+Exibição pública permitida: headline_link.
+Papel: fonte OFICIAL do alerta de desastre (chuvas intensas, estiagem, corridas de massa...). Severidade Extreme vira categoria EMERGENCY; as demais, WEATHER.
+```
+
+### Medição do Mastodon como sensor de desastre (2026-10-03)
+Testadas 10 instâncias e as hashtags `chuva`, `enchente`, `incendio`, `brasil` e `eleicoes2026` (timelines públicas, só posts em português). Resultado: as hashtags de desastre quase não têm atividade (o post mais recente sobre `chuva` em todas as instâncias tinha 93 h, sobre `enchente`, 128 h a 900 h); só `brasil` e `eleicoes2026` têm movimento, de poucos posts por hora. Conclusão: o Mastodon **não serve como sensor rápido de desastre no Brasil** (a base de usuários em português é pequena). Fica desligado; reabrir se a base crescer. Alternativa gratuita com mais volume em português: Bluesky, que exige conta com *app password* (secrets `BSKY_HANDLE` e `BSKY_APP_PASSWORD`, a criar pelo dono); o adaptador só deve ser escrito com a credencial em mãos, para validar o formato da resposta.
+
+### Fontes que funcionam de uma rede e são bloqueadas da outra (2026-10-03)
+- `metsul` (MetSul Meteorologia): o feed responde da rede local, mas devolve **HTTP 403 a partir do GitHub Actions** (bloqueio de IP de nuvem). Está **desligada** em `sources.json` (campo `note`). Não se contorna bloqueio (COLLECTION_PROTOCOL §1). Reabrir se o veículo liberar o acesso (contato) ou se a coleta passar a rodar de outro ambiente.
+- Lição de teste: validar uma fonte **só da máquina local não basta**. O ambiente que importa é o do GitHub Actions; `py -m pulso_engine.audit` rodado lá (ou o painel `/api/health` depois do deploy) é a verificação real. O verificador de saúde automático (`healthcheck.yml`) aponta fontes OFFLINE.
+- Falhas de rede transitórias (timeout, conexão resetada) têm UMA nova tentativa; erros HTTP (403, 429, 5xx) não são repetidos.
+
+## Ficha: InfoDengue (`infodengue-capitais`)
+```
+Fonte / URL: https://info.dengue.mat.br/api/alertcity?geocode=<IBGE>&disease=dengue&format=json&ew_start=1&ew_end=53&ey_start=<ano>&ey_end=<ano>
+Tipo de acesso: API pública do InfoDengue (Fiocruz/FGV), sem chave.
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. 27 requisições (uma por capital, ~30 KB cada) por leitura, ~25 s; intervalo de 21 600 s (6 h), pois o dado é semanal.
+Dados coletados e retenção: um sinal por capital quando o nível do alerta da semana epidemiológica mais recente é >= 3 (laranja ou vermelho): casos estimados (com intervalo), incidência por 100 mil, Rt e o nível. Retenção 90 dias.
+Cobertura: as 27 capitais. Os 27 geocódigos IBGE foram conferidos ao vivo contra o `municipio_nome` da API.
+Fallback se cair: uma capital que falha não derruba as outras; se TODAS falham a fonte fica OFFLINE. Sem capital em nível >= 3 = ONLINE ("sem ocorrências no limiar", `quiet_ok`).
+Termos relevantes: https://info.dengue.mat.br/ (citar a fonte: InfoDengue, Fiocruz/FGV). terms_url = PENDENTE até alguém confirmar a política de uso.
+Exibição pública permitida: headline_link, com atribuição.
+Atenção: o nível é um alerta de transmissão MODELADO, não contagem de casos confirmados; o texto diz "estimados". O sinal descreve a situação atual (timestamp = coleta) e tem hash estável por (município, semana, nível).
+Primeira leitura real (2026-10-03, baixa temporada): Belo Horizonte em alerta laranja (semana 38; 756 casos estimados, Rt 1,54); Recife e São Luís em amarelo.
+Papel: cobre a categoria HEALTH com dado oficial e objetivo, em vez de depender só da imprensa.
 ```
