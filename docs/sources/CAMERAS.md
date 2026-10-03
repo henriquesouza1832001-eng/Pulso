@@ -5,7 +5,7 @@ Objetivo: exibir imagem/vídeo ao vivo de câmeras públicas na plataforma, para
 ## Lista A: pode entrar sem pedir permissão a órgão (condições abaixo)
 | Fonte | O que oferece | Condição verificada | Pendência |
 |---|---|---|---|
-| **Windy Webcams API** (`api.windy.com/webcams`) | Webcams do mundo todo (inclui praias e cidades), imagens e player | Plano gratuito existe; exige **chave de API** (`x-windy-api-key`); URLs das imagens expiram em 10 min no plano gratuito; termos exigem **atribuição** ("Webcams provided by Windy.com"), **link** de cada imagem para a página da webcam ou o player, usar **só as URLs da API** e não esticar a imagem. Ver https://api.windy.com/webcams/terms | Criar a chave (só o dono do projeto pode, é cadastro pessoal); confirmar cobertura no Brasil e os termos completos antes de ativar. |
+| **Windy Webcams API** (`api.windy.com/webcams`) | Webcams do mundo todo (inclui praias e cidades), imagens e player | Plano gratuito existe; exige **chave de API** (`x-windy-api-key`); URLs das imagens expiram em 15 min no plano gratuito; termos exigem **atribuição** ("Webcams provided by Windy.com"), **link** de cada imagem para a página da webcam ou o player, usar **só as URLs da API** e não esticar a imagem. Ver https://api.windy.com/webcams/terms | Criar a chave (só o dono do projeto pode, é cadastro pessoal); confirmar cobertura no Brasil e os termos completos antes de ativar. |
 
 ## Lista B: visualização pública, mas só com **link** para o painel oficial (não embutir, não copiar)
 | Fonte | O que oferece | Por que só link |
@@ -20,6 +20,11 @@ Objetivo: exibir imagem/vídeo ao vivo de câmeras públicas na plataforma, para
 | **RealData Telecom**, `realdata.com.br/cameras-ao-vivo` | **6 câmeras** de ruas de BH e Contagem (Barreiro x4, Floresta/Centro, Industrial), player embutível `monitore.realdata.com.br/#/cembed/<token>`; `robots.txt` permite o site | É uma página de marketing do provedor de internet ("quer câmeras na sua rua?"), sem termos de reuso; sem coordenadas exatas (só bairro). Cadastradas em `engine/config/cameras.json` com `enabled: false`. Pedir autorização escrita (contato@realdata.com.br, (31) 3381-3381): o provedor tem interesse comercial em exposição, então a chance é boa. |
 
 Limite honesto: essa página tem 6 câmeras, não centenas. Mil ou mais câmeras no país só vêm de catálogos agregados (Windy, com chave) ou de acordos com órgãos/concessionárias; não de uma lista única aberta.
+
+## Lista B3: concessionária com HLS público no próprio site (verificado em 2026-10-03)
+| Fonte | O que oferece | Condição |
+|---|---|---|
+| **Motiva (ex-CCR RioSP)**, `rodovias.motiva.com.br/riosp/cameras-ao-vivo` | **10 câmeras** nomeadas da Via Dutra (KM 78 Roseira a KM 315 Itatiaia, SP/RJ); cada uma com stream HLS (`.m3u8` no CloudFront), testado: responde 200 e playlist 480p | Sem termos de reuso na página; ligar direto no CDN deles seria hotlink. Sem coordenadas (só km e cidade). Cadastradas em `cameras.json` com `enabled: false`; pedir autorização à Motiva. Só essa concessão tem a página; outras do grupo não foram achadas. |
 
 ## Lista C: sem caminho aberto hoje
 | Fonte | Situação |
@@ -48,7 +53,7 @@ Limite honesto: essa página tem 6 câmeras, não centenas. Mil ou mais câmeras
 
 ## Para construir (quando houver a chave do Windy)
 1. Contrato de `/api/cameras`: `id`, `label`, `city`, `state`, `lat`, `lon`, `provider`, `attribution`, `page_url`, `embed` (tipo e URL). Atualizar `contracts.ts`, `models.py` e `API.md` no mesmo PR, com a label `contract`.
-2. Worker: rota que consulta a API do Windy com a chave em secret e devolve só os campos acima (a chave nunca vai ao navegador); cache curto respeitando a expiração de 10 min.
+2. Worker: rota que consulta a API do Windy com a chave em secret e devolve só os campos acima (a chave nunca vai ao navegador); cache curto respeitando a expiração de 15 min.
 3. Front: o `Cameras.tsx` já recebe uma lista; trocar `DEMO_CAMERAS` por essa rota e exibir atribuição e link.
 
 ## Concentrar câmeras onde algo importante acontece (desenho)
@@ -57,3 +62,21 @@ Limite honesto: essa página tem 6 câmeras, não centenas. Mil ou mais câmeras
 3. O front destaca "câmeras perto deste evento" no detalhe do evento e um mosaico "onde está acontecendo agora" com as câmeras dos eventos de maior nível.
 4. Isso muda o contrato (`/api/cameras` e o endpoint do evento): mesmo PR atualiza `contracts.ts`, `models.py` e `API.md`, com label `contract`.
 Hoje só há 6 câmeras (nenhuma habilitada, nenhuma com coordenada), então ainda não faz sentido construir a rota: primeiro entram Windy (com chave) e as autorizações.
+
+## Planos da Windy (captura de tela do dono, 2026-10-03) e estratégia de limites
+| | Free | Professional |
+|---|---|---|
+| Uso | link para windy.com **ou** player de timelapse embutido | sem anúncio, API sem restrição |
+| Imagem | tamanho limitado (player ilimitado) | sem limite |
+| Validade da URL da imagem | **15 min** | 24 h |
+| Listagem (offset máximo) | **1000** | 10 000, mais "listar todas" numa chamada |
+| Preço | grátis | **9 990 €/ano** |
+
+Decisão: o Professional (~R$ 60 mil/ano) não compensa. O Free serve: a lista de câmeras muda pouco, então o Worker faz a consulta, **guarda em cache por horas** e só renova a URL da imagem quando expira (15 min); o navegador carrega o player embutido da Windy, que não gasta cota da nossa chave. Para passar de 1000 câmeras sem o plano pago, consultar por filtros (país, estado, categoria) e juntar os resultados (a confirmar com a chave, ver abaixo). A taxa de requisições do plano grátis **não aparece na tela de planos**: confirmar na documentação ao criar a chave.
+
+Sobre "mais de uma API e ir trocando para não bater o limite": usar **provedores diferentes** (Windy, Motiva, DAER, CET-SP com autorização) é a estratégia certa. Já **várias chaves/contas do mesmo provedor em rodízio** para furar a cota é contornar o limite e viola os termos da Windy; não será implementado. O caminho legítimo é cache + filtros + um segundo provedor.
+
+## Agregadores avaliados (2026-10-03)
+- `acervodigital.net` e `digitei.com`: páginas de texto (SEO) que apenas linkam os donos (CET-SP, DER-SP, Motiva, DAER/EGR, DNIT, Ecovias, Skyline). Sem player nem dado reaproveitável; servem de índice de onde procurar.
+- `skylinewebcams.com`: ~113 páginas de câmeras no Brasil, empresa comercial sem API pública; só link, nunca copiar.
+- `wavesnow.com.br`: não respondeu no teste (timeout); reavaliar.

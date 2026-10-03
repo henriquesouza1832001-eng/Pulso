@@ -102,6 +102,176 @@
    },
    "enabled": false,
    "status": "aguardando autorização escrita da RealData"
+  },
+  {
+   "id": "motiva-riosp-km78",
+   "label": "KM 78 - Roseira, SP",
+   "city": "Roseira",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://d3b8201cy0qzzb.cloudfront.net/out/v1/db7ff89ac2dc4a2fa37f763f27429d86/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km100",
+   "label": "KM 100 - Taubaté, SP",
+   "city": "Taubaté",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/e324b6a41320417c9e63b06835fd3a5f/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km156",
+   "label": "KM 156 - São José dos Campos, SP",
+   "city": "São José dos Campos",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/0fc685c0aa5c468687bbd6c0f751edd6/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km160",
+   "label": "KM 160 - Jacareí, SP",
+   "city": "Jacareí",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/776fef1557fd49569d4528f0f41fcf98/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km202",
+   "label": "KM 202 - Arujá, SP",
+   "city": "Arujá",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://d3b8201cy0qzzb.cloudfront.net/out/v1/f7d3e1cb49d04cd9a8f4d18c17cb4d1f/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km210",
+   "label": "KM 210 - Guarulhos, SP",
+   "city": "Guarulhos",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/3cda6b49f31b4e129cb917f78bf36c26/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km224",
+   "label": "KM 224 - Paracambi, RJ",
+   "city": "Paracambi",
+   "state": "RJ",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/4e01de7aff184385a6a4cff8524c742f/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km225",
+   "label": "KM 225 - Guarulhos, SP",
+   "city": "Guarulhos",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://d3b8201cy0qzzb.cloudfront.net/out/v1/4bd31ad7560846e08093f9552f92a8d0/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km230",
+   "label": "KM 230 - São Paulo, SP",
+   "city": "São Paulo",
+   "state": "SP",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://dlziwpy8wmigq.cloudfront.net/out/v1/e664a9b9ae1d4de38ac33c70857a1371/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
+  },
+  {
+   "id": "motiva-riosp-km315",
+   "label": "KM 315 - Itatiaia, RJ",
+   "city": "Itatiaia",
+   "state": "RJ",
+   "lat": null,
+   "lon": null,
+   "provider": "Motiva (RioSP)",
+   "attribution": "Motiva Rodovias",
+   "page_url": "https://rodovias.motiva.com.br/riosp/cameras-ao-vivo/",
+   "embed": {
+    "type": "hls",
+    "url": "https://d3b8201cy0qzzb.cloudfront.net/out/v1/12d7e2e551894165a5e2d08fc2b58b20/CMAF_HLS/index.m3u8"
+   },
+   "enabled": false,
+   "status": "aguardando autorização da Motiva"
   }
  ]
 }
