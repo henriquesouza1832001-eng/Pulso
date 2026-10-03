@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 MIN_HOURS = 12  # horas com dados exigidas para confiar no baseline
+MIN_DATA_HOURS = 6  # ... das quais ao menos estas com algum sinal (horas zeradas podem ser lacuna de coleta, não calmaria)
 ALPHA = 0.15  # peso da hora mais recente na EWMA
 
 
@@ -18,10 +19,13 @@ class Baseline:
     mean: float
     std: float
     hours: int  # quantas horas de histórico sustentam o baseline
+    data_hours: int = 0  # ... e em quantas delas houve ao menos um sinal
 
     @property
     def valid(self) -> bool:
-        return self.hours >= MIN_HOURS
+        # Linhas só existem para janelas COM sinal: hora sem linha vira 0, e 0 pode ser calmaria OU uma lacuna de coleta
+        # (o sistema não distingue). Um "normal" feito quase só de zeros faria 4 sinais parecerem uma anomalia enorme.
+        return self.hours >= MIN_HOURS and self.data_hours >= max(MIN_DATA_HOURS, self.hours // 3)
 
 
 def hourly_counts(rows: list[dict], scope: str, category: str, until: datetime, hours: int = 48) -> list[int]:
@@ -46,11 +50,11 @@ def hourly_counts(rows: list[dict], scope: str, category: str, until: datetime, 
 
 def ewma_baseline(values: list[int]) -> Baseline:
     if not values:
-        return Baseline(0.0, 0.0, 0)
+        return Baseline(0.0, 0.0, 0, 0)
     mean = float(values[0])
     var = 0.0
     for v in values[1:]:
         diff = v - mean
         mean += ALPHA * diff
         var = (1 - ALPHA) * (var + ALPHA * diff * diff)
-    return Baseline(mean, math.sqrt(var), len(values))
+    return Baseline(mean, math.sqrt(var), len(values), sum(1 for v in values if v > 0))

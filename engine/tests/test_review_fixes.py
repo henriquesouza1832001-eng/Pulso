@@ -70,8 +70,10 @@ def test_regeolocate_keeps_source_geography_and_clears_stale_text_geography():
     assert regeolocate(sig("g1-rs", "RS"), geo).state == "RS"      # estado do feed regional sobrevive
     assert regeolocate(sig("inpe", "PA", conf=60), geo).state == "PA"
     assert regeolocate(sig("folha", "PA"), geo).state is None      # localização antiga errada de fonte nacional é limpa
-    fixed = regeolocate(sig("g1-rs", "RS", text="Enchente atinge Manaus"), geo)
-    assert fixed.state == "AM"                                     # o texto, quando cita lugar, sempre corrige
+    # fonte geográfica nunca é sobrescrita pelo texto (já foi decidida na coleta; reaplicar só a trocaria por um centroide)
+    assert regeolocate(sig("g1-rs", "RS", text="Enchente atinge Manaus"), geo).state == "RS"
+    # já para fonte NÃO geográfica, o texto que cita lugar corrige a localização antiga
+    assert regeolocate(sig("folha", "PA", text="Enchente atinge Manaus"), geo).state == "AM"
 
 
 # ---- 3) sinal de um evento que não foi reenviado não pode ser descartado -------------------------------------------------
