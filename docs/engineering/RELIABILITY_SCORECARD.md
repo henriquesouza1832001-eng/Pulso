@@ -16,7 +16,7 @@ Data de corte: 2026-10-03. Os status abaixo não são uma nota única; `VALIDATE
 ## Métricas disponíveis
 
 - Testes locais: 483 pass, 24 avisos de conformidade pendente.
-- Métricas de previsão (Brier, Brier Skill, ECE, FPR, recall, lead time): **N/A**; faltam desfechos reais completos e shadow pareado.
+- Fotografia pública de produção em 2026-10-03 (`/api/forecasts/track-record`): V1 `pulse_empirical_delta` tem 20 resolvidas, 4 abertas e 4 anuladas; 0 positivos observados, Brier médio `0,01961455`, probabilidade média `0,09928` e referência Brier `0`. Brier Skill é **indefinido** (referência zero), e precisão, recall, FPR, lead time e intervalos de confiança são **N/A**. Os bins reportados são 17 previsões com p média 6,70%/0% observado e 3 com p média 28,22%/0% observado. Isso sugere sobreprevisão inicial, mas N=20 e uma única classe não permitem calibrar, comparar ou concluir desempenho.
 - Casos históricos: 0 COMPLETE de 9 planejados.
 - Janelas negativas: 0 COMPLETE de 8 planejadas.
 - Corpus Geo editorial (não histórico): V1 `city_accuracy=0.25`, V2 `city_accuracy=1.00`; V1/V2 `false_precision_rate=0.00` nos 8 negativos inequívocos; V2 `state_accuracy=0.80` contra V1 `1.00`; V2 se abstém em 64,29% das 14 manchetes contra 57,14% do V1. Um caso de Rio Branco é `DISPUTED`, fora das taxas de acerto/falsa precisão.
@@ -30,7 +30,7 @@ Qualquer V2 permanece `SHADOW` ou `EXPERIMENTAL` até possuir amostra mínima, m
 1. Fechar a correção Geo V2 e medir o corpus antes da flag.
 2. Adquirir o primeiro caso histórico verificável com quatro timestamps.
 3. Adquirir uma janela negativa verificável por categoria de burst.
-4. Formalizar schema de features/cutoff no replay e registry.
+4. Coletar positivos e negativos representativos até que Brier Skill, calibração, FPR, recall e lead time possam ser estimados por horizonte.
 5. Ensaiar D1/Turso e falhas parciais localmente.
 6. Tornar stale de conteúdo distinto de health de transporte.
 7. Preservar shadow/driver em modo de orçamento ou registrá-los como indisponíveis.

@@ -32,3 +32,11 @@ def test_rows_survive_chunking_in_the_last_part_only():
              "series": [], "forecasts": [], "shadow_results": [ROW]}
     parts = chunks(batch)
     assert len(parts) > 1 and [len(p["shadow_results"]) for p in parts] == [0] * (len(parts) - 1) + [1]
+
+
+def test_calibrators_survive_chunking_in_the_last_part_only():
+    batch = {"batch_id": "b", "sources": [], "catalog_complete": False, "events": [{"event_id": f"ev-{i}", "title": "t"} for i in range(400)],
+             "signals": [{"event_id": f"ev-{i}", "source_id": "s1", "hash": f"h{i}"} for i in range(400)], "pulses": [], "source_health": [],
+             "series": [], "forecasts": [], "calibrators": [{"id": "cal-platt-v1"}]}
+    parts = chunks(batch)
+    assert len(parts) > 1 and [len(p["calibrators"]) for p in parts] == [0] * (len(parts) - 1) + [1]

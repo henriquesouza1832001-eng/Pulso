@@ -160,3 +160,17 @@ class DriverRegistryRow:
     brier_without: float | None = None
     brier_with: float | None = None
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class CalibratorArtifact:
+    """Espelho de `CalibratorArtifact` (contracts.ts): calibrador versionado. Artefato imutável; só o status evolui (retired é terminal)."""
+    id: str  # cal-<método>-<versão>
+    method: str
+    version: str
+    fit_start: str
+    fit_end: str  # a janela de ajuste nunca inclui dado de teste/futuro
+    sample_count: int
+    artifact: str  # JSON
+    created_at: str
+    status: str = "candidate"  # candidate | active | retired
