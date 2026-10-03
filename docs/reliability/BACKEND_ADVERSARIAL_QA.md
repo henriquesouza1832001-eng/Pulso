@@ -24,8 +24,18 @@ Reliability Gate (shadow → canary → prod), não desta entrega.
 | `npm test` (web/worker/shared) | 13 arquivos, 136 testes, todos passando | — |
 | `npm run build` + `wrangler deploy --dry-run` | ok | ~30 s no total |
 
-Depois desta entrega: engine **701 passed, 13 xfailed**, tanto com `NOISE_GATE` desligada quanto ligada
-(19 invariantes novas + 22 testes da correção com a flag ligada + 13 defeitos em xfail estrito no comportamento de produção).
+Depois desta entrega, já junto com o PR #89 da `hen`: engine **721 passed, 11 xfailed**, tanto com `NOISE_GATE` desligada
+quanto ligada (invariantes novas + testes da correção com a flag ligada + 11 defeitos em xfail estrito no comportamento de produção).
+
+**Interação com o PR #89 (`hen`, "separate editorial relevance from operational evidence"), mergeado em paralelo:** o #89
+corrige direto em produção a parte editorial do QA-001. Sinal só editorial ou de agenda ("onde assistir", "show", "partida")
+deixa de virar evento, e "interrompido/evacuado/interditado" entram no vocabulário de impacto. Os casos "onde assistir" e
+"show" saíram do `xfail` (passam). Continuam abertos em produção:
+- futebol com resultado ("Flamengo vence o Palmeiras") e feriado ("o que abre e fecha"): não casam com os padrões editoriais;
+- QA-002: a manchete diz "interrompid**a**", o #89 incluiu só "interrompid**o**"; telecom e bloqueio também seguem abertos;
+- QA-003 a QA-006.
+
+A `NOISE_GATE` foi mantida (nomes `GATE_*` para não colidir com o `_SCHEDULED` do #89 dentro de `assess`) e cobre esses restos.
 
 ## Resumo por área
 

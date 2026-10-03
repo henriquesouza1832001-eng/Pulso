@@ -8,7 +8,8 @@ from datetime import datetime
 from .models import EventStats, Signal, SOCIAL_CLASSES
 from .processing.clustering import Cluster
 from . import flags
-from .processing.importance import assess, context
+from .processing.importance import (EDITORIAL_ONLY, OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT,
+                                     SCHEDULED_CONTEXT, assess, context)
 from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
@@ -83,7 +84,8 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
         contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
-        extra={"acceleration": float(last_hour - prev_hour)},
+        extra={"acceleration": float(last_hour - prev_hour),
+               "content_roles": sorted({a.role for a in assessed})},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
@@ -108,6 +110,11 @@ def is_publishable(cluster: Cluster) -> bool:
     categoria; ou notícia isolada de categoria de impacto cujo TEXTO é de impacto (mortes, desabamento...).
     Uma matéria isolada de política/economia/internacional espera uma segunda fonte."""
     sigs = cluster.signals
+    roles = [assess(f"{s.title}. {s.text or ''}").role for s in sigs]
+    # Volume, official provenance, and source diversity do not turn a purely
+    # editorial/scheduled sports story into an operational event.
+    if roles and not any(r in (OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT) for r in roles):
+        return False
     category = dominant_category(sigs)
     if len({s.source_id for s in sigs}) >= 2:
         return True

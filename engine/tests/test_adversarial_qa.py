@@ -49,6 +49,11 @@ def same_story(title: str, n: int, slug: str = "x") -> dict[str, bytes]:
     return {f"s{i}": rss([(title, f"https://s{i}.com/{slug}", 10 + i)]) for i in range(n)}
 
 
+def top_level(batch: dict) -> int:
+    """Maior nível publicado; 0 = nem virou evento (o melhor desfecho para ruído)."""
+    return max((e["alert_level"] for e in batch["events"]), default=0)
+
+
 def only_event(batch: dict) -> dict:
     assert len(batch["events"]) == 1, [e["title"] for e in batch["events"]]
     return batch["events"][0]
@@ -163,11 +168,14 @@ def test_http_200_with_html_is_degraded_not_online():
 
 # ---------------------------------------------------------------- defeitos reproduzidos (QA-xxx), ainda abertos
 
-@pytest.mark.xfail(strict=True, reason="QA-001: volume de veículos sozinho leva ruído (futebol, 'onde assistir') a N2")
-@pytest.mark.parametrize("name", list(NOISE))
+QA001_OPEN = pytest.mark.xfail(strict=True, reason="QA-001: volume de veículos sozinho leva ruído a N2")
+
+
+# "onde assistir" e "show" foram fechados pelo PR #89 (papel editorial/agenda não publica); futebol e feriado seguem abertos.
+@pytest.mark.parametrize("name", [
+    pytest.param("futebol", marks=QA001_OPEN), "onde_assistir", "show", pytest.param("feriado", marks=QA001_OPEN)])
 def test_noise_does_not_reach_n2_by_outlet_volume(name):
-    ev = only_event(run(same_story(NOISE[name], 6)))
-    assert ev["alert_level"] < 2
+    assert top_level(run(same_story(NOISE[name], 6))) < 2
 
 
 @pytest.mark.xfail(strict=True, reason="QA-002: incidente operacional sem termo do classificador fica N1 com 4 veículos")
@@ -179,9 +187,9 @@ def test_operational_incidents_with_four_outlets_reach_n2(name):
 
 @pytest.mark.xfail(strict=True, reason="QA-001/002: com o mesmo volume, futebol fica no mesmo nível de tumulto com feridos")
 def test_incident_with_injured_outranks_football_at_equal_volume():
-    football = only_event(run(same_story(NOISE["futebol"], 6)))
+    football = top_level(run(same_story(NOISE["futebol"], 6)))
     tumult = only_event(run(same_story(INCIDENTS_UNDERRATED["tumulto_show"], 6)))
-    assert tumult["alert_level"] > football["alert_level"]
+    assert tumult["alert_level"] > football
 
 
 @pytest.mark.xfail(strict=True, reason="QA-003: repost social idêntico conta como fonte independente e confirma o evento")
@@ -228,9 +236,10 @@ def noise_gate(monkeypatch):
 @pytest.mark.parametrize("name", list(NOISE))
 @pytest.mark.parametrize("outlets", [6, 10])
 def test_gate_noise_stays_n1_at_any_volume(name, outlets):
-    ev = only_event(run(same_story(NOISE[name], outlets)))
-    assert ev["alert_level"] == 1
-    assert any(b["key"] == "noise_gate" for b in ev["score_breakdown"])  # o teto aparece no "POR QUE?"
+    b = run(same_story(NOISE[name], outlets))
+    assert top_level(b) <= 1  # nem evento (PR #89) ou teto N1 (NOISE_GATE)
+    for ev in b["events"]:
+        assert any(x["key"] == "noise_gate" for x in ev["score_breakdown"])  # o teto aparece no "POR QUE?"
 
 
 @pytest.mark.usefixtures("noise_gate")
@@ -253,9 +262,9 @@ def test_gate_keeps_recall_of_real_incidents(title):
 
 @pytest.mark.usefixtures("noise_gate")
 def test_gate_incident_with_injured_outranks_football():
-    football = only_event(run(same_story(NOISE["futebol"], 6)))
+    football = top_level(run(same_story(NOISE["futebol"], 6)))
     tumult = only_event(run(same_story(INCIDENTS_UNDERRATED["tumulto_show"], 6)))
-    assert tumult["alert_level"] > football["alert_level"]
+    assert tumult["alert_level"] > football
 
 
 @pytest.mark.usefixtures("noise_gate")

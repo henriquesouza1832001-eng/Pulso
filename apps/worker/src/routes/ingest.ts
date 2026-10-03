@@ -348,8 +348,10 @@ ingest.post("/", async (c) => {
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
 	// Idempotente: reenviar o mesmo lote não duplica nada (upsert por chave).
 	const stmts: D1PreparedStatement[] = [];
-	// Observabilidade (estado por fonte, resumo do ciclo): lote À PARTE e best-effort. Se a tabela ainda não existe (migration atrasada)
-	// ou o banco falha aqui, o dado de verdade (eventos, sinais, Pulso) já foi gravado e NUNCA se perde por causa disto.
+	// LOTE OPCIONAL (pesquisa, auditoria e observabilidade: observações, investigações, registry, shadow, drivers, calibradores, estado por
+	// fonte, resumo do ciclo): À PARTE e best-effort. O lote principal é só o dado de PRODUTO (fontes, eventos, sinais, Pulso, séries,
+	// previsões). Se uma tabela opcional não existe (migration atrasada) ou o banco falha aqui, o dado de produto já foi gravado e NUNCA se
+	// perde nem trava por causa disto: uma migration atrasada não pode parar a coleta.
 	const obsStmts: D1PreparedStatement[] = [];
 	const json = (v: unknown) => JSON.stringify(v);
 	const f = (path: string) => `json_extract(j.value,'$.${path}')`;
@@ -483,7 +485,7 @@ ingest.post("/", async (c) => {
 	if (observations.length) {
 		// Só sobe: uma hora fechada pode receber um sinal tardio, mas a contagem nunca diminui (o feed descarta itens
 		// antigos) e reenvio idêntico não grava nada (o WHERE evita a escrita).
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO signal_observations (scope,category,source_class,hour,signals,sources,duplicates)
@@ -499,7 +501,7 @@ ingest.post("/", async (c) => {
 		// Retenção de 90 dias UMA vez por dia (03:00 UTC): a tabela não tem índice por hora, então a limpeza varre a tabela.
 		const now = new Date();
 		if (now.getUTCHours() === 3 && now.getUTCMinutes() < 10) {
-			stmts.push(
+			obsStmts.push(
 				db
 					.prepare("DELETE FROM signal_observations WHERE hour < ?1")
 					.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
@@ -508,7 +510,7 @@ ingest.post("/", async (c) => {
 	}
 	if (investigations.length) {
 		// Abre uma vez; depois só avança o estado (started_at e initial_anomaly nunca mudam) e só regrava se algo mudou.
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO investigations (id,scope,category,status,started_at,last_update,last_anomalous_at,initial_anomaly,anomaly,evidence_count,official_confirmation,reasons)
@@ -524,7 +526,7 @@ ingest.post("/", async (c) => {
 	}
 	if (forecast_registry.length) {
 		// IMUTÁVEL: a trilha de auditoria de uma previsão nunca é reescrita (DO NOTHING); reenvio não grava nada.
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO forecast_registry (forecast_id,created_at,snapshot,snapshot_hash)
@@ -536,7 +538,7 @@ ingest.post("/", async (c) => {
 	}
 	if (shadow_results.length) {
 		// Só linhas já resolvidas e imutáveis por (item, método).
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO shadow_results (item_id,method,scope,p_v1,p_v2,outcome,created_at)
@@ -548,7 +550,7 @@ ingest.post("/", async (c) => {
 	}
 	if (driver_registry.length) {
 		// DISABLED é manual: o ingest nunca reativa um driver desligado. Só regrava se algo mudou.
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO driver_registry (driver,target,scope,lag_hours,correlation,pairs,samples,brier_without,brier_with,state,reason,updated_at)
@@ -565,7 +567,7 @@ ingest.post("/", async (c) => {
 	}
 	if (calibrators.length) {
 		// O ARTEFATO é imutável (uma linha por versão); só o status evolui, e `retired` é terminal (uma versão aposentada nunca volta).
-		stmts.push(
+		obsStmts.push(
 			db
 				.prepare(
 					`INSERT INTO calibrators (id,method,version,fit_start,fit_end,sample_count,artifact,status,created_at)
@@ -607,15 +609,15 @@ ingest.post("/", async (c) => {
 	{
 		const at = new Date();
 		if (at.getUTCHours() === 3 && at.getUTCMinutes() >= 10 && at.getUTCMinutes() < 20) {
-			stmts.push(
+			obsStmts.push(
 				db
 					.prepare("DELETE FROM investigations WHERE status = 'CLOSED' AND last_update < ?1")
 					.bind(new Date(Date.now() - INVESTIGATION_RETENTION_DAYS * 86400_000).toISOString()),
 			);
 			// auditoria e comparação V2: 180 dias (a janela de 03:10-03:20 UTC roda uma vez por dia)
 			const cutoff = new Date(Date.now() - VALIDATION_RETENTION_DAYS * 86400_000).toISOString();
-			stmts.push(db.prepare("DELETE FROM forecast_registry WHERE created_at < ?1").bind(cutoff));
-			stmts.push(db.prepare("DELETE FROM shadow_results WHERE created_at < ?1").bind(cutoff));
+			obsStmts.push(db.prepare("DELETE FROM forecast_registry WHERE created_at < ?1").bind(cutoff));
+			obsStmts.push(db.prepare("DELETE FROM shadow_results WHERE created_at < ?1").bind(cutoff));
 		}
 	}
 	if (forecasts.length) {
@@ -666,14 +668,14 @@ ingest.post("/", async (c) => {
 				budgetTable = false;
 			});
 	}
-	let observability: "ok" | "skipped" | "failed" = obsStmts.length ? "ok" : "skipped";
+	let optionalWrites: "ok" | "skipped" | "failed" = obsStmts.length ? "ok" : "skipped";
 	if (obsStmts.length) {
 		try {
 			const results = await db.batch(obsStmts);
 			written += results.reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
 		} catch (e) {
-			observability = "failed";
-			console.error("observability_write_failed", c.get("requestId"), e instanceof Error ? e.message.slice(0, 200) : "erro");
+			optionalWrites = "failed";
+			console.error("optional_writes_failed", c.get("requestId"), e instanceof Error ? e.message.slice(0, 200) : "erro");
 		}
 	}
 	// Troca a reserva pelo consumo REAL do dia. Falhar aqui nunca derruba a ingestão e só deixa o contador a MAIS (reserva mantida).
@@ -701,7 +703,7 @@ ingest.post("/", async (c) => {
 		calibrators: calibrators.length,
 		source_runtime: source_runtime.length,
 		engine_cycle: engine_cycle ? 1 : 0,
-		observability,
+		optional_writes: optionalWrites,
 		budget: { mode, used_before: used, written, shed },
 	});
 });
