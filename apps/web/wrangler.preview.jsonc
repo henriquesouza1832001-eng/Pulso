@@ -1,0 +1,15 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Prévia por branch. O nome real vem do workflow: --name pulso-web-<branch>.
+	"name": "pulso-web-preview",
+	"main": "./preview/worker.js",
+	"compatibility_date": "2025-10-08",
+	"workers_dev": true,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*"]
+	}
+}

@@ -625,7 +625,9 @@ export function BrazilMap({
 			/>
 
 			<div className="map-layers">
-				<span className="ml-title">CAMADAS</span>
+				<span className="ml-title" tabIndex={0}>
+					CAMADAS
+				</span>
 				{LAYER_ITEMS.map(([key, label]) => (
 					<label key={key} className="ml-item">
 						<input
