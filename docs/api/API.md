@@ -17,6 +17,7 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 | `/api/events/live` (SSE), `/api/trending`, `/api/signals`, `/api/timeline`, `/api/search`, `/api/cameras`, `/api/traffic`, `/api/news`, `/api/social` | definir por endpoint | ⏳ |
 
 ## Convenções
+- Rotas `/api/admin/*`: Bearer `INGEST_TOKEN`; se o segredo opcional `ADMIN_TOKEN` existir, as rotas de OPERADOR (`engine-status`, `overview`, `turso-ping`, `calibrators`, `forecast-registry`, `forecast-trajectory`, `drivers`, `shadow-results`) só aceitam ele, e as que o Engine lê (`series`, `signals`, `observations`, `investigations`, `events-digest`, `pulse-history`, `forecasts/open`) aceitam os dois.
 - Erros: `{ "error": "codigo", "detail"?: "...", "request_id": "..." }` com status HTTP correto. `request_id` é o mesmo do cabeçalho `X-Request-Id` (presente em TODA resposta; o chamador pode enviar o seu, 8–64 caracteres `[A-Za-z0-9._-]`) e liga a resposta ao log do Worker. Falha interna é sempre `500 internal_error`, sem stack. `POST /api/ingest` acima de 8 MB responde `413 payload_too_large`.
 - Entrada validada com zod; UF `^[A-Z]{2}$`, slug `^[a-z0-9-]{1,80}$`.
 - `POST /api/ingest`: fail-closed (sem `INGEST_TOKEN` configurado → 401), idempotente (upsert por `event_id` e `scope+timestamp`).

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
-import { engineAuthorized } from "../lib/auth";
+import { adminAuthorized } from "../lib/auth";
 import { budgetMode, CRITICAL_FROM, DAILY_LIMIT, ECONOMY_FROM, utcDay } from "../lib/budget";
 import { assess } from "../lib/status";
 import { TursoDatabase } from "../lib/turso";
@@ -10,7 +10,9 @@ import { TursoDatabase } from "../lib/turso";
 export const admin = new Hono<AppEnv>();
 
 admin.use("*", async (c, next) => {
-	if (!engineAuthorized(c.req.header("Authorization"), c.env.INGEST_TOKEN)) {
+	// c.req.path vem completo (/api/admin/...): a rota relativa é o que sobra depois do prefixo
+	const route = c.req.path.replace(/^\/api\/admin/, "") || "/";
+	if (!adminAuthorized(c.req.header("Authorization"), c.env, route)) {
 		return c.json({ error: "unauthorized" }, 401);
 	}
 	c.header("Cache-Control", "no-store");
@@ -315,6 +317,7 @@ admin.get("/engine-status", async (c) => {
 			investigationsActive: Number(counts?.investigations_active ?? 0),
 		});
 		return c.json({
+			admin_token_separate: Boolean(c.env.ADMIN_TOKEN), // false = o painel ainda usa o token do ingest (RT-007 aberto)
 			verdict: health, // {status: ok|degraded|not_ready, reasons[]}: a resposta curta para o operador
 			backend: c.env.DB instanceof TursoDatabase ? "turso" : "d1", // o banco REALMENTE em uso (a variável sozinha mentiria sem os segredos)
 			write_budget: { day, rows_today: used, mode: budgetMode(used), economy_from: ECONOMY_FROM, critical_from: CRITICAL_FROM, daily_limit: DAILY_LIMIT },
