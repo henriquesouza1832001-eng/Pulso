@@ -17,6 +17,7 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Banco Central, dólar PTAX** (choque cambial) | OFFICIAL | Olinda OData aberto (`bcb_ptax`) | ✅ ativa; só emite com variação ≥ 1% |
 | **Defesa Civil Nacional** (alertas oficiais IDAP/CAP) | OFFICIAL | feed Atom/CAP aberto (`idap_cap`) | ✅ ativa, revisão de termos pendente (ver ficha) |
+| **InfoDengue** (Fiocruz/FGV): alerta de dengue nas 27 capitais | OFFICIAL | API aberta (`infodengue`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
 | Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
@@ -220,3 +221,19 @@ Testadas 10 instâncias e as hashtags `chuva`, `enchente`, `incendio`, `brasil` 
 - `metsul` (MetSul Meteorologia): o feed responde da rede local, mas devolve **HTTP 403 a partir do GitHub Actions** (bloqueio de IP de nuvem). Está **desligada** em `sources.json` (campo `note`). Não se contorna bloqueio (COLLECTION_PROTOCOL §1). Reabrir se o veículo liberar o acesso (contato) ou se a coleta passar a rodar de outro ambiente.
 - Lição de teste: validar uma fonte **só da máquina local não basta**. O ambiente que importa é o do GitHub Actions; `py -m pulso_engine.audit` rodado lá (ou o painel `/api/health` depois do deploy) é a verificação real. O verificador de saúde automático (`healthcheck.yml`) aponta fontes OFFLINE.
 - Falhas de rede transitórias (timeout, conexão resetada) têm UMA nova tentativa; erros HTTP (403, 429, 5xx) não são repetidos.
+
+## Ficha: InfoDengue (`infodengue-capitais`)
+```
+Fonte / URL: https://info.dengue.mat.br/api/alertcity?geocode=<IBGE>&disease=dengue&format=json&ew_start=1&ew_end=53&ey_start=<ano>&ey_end=<ano>
+Tipo de acesso: API pública do InfoDengue (Fiocruz/FGV), sem chave.
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. 27 requisições (uma por capital, ~30 KB cada) por leitura, ~25 s; intervalo de 21 600 s (6 h), pois o dado é semanal.
+Dados coletados e retenção: um sinal por capital quando o nível do alerta da semana epidemiológica mais recente é >= 3 (laranja ou vermelho): casos estimados (com intervalo), incidência por 100 mil, Rt e o nível. Retenção 90 dias.
+Cobertura: as 27 capitais. Os 27 geocódigos IBGE foram conferidos ao vivo contra o `municipio_nome` da API.
+Fallback se cair: uma capital que falha não derruba as outras; se TODAS falham a fonte fica OFFLINE. Sem capital em nível >= 3 = ONLINE ("sem ocorrências no limiar", `quiet_ok`).
+Termos relevantes: https://info.dengue.mat.br/ (citar a fonte: InfoDengue, Fiocruz/FGV). terms_url = PENDENTE até alguém confirmar a política de uso.
+Exibição pública permitida: headline_link, com atribuição.
+Atenção: o nível é um alerta de transmissão MODELADO, não contagem de casos confirmados; o texto diz "estimados". O sinal descreve a situação atual (timestamp = coleta) e tem hash estável por (município, semana, nível).
+Primeira leitura real (2026-10-03, baixa temporada): Belo Horizonte em alerta laranja (semana 38; 756 casos estimados, Rt 1,54); Recife e São Luís em amarelo.
+Papel: cobre a categoria HEALTH com dado oficial e objetivo, em vez de depender só da imprensa.
+```

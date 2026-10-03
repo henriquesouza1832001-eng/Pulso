@@ -14,6 +14,7 @@ from .news.rss import RssAdapter
 from .news.gdelt import GdeltAdapter
 from .official.bcb_ptax import BcbPtaxAdapter
 from .official.idap_cap import IdapCapAdapter
+from .official.infodengue import InfoDengueAdapter
 from .official.inmet import InmetAdapter
 from .official.inpe_fires import InpeFiresAdapter
 from .official.usgs import UsgsAdapter
@@ -32,10 +33,11 @@ ADAPTERS: dict[str, Callable] = {
     "inpe_fires": InpeFiresAdapter,
     "bcb_ptax": BcbPtaxAdapter,
     "idap_cap": IdapCapAdapter,
+    "infodengue": InfoDengueAdapter,
 }
 
 # Adaptadores que buscam URLs com o `fetcher` injetado (os sociais usam requisições autenticadas próprias).
-URL_FETCH_ADAPTERS = frozenset({"rss", "inmet", "inpe_fires", "bcb_ptax", "mastodon", "usgs", "gdelt"})
+URL_FETCH_ADAPTERS = frozenset({"rss", "inmet", "inpe_fires", "bcb_ptax", "mastodon", "usgs", "gdelt", "infodengue"})
 
 
 def build_adapter(source: dict, keywords, fetcher, now):
