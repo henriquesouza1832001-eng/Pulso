@@ -70,7 +70,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 6. Estado atual (marque ao concluir)
 **Pronto e testado**
 - [x] Monorepo, CI, deploy automático, Cloudflare (D1, Worker, front)
-- [x] Coleta de **8 fontes em produção** (confirmado em `/api/health` em 2026-10-03, todas ONLINE): RSS de Agência Brasil, G1, Folha, CNN Brasil, UOL, **Agência Senado** e **Agência Câmara** (`OFFICIAL`), e avisos do **INMET** (`OFFICIAL`, só Perigo/Grande Perigo, um evento por UF). Dedup, geo (cidade/estado + gentílicos/assembleias/TRE-UF), clusterização, eventos
+- [x] Coleta de **~112 fontes cadastradas, 104 ONLINE em produção** (confirmado em `/api/health` em 2026-10-03; lista em `docs/sources/CATALOGO_FONTES.md`). As 8 primeiras: RSS de Agência Brasil, G1, Folha, CNN Brasil, UOL, **Agência Senado** e **Agência Câmara** (`OFFICIAL`), e avisos do **INMET** (`OFFICIAL`, só Perigo/Grande Perigo, um evento por UF). Dedup, geo (cidade/estado + gentílicos/assembleias/TRE-UF), clusterização, eventos
 - [x] Confiança, Pulso Score explicável, níveis 1–5
 - [x] API pública: `/api/pulse/*`, `/api/events`, `/api/events/:id`, `/api/map`, `/api/health`
 - [x] Rotas internas: `/api/ingest`, `/api/admin/series`, `/api/admin/overview`

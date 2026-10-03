@@ -84,3 +84,14 @@ def test_title_decides_the_category_before_the_summary():
     src = {"id": "t", "source_class": "NEWS_HIGH", "url": "https://x"}
     (s,) = RssAdapter(src, None, lambda u: xml.encode(), lambda: NOW).run()
     assert s.category == "POLITICS"
+
+
+def test_text_impact_raises_severity_within_the_same_category():
+    from pulso_engine.events import stats_for
+    routine = [sig(1, "Chuva forte molha a cidade nesta sexta-feira", cat="WEATHER")]
+    deadly = [sig(2, "Enchente deixa 3 mortos e desabrigados na cidade", cat="WEATHER")]
+    gossip = [sig(3, "Famosos comentam o casamento da novela e a fofoca do BBB", cat="WEATHER")]
+    r, d, g = (stats_for(x, NOW).severity for x in (routine, deadly, gossip))
+    assert d >= r + 10  # mortes pesam bem mais que o relato de rotina
+    assert g <= r       # entretenimento nunca sobe a severidade
+    assert d <= 100
