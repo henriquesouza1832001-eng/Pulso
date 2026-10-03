@@ -1,0 +1,70 @@
+/* PULSO · design tokens · watch page editorial, derivado do pizzint
+   preto neutro + branco + cinza, verde p/ vivo, âmbar p/ meio, vermelho p/ crítico,
+   azul discreto p/ kickers e links */
+:root {
+	/* fundos */
+	--bg0: #0a0a0a; /* base da página */
+	--bg1: #0e0e0f; /* blocos */
+	--bg2: #131315; /* hover / sub-blocos */
+
+	/* linhas técnicas (hairline quase invisível) */
+	--ln0: #1b1d20;
+	--ln1: #2a2d31;
+
+	/* texto */
+	--tx0: #ededed; /* dados / títulos */
+	--tx1: #9aa0a6; /* leitura */
+	--tx2: #5c636b; /* dim / metadados */
+
+	/* linguagem */
+	--grn: #3ddc84; /* vivo / ok */
+	--grn-dim: #1d5c3c;
+	--amb: #ffb340; /* atenção / intermediário */
+	--org: #ff8a3d; /* elevado */
+	--red: #ff4545; /* crítico */
+	--red5: #ff1744; /* emergência */
+	--acc: #3ba4ff; /* azul pizzint: kickers, links, setas */
+	--cyn: #3ba4ff; /* legado: mesmo azul */
+	--cyn-dim: #0e4a57;
+	--blue: #7aa2ff;
+
+	/* níveis */
+	--lv1: #3ddc84;
+	--lv2: #ffb340;
+	--lv3: #ff8a3d;
+	--lv4: #ff4545;
+	--lv5: #ff1744;
+
+	/* cor semântica por categoria (usada com parcimônia) */
+	--cat-SECURITY: #ff5c6c;
+	--cat-TRAFFIC: #ffb340;
+	--cat-WEATHER: #22d3ee;
+	--cat-INFRASTRUCTURE: #7aa2ff;
+	--cat-PROTEST: #ff8a3d;
+	--cat-POLITICS: #e3c05c;
+	--cat-ECONOMY: #4ade80;
+	--cat-HEALTH: #6ee7b7;
+	--cat-INTERNATIONAL: #9aa8ff;
+	--cat-TECH: #66d9e8;
+	--cat-EVENT: #d9c58a;
+	--cat-EMERGENCY: #ff4545;
+	--cat-OTHER: #8b99a8;
+
+	/* tipografia: mono como família única, VT323 só no numeral nacional */
+	--mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+	--disp: "VT323", var(--mono);
+
+	/* métricas */
+	--r: 0px;
+	--pad: 8px;
+	--gap: 8px;
+	--maxw: 1100px;
+	--secpad: 88px;
+
+	/* tempos de animação */
+	--t-fast: 120ms;
+	--t-blink: 1.1s;
+	--t-pulse: 2s;
+
+	color-scheme: dark;
+}
