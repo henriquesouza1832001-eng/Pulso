@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import { budgetMode, CRITICAL_FROM, ECONOMY_FROM, shedBatch, utcDay, type BatchLike } from "../src/lib/budget";
+
+const batch = (): BatchLike => ({
+	sources: [{ id: "s1" }],
+	catalog_complete: true,
+	events: [
+		{ event_id: "ev-1", alert_level: 1 },
+		{ event_id: "ev-2", alert_level: 2 },
+		{ event_id: "ev-3", alert_level: 4 },
+	],
+	signals: [{ event_id: "ev-1" }, { event_id: "ev-2" }, { event_id: "ev-3" }, { event_id: null }],
+	pulses: [{ scope: "BR" }, { scope: "UF:SP" }],
+	source_health: [{ status: "ONLINE" }, { status: "OFFLINE" }],
+	series: [{ scope: "BR" }, { scope: "UF:RJ" }],
+	forecasts: [{ status: "open" }, { status: "resolved" }],
+});
+
+describe("governador do orçamento de escrita", () => {
+	it("o modo muda nos limiares e o dia é UTC", () => {
+		expect(budgetMode(0)).toBe("normal");
+		expect(budgetMode(ECONOMY_FROM - 1)).toBe("normal");
+		expect(budgetMode(ECONOMY_FROM)).toBe("economy");
+		expect(budgetMode(CRITICAL_FROM)).toBe("critical");
+		expect(utcDay(new Date("2026-10-04T02:30:00-03:00"))).toBe("2026-10-04");
+		expect(utcDay(new Date("2026-10-03T22:00:00-03:00"))).toBe("2026-10-04"); // 22h em Brasília já é o dia seguinte em UTC
+	});
+
+	it("normal não corta nada", () => {
+		const b = batch();
+		const r = shedBatch(b, "normal");
+		expect(r.batch).toBe(b);
+		expect(r.shed).toEqual({});
+	});
+
+	it("economia: corta nível 1, só série nacional, só saúde com problema, catálogo não é enviado", () => {
+		const { batch: out, shed } = shedBatch(batch(), "economy");
+		expect(out.events.map((e) => e.event_id)).toEqual(["ev-2", "ev-3"]);
+		expect(out.signals).toEqual([{ event_id: "ev-2" }, { event_id: "ev-3" }]); // sinal sem evento mantido não entra (chave estrangeira)
+		expect(out.series).toEqual([{ scope: "BR" }]);
+		expect(out.source_health).toEqual([{ status: "OFFLINE" }]);
+		expect(out.sources).toEqual([]);
+		expect(out.catalog_complete).toBe(false); // senão as fontes ausentes seriam desativadas
+		expect(out.pulses).toHaveLength(2);
+		expect(shed.events).toBe(1);
+	});
+
+	it("crítico: só alerta alto, pulso nacional, previsões já resolvidas e nenhuma série", () => {
+		const { batch: out } = shedBatch(batch(), "critical");
+		expect(out.events.map((e) => e.event_id)).toEqual(["ev-3"]);
+		expect(out.signals).toEqual([{ event_id: "ev-3" }]);
+		expect(out.pulses).toEqual([{ scope: "BR" }]);
+		expect(out.series).toEqual([]);
+		expect(out.forecasts).toEqual([{ status: "resolved" }]); // a resolução de uma previsão nunca se perde
+	});
+});

@@ -1,0 +1,62 @@
+/**
+ * Orçamento diário de escrita do D1 (plano gratuito: 100 mil linhas/dia, zera às 00:00 UTC).
+ *
+ * O Worker soma as linhas que cada ingestão gravou (`meta.rows_written`) numa tabela minúscula (`write_budget`) e,
+ * conforme o consumo do dia, descarta o que é menos importante ANTES de gravar. O que é crítico (alertas altos, o
+ * indicador nacional, resolução de previsões) passa sempre. Assim a cota nunca estoura (erro 500 para tudo) e, no pior
+ * caso, o painel perde detalhe de baixa prioridade, não o que importa. Ver docs/decisions/0008-orcamento-de-escrita-do-d1.md.
+ */
+
+export const DAILY_LIMIT = 100_000;
+export const ECONOMY_FROM = 60_000; // a partir daqui só o que tem relevância
+export const CRITICAL_FROM = 85_000; // a partir daqui só alertas altos e o indicador nacional
+export const RESERVE = 5_000; // folga para o que não passa pelo ingest (migrations, ajustes manuais)
+
+export type BudgetMode = "normal" | "economy" | "critical";
+
+export function budgetMode(usedToday: number): BudgetMode {
+	if (usedToday >= CRITICAL_FROM) return "critical";
+	if (usedToday >= ECONOMY_FROM) return "economy";
+	return "normal";
+}
+
+export const utcDay = (d = new Date()) => d.toISOString().slice(0, 10);
+
+export interface BatchLike {
+	sources: unknown[];
+	catalog_complete: boolean;
+	events: { event_id: string; alert_level: number }[];
+	signals: { event_id: string | null }[];
+	pulses: { scope: string }[];
+	source_health: { status: string }[];
+	series: { scope: string }[];
+	forecasts: { status: string }[];
+}
+
+/**
+ * Remove do lote o que o modo manda economizar. Mantém a integridade: sinal só entra se o evento dele também entra
+ * (a chave estrangeira exige que o evento exista) e `catalog_complete` vira false quando o catálogo é cortado
+ * (senão as fontes ausentes seriam desativadas).
+ */
+export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch: T; shed: Record<string, number> } {
+	if (mode === "normal") return { batch: b, shed: {} };
+	const minLevel = mode === "critical" ? 3 : 2;
+	const events = b.events.filter((e) => e.alert_level >= minLevel);
+	const keep = new Set(events.map((e) => e.event_id));
+	const signals = b.signals.filter((s) => s.event_id !== null && keep.has(s.event_id));
+	const pulses = mode === "critical" ? b.pulses.filter((p) => p.scope === "BR") : b.pulses;
+	const series = mode === "critical" ? [] : b.series.filter((s) => s.scope === "BR");
+	const source_health = b.source_health.filter((h) => h.status !== "ONLINE");
+	const forecasts = mode === "critical" ? b.forecasts.filter((f) => f.status !== "open") : b.forecasts;
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts };
+	const shed = {
+		events: b.events.length - events.length,
+		signals: b.signals.length - signals.length,
+		pulses: b.pulses.length - pulses.length,
+		series: b.series.length - series.length,
+		source_health: b.source_health.length - source_health.length,
+		sources: b.sources.length,
+		forecasts: b.forecasts.length - forecasts.length,
+	};
+	return { batch, shed };
+}

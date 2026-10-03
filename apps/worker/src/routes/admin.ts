@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { engineAuthorized } from "../lib/auth";
+import { TursoDatabase } from "../lib/turso";
 
 /** Rotas internas (Engine e painel admin). Nunca públicas, nunca cacheadas. */
 export const admin = new Hono<AppEnv>();
@@ -12,6 +13,24 @@ admin.use("*", async (c, next) => {
 	}
 	c.header("Cache-Control", "no-store");
 	await next();
+});
+
+/**
+ * Confere os segredos do Turso DENTRO do Worker (os de produção, os do Wrangler): leitura, escrita transacional e
+ * qual backend está ativo. Nunca devolve o token.
+ */
+admin.get("/turso-ping", async (c) => {
+	if (!c.env.TURSO_URL || !c.env.TURSO_TOKEN) return c.json({ ok: false, error: "secrets_ausentes" }, 503);
+	const t = new TursoDatabase({ url: c.env.TURSO_URL, token: c.env.TURSO_TOKEN });
+	const t0 = Date.now();
+	try {
+		const v = await t.prepare("SELECT sqlite_version() AS v").first<{ v: string }>();
+		const [w] = await t.batch([t.prepare("CREATE TABLE IF NOT EXISTS _worker_ping (k TEXT PRIMARY KEY, n INTEGER)"), t.prepare("INSERT INTO _worker_ping (k,n) VALUES ('x',1) ON CONFLICT(k) DO UPDATE SET n=n+1")]);
+		const n = await t.prepare("SELECT n FROM _worker_ping WHERE k = 'x'").first<{ n: number }>("n" as never);
+		return c.json({ ok: true, backend_ativo: c.env.DB_BACKEND === "turso" ? "turso" : "d1", sqlite: v?.v, ping_n: n, ms: Date.now() - t0, ddl_ok: w.success });
+	} catch (e) {
+		return c.json({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 240) }, 502);
+	}
 });
 
 const seriesQuery = z.object({
