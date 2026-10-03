@@ -33,7 +33,7 @@ git pull origin main               # traz o que há de mais novo
 npm install
 cd engine
 py -m pip install -e ".[dev]"
-py -m pytest                       # deve passar tudo (37+ testes)
+py -m pytest                       # deve passar tudo (~230 testes, ~30 s)
 cd ..
 npm run typecheck                  # deve passar sem erros
 ```

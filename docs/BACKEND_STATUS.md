@@ -171,7 +171,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
 
 ## 9. Decisões registradas
-`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação) · `0004` (eventos separados por UF; avisos do INMET). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui. · `0005` (filtro de importância e fontes abertas GDELT/Mastodon/USGS) · `0006` (fontes em escala, frescor por categoria e qualidade de eventos).
+`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação) · `0004` (eventos separados por UF; avisos do INMET). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui. · `0005` (filtro de importância e fontes abertas GDELT/Mastodon/USGS) · `0006` (fontes em escala, frescor por categoria e qualidade de eventos) · `0007` (piso de alerta oficial, leitura estrita do Worker e sinalizadores de fonte).
 
 ## 10. Registro de mudanças (acrescente no topo)
 - **2026-10-03** — Defeito achado inspecionando a produção: o alerta extremo de "São Borja/RS" se fundia com os de "Manaus/AM" (evento com estado AM) porque a trava "estados diferentes não se juntam" exigia confiança 60 e a sigla de estado vale 55. Trava passa a 55 e a Defesa Civil/IDAP usa confiança 70 no estado da área oficial. Teste reproduz o caso real. 229 testes Python.

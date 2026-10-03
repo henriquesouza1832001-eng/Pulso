@@ -27,6 +27,7 @@ npm run db:migrate && npm run db:seed     # D1 local com dados fictícios
 npm run dev:worker                         # API em :8787 (copie apps/worker/.dev.vars.example para .dev.vars)
 npm run dev:web                            # React em :5173 (proxy para a API)
 cd engine && py -m pip install -e ".[dev]" && py -m pytest
+# verificação operacional (ver docs/RUNBOOK.md): py -m pulso_engine.audit (roda cada fonte) e py -m pulso_engine.healthcheck (saúde da produção)
 ```
 
 ## Segurança
