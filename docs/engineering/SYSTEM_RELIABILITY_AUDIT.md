@@ -39,4 +39,4 @@ Há 282 fontes ativas: todas têm `access`, retenção e display; somente 9 têm
 
 ## Lacunas quantitativas
 
-Não existem casos históricos completos, negativos completos ou shadow live suficiente. Por isso Brier Skill, ECE operacional, FPR, recall, falsos alertas/dia e lead time histórico são **N/A**, não zero nem estimativa.
+Não existem casos históricos completos, negativos completos ou shadow live suficiente. A única fotografia pública de produção (2026-10-03) tem 20 previsões V1 resolvidas, todas negativas: Brier médio 0,01961455, probabilidade média 0,09928 e referência Brier zero. Portanto Brier Skill, ECE operacional, FPR, recall, falsos alertas/dia e lead time histórico são **N/A**, não zero nem estimativa; o Brier absoluto não prova valor preditivo e a taxa prevista acima da taxa observada indica possível sobreprevisão inicial.
