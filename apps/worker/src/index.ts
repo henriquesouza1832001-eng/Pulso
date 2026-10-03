@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
+import { INGEST_MAX_BYTES, requestContext } from "./lib/http";
 import { health } from "./routes/health";
 import { pulse } from "./routes/pulse";
 import { events } from "./routes/events";
@@ -15,6 +17,14 @@ import { TursoDatabase } from "./lib/turso";
 import { dispatchCollection, dispatchHealthcheck, isHealthcheckSlot } from "./lib/dispatch";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", requestContext);
+
+// Corpo do ingest limitado ANTES de ler: lote legítimo do Engine tem poucos MB; acima disso é erro ou abuso (413, nunca OOM).
+app.use(
+	"/api/ingest",
+	bodyLimit({ maxSize: INGEST_MAX_BYTES, onError: (c) => c.json({ error: "payload_too_large", max_bytes: INGEST_MAX_BYTES }, 413) }),
+);
 
 // Troca o banco por requisição: com DB_BACKEND="turso" as rotas continuam usando `c.env.DB`, agora sobre o Turso.
 app.use("*", async (c, next) => {
@@ -42,7 +52,7 @@ app.route("/api/admin", admin);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {
-	console.error("unhandled", err);
+	console.error("unhandled", c.get("requestId"), err); // o detalhe fica no log, ligado ao request_id; a resposta nunca vaza stack
 	return c.json({ error: "internal_error" }, 500);
 });
 

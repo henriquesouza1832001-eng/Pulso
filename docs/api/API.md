@@ -5,6 +5,8 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 | Endpoint | Cache (`Cache-Control`) | Estado |
 |---|---|---|
 | `GET /api/health` | `no-store` | ✅ |
+| `GET /api/health/live` | `no-store` | ✅ liveness: o Worker responde (não toca o banco) |
+| `GET /api/health/ready` | `no-store` | ✅ readiness: `ready`, `degraded` (200, com `reasons`: coleta atrasada etc.) ou `not_ready` (**503**, banco fora) |
 | `GET /api/pulse` · `/api/pulse/br` | 10 s (+SWR) | ✅ |
 | `GET /api/pulse/state/:uf` | 10 s | ✅ |
 | `GET /api/pulse/city/:slug` | 10 s | ✅ |
@@ -15,7 +17,7 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 | `/api/events/live` (SSE), `/api/trending`, `/api/signals`, `/api/timeline`, `/api/search`, `/api/cameras`, `/api/traffic`, `/api/news`, `/api/social` | definir por endpoint | ⏳ |
 
 ## Convenções
-- Erros: `{ "error": "codigo", "detail"?: "..." }` com status HTTP correto.
+- Erros: `{ "error": "codigo", "detail"?: "...", "request_id": "..." }` com status HTTP correto. `request_id` é o mesmo do cabeçalho `X-Request-Id` (presente em TODA resposta; o chamador pode enviar o seu, 8–64 caracteres `[A-Za-z0-9._-]`) e liga a resposta ao log do Worker. Falha interna é sempre `500 internal_error`, sem stack. `POST /api/ingest` acima de 8 MB responde `413 payload_too_large`.
 - Entrada validada com zod; UF `^[A-Z]{2}$`, slug `^[a-z0-9-]{1,80}$`.
 - `POST /api/ingest`: fail-closed (sem `INGEST_TOKEN` configurado → 401), idempotente (upsert por `event_id` e `scope+timestamp`).
 - Sem dados → `score 0`, nível 1. A API nunca inventa atividade.
