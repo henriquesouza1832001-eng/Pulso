@@ -58,6 +58,7 @@ _SPECIAL_STATES: dict[str, tuple[str, int]] = {
 _CITY_EXCLUDE: dict[str, re.Pattern[str]] = {
     "Belém": re.compile(r"cisjord|israel|palestin|gaza|jesus|presepio|natividade"),
     "Marília": re.compile(r"mendonca"),  # "Marília Mendonça" é a cantora, não a cidade
+    "Santarém": re.compile(r"portugal|portugues|lisboa|ribatejo|\btejo\b"),  # há uma Santarém em Portugal
 }
 
 # Sigla "MS" também é o Ministério da Saúde ("Saúde (MS)"): com essa palavra no texto, a sigla não é Mato Grosso do Sul.
@@ -66,6 +67,11 @@ _MS_HEALTH = re.compile(r"saude|ministerio")
 _CLUB_CONTEXT = re.compile(
     r"campeonato (?:paulista|mineiro|gaucho|carioca|baiano|cearense|pernambucano|paranaense|catarinense|goiano|capixaba)"
     r"|atletico[- ]mineiro|athletico[- ]paranaense|paulistao|mineirao|gauchao")
+
+# "(AP)" e "da AP" são a agência Associated Press ("WASHINGTON (AP) —"), não o Amapá. Uma cidade em CAIXA ALTA antes de
+# "(AP)" é a linha de data da agência; "Macapá (AP)" (cidade em caixa normal) continua sendo Amapá.
+_AP_AGENCY = re.compile(
+    r"[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ .'-]{2,}\s*\(AP\)|\b(?:da|pela|pelo|segundo a|diz a|informa a)\s+AP\b|\bAP News\b")
 
 # (padrão, lugar, aplica ao texto original?)
 _PATTERNS: list[tuple[re.Pattern[str], Place, bool]] = []
@@ -93,6 +99,8 @@ def locate(text: str) -> Place | None:
         if not place.uf:  # padrão de sigla: a UF é o próprio texto casado
             uf = found.group(1)
             if uf == "MS" and _MS_HEALTH.search(folded):
+                continue
+            if uf == "AP" and _AP_AGENCY.search(text):
                 continue
             return state_place(uf, confidence=place.confidence)
         is_marker = place.confidence == 50 or (place.precision == "CITY" and place.confidence == 60)  # gentílico/marcador
