@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"id": "flood", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "blackout", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "storm", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "fire", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "traffic-collapse", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "internet-outage", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "public-transport-failure", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "road-block", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "airport-disruption", "kind": "event", "status": "INCOMPLETE", "required_observations": ["event_time", "published_at", "observed_at", "fetched_at"]},
+    {"id": "normal-weekday", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-weekend", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-rush-hour", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-rain", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-news-burst", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-social-burst", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-football-match", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]},
+    {"id": "normal-holiday", "kind": "negative", "status": "INCOMPLETE", "required_observations": ["published_at", "fetched_at"]}
+  ]
+}
