@@ -166,3 +166,13 @@ def test_pilot_log_counts_by_state(monkeypatch, capsys):
     main(["--source", "x-politics"])
     out = capsys.readouterr().out
     assert "estados:" in out and "SP=1" in out and "sem_UF=1" in out and "paulista" not in out
+
+
+def test_catalog_complete_only_with_full_catalog():
+    by_id = {s["id"]: s for s in load_sources(DEFAULT_SOURCES_PATH, only_enabled=False)}
+    rss = by_id["agencia-brasil"]
+    feed = b"<rss><channel></channel></rss>"
+    full = run_once([rss], fetcher=lambda url: feed, now=NOW, catalog=[rss, by_id["g1"]])
+    assert full["catalog_complete"] and [s["id"] for s in full["sources"]] == ["agencia-brasil", "g1"]
+    partial = run_once([rss], fetcher=lambda url: feed, now=NOW)
+    assert not partial["catalog_complete"] and [s["id"] for s in partial["sources"]] == ["agencia-brasil"]

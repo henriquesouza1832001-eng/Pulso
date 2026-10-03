@@ -6,9 +6,9 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 |---|---|---|---|
 | (modelo) Agência Brasil | NEWS_HIGH | RSS | ⏳ `collector/news-rss` |
 | (modelo) PRF | OFFICIAL | API | ⏳ verificar termos |
-| Agência Senado | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
-| Agência Câmara de Notícias | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
-| INMET — avisos meteorológicos | OFFICIAL | API de avisos (`inmet`) | ⏳ proposta (`enabled: false`), aguarda revisão |
+| Agência Senado | OFFICIAL | RSS | ✅ ativa desde 2026-10-03 (piloto encurtado, ver ficha) |
+| Agência Câmara de Notícias | OFFICIAL | RSS | ✅ ativa desde 2026-10-03 (piloto encurtado, ver ficha) |
+| INMET — avisos meteorológicos | OFFICIAL | API de avisos (`inmet`) | ✅ ativa desde 2026-10-03 (piloto encurtado, ver ficha) |
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
 | GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 proposta (`enabled: false`), aguarda revisão |
@@ -29,7 +29,7 @@ Termos relevantes (link):
 Exibição pública permitida:
 ```
 
-## Agência Senado — PROPOSTA
+## Agência Senado — ATIVA
 ```
 Fonte / URL: https://www12.senado.leg.br/noticias/feed/todasnoticias/RSS
 Tipo de acesso: RSS público (robots.txt: "User-agent: * Disallow:" — sem bloqueio)
@@ -47,7 +47,7 @@ Classe OFFICIAL: canal da própria instituição sobre os próprios atos (votaç
 ```
 Piloto em 2026-10-03: 15 itens/rodada, ONLINE, quase todos POLITICS (eleições, plenário, PECs).
 
-## Agência Câmara de Notícias — PROPOSTA
+## Agência Câmara de Notícias — ATIVA
 ```
 Fonte / URL: https://www.camara.leg.br/noticias/rss/ultimas-noticias
 Tipo de acesso: RSS público (robots.txt bloqueia só bots de IA/treino e áreas administrativas; o RSS não)
@@ -61,9 +61,9 @@ Termos: guia para jornalistas (terms_url): reprodução livre de notícias com a
 Exibição pública: título + link com crédito "Agência Câmara Notícias" (headline_link)
 Classe OFFICIAL: mesma justificativa da Agência Senado.
 ```
-Para ativar: uma pessoa lê os dois termos, preenche `reviewed_by`/`reviewed_at` e muda `enabled` para `true`. Piloto: `py -m pulso_engine.pipeline --source agencia-senado --source agencia-camara`.
+**Ativação (2026-10-03):** Senado, Câmara e INMET ligados por decisão de Arthur266760 (`reviewed_by`), com piloto de poucas horas em vez das 48 h do protocolo §3 (Senado/Câmara ONLINE no Actions; INMET testado localmente). Acompanhar `source_health` nos primeiros dias; se houver erro recorrente ou falso positivo, voltar `enabled: false` (o painel remove a fonte sozinho). Piloto: `py -m pulso_engine.pipeline --source agencia-senado --source agencia-camara`.
 
-## INMET — avisos meteorológicos — PROPOSTA
+## INMET — avisos meteorológicos — ATIVA
 ```
 Fonte / URL: https://apiprevmet3.inmet.gov.br/avisos/ativos (JSON; mesma base do RSS /avisos/rss e de avisos.inmet.gov.br)
 Tipo de acesso: dados abertos, sem autenticação

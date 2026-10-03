@@ -4,7 +4,7 @@
 > Este arquivo é o ponto de entrada de quem entra no backend. **Quem muda algo relevante atualiza este arquivo no mesmo PR** (seções 2, 6, 7 e o registro da seção 10).
 
 ## 1. O que é o PULSO (em 30 segundos)
-Plataforma brasileira de inteligência situacional em tempo real, a partir de **sinais públicos** (notícias hoje; fontes oficiais e sociais depois). Agrupa sinais em **eventos**, calcula **severidade**, **confiança** e **Pulso Score** (sempre explicável), e a meta é **antecipar** acontecimentos como previsões probabilísticas calibradas, no espírito do "Pizza Index".
+Plataforma brasileira de inteligência situacional em tempo real, a partir de **sinais públicos** (notícias e fontes oficiais hoje; redes sociais quando houver acesso às APIs). Agrupa sinais em **eventos**, calcula **severidade**, **confiança** e **Pulso Score** (sempre explicável), e a meta é **antecipar** acontecimentos como previsões probabilísticas calibradas, no espírito do "Pizza Index".
 
 Três peças desacopladas:
 | Peça | Pasta | Tecnologia | Quem |
@@ -70,20 +70,20 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 6. Estado atual (marque ao concluir)
 **Pronto e testado**
 - [x] Monorepo, CI, deploy automático, Cloudflare (D1, Worker, front)
-- [x] Coleta RSS de 5 fontes (Agência Brasil, G1, Folha, CNN Brasil, UOL) com dedup, geo (cidade/estado), clusterização, eventos
+- [x] Coleta de **8 fontes em produção** (confirmado em `/api/health` em 2026-10-03, todas ONLINE): RSS de Agência Brasil, G1, Folha, CNN Brasil, UOL, **Agência Senado** e **Agência Câmara** (`OFFICIAL`), e avisos do **INMET** (`OFFICIAL`, só Perigo/Grande Perigo, um evento por UF). Dedup, geo (cidade/estado + gentílicos/assembleias/TRE-UF), clusterização, eventos
 - [x] Confiança, Pulso Score explicável, níveis 1–5
 - [x] API pública: `/api/pulse/*`, `/api/events`, `/api/events/:id`, `/api/map`, `/api/health`
 - [x] Rotas internas: `/api/ingest`, `/api/admin/series`, `/api/admin/overview`
 - [x] Histórico em séries (5 min), baseline (EWMA) e anomalia (inválida com < 12 h de dados)
 - [x] Protocolo de coleta validado em código; `/api/health` mostra o atraso da coleta
-- [x] Testes: 36 Python, 4 do Worker
+- [x] Testes: 89 Python, 4 do Worker
 
 **Em andamento / aguardando**
 - [x] **PR #7** mergeado e publicado em 2026-10-03: séries, baseline, anomalia, rotas admin, Cron Trigger (`*/5 * * * *` registrado), migration `0002` aplicada
 - [x] Registro de coletores (`collectors/registry.py`): fonte nova = arquivo novo + uma linha, sem mexer no pipeline
 - [x] Adaptadores Reddit/X completos para política BR (busca temática, filtro por categoria, geo, `RATE_LIMITED`/`AUTH_ERROR`, cadência por `interval_s`, modo piloto `--source`); `enabled: false`, sem autorização nem credenciais (ADR 0003)
-- [x] Fontes oficiais de política propostas: RSS da Agência Senado e da Agência Câmara (`OFFICIAL`, `enabled: false`, termos lidos, piloto OK); falta revisão humana para ativar
 - [ ] Reddit: abrir pedido de acesso (Responsible Builder Policy exige aprovação prévia desde nov/2025; RSS do Reddit é bloqueado pelo robots.txt)
+- [x] **8 fontes ativas** (2026-10-03): 5 RSS + Agência Senado, Agência Câmara e INMET (ativação antecipada, piloto < 48 h, decisão de Arthur266760). O painel "Fontes ativas" acompanha o `sources.json` (`catalog_complete`)
 - [x] Clima impactante por estado: coletor oficial `inmet` (avisos Perigo/Grande Perigo, um evento por UF) + `reddit-clima`/`x-clima`; geo com gentílicos/assembleias/TRE; Reddit regional por UF (ADR 0004). Tudo `enabled: false` aguardando revisão
 - [x] Piloto automático no `collect.yml`: liga sozinho quando os secrets sociais existirem, sem envio e sem conteúdo no log
 - [ ] Reddit/X: registrar app/contratar plano (com teto de gasto), revisar termos, criar secrets (inicia o piloto), avaliar 48 h e só então `enabled: true` (checklist em `docs/sources/SOURCES.md`)
@@ -105,11 +105,11 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 | 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | **feito** (confirmado em 2026-10-03); acompanhar logs; renovar token até 31/12/2026 |
 | 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
 | 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | **v1 feita** (experimental). Faltam EVENT/QUANTITY/OPEN e modelos melhores |
-| 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
+| 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | INMET, Agência Senado e Agência Câmara **ativos**; próximos: TSE (candidaturas), dados abertos da Câmara/Senado, Defesa Civil, GDELT (tensões) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
 | 7 | `/api/search`, `/api/timeline` | a fazer |
-| 8 | Reddit e X (APIs oficiais; nunca confirmam sozinhos) | código pronto e testado (política BR); falta autorização, custo, termos, secrets e piloto de 48 h |
+| 8 | Reddit e X (APIs oficiais; nunca confirmam sozinhos) | código pronto (política e clima por UF); Reddit exige pedido de acesso (Responsible Builder Policy), X exige plano pago com teto de gasto; secrets → piloto automático |
 | 9 | Fase 3: câmeras públicas autorizadas, trânsito (Waze só por parceria), visão computacional onde permitido | futuro |
 | 10 | Robustez: Queues, KV (cache), rate limiting, staging, observabilidade | conforme a carga |
 
@@ -140,7 +140,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 |---|---|---|---|
 | E1 | Onboarding acima + PR de teste (ex.: corrigir um erro de digitação em doc) | docs | valida acesso, CI e fluxo |
 | E2 | **Qualidade da classificação e da geo**: ampliar o gazetteer (mais municípios, bairros conhecidos), ajustar famílias de keywords, reduzir falsos positivos, com testes | `processing/geo.py`, `processing/keywords.json`, `tests/` | exemplos reais ruins estão na seção 7 (itens 2 e 3) |
-| E3 | **Coletores de fontes oficiais**, um por PR: INMET (alertas), Defesa Civil, PRF, IBGE, Banco Central | `collectors/official/<fonte>.py` + 1 linha em `collectors/registry.py` + entrada em `config/sources.json` + ficha em `docs/sources/SOURCES.md` | **antes de codar**: ler API/termos/limites e preencher o checklist de `COLLECTION_PROTOCOL.md` §4; teste com feed gravado (sem rede) |
+| E3 | **Coletores de fontes oficiais**, um por PR: ~~INMET (alertas)~~ ✅ feito (`collectors/official/inmet.py` serve de modelo), Defesa Civil, PRF, IBGE, Banco Central, TSE (candidaturas) | `collectors/official/<fonte>.py` + 1 linha em `collectors/registry.py` + entrada em `config/sources.json` + ficha em `docs/sources/SOURCES.md` | **antes de codar**: ler API/termos/limites e preencher o checklist de `COLLECTION_PROTOCOL.md` §4; teste com feed gravado (sem rede) |
 | E4 | `/api/search` e `/api/timeline` | `apps/worker/src/routes/search.ts`, `timeline.ts` (novos) + registrar em `index.ts` | seguir o padrão de `events.ts` (zod, cache, erros) e documentar em `docs/api/API.md` |
 | E5 | Proteger `/api/admin/*` (Cloudflare Access ou token próprio) e definir com o front o que o painel precisa | `apps/worker/src/routes/admin.ts` | combinar antes com o responsável |
 
@@ -158,6 +158,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - **2026-10-03** — Clima e política por estado: coletor `inmet` (avisos oficiais, só Perigo/Grande Perigo, um sinal por UF), `reddit-clima`/`x-clima`, comunidades regionais do Reddit com UF, geo com gentílicos/assembleias/TRE-UF, clusterização não junta UFs diferentes da mesma fonte, piloto das fontes oficiais no `collect.yml`. ADR 0004.
 - **2026-10-03** — RSS da Agência Senado e da Agência Câmara propostos como fontes `OFFICIAL` de política (fichas em `SOURCES.md`). Reddit: confirmado que todo acesso à API exige aprovação prévia; RSS do Reddit descartado (robots.txt).
 - **2026-10-03** — Coletores Reddit e X (desativados) focados em política BR: busca temática, filtro `categories`, geo, título sem links/@menções, 429/401/403 mapeados na saúde, `interval_s` respeitado (`is_due`), `start_time` no X, modo piloto `--source`, secrets no `collect.yml`, novas keywords de política/protesto. ADR 0003. Piloto automático no `collect.yml` (`--respect-interval`; log só com contagens).
+- **2026-10-03** — PR #11 em produção (previsões v1, correção do "para"=Pará, endpoints do front). Migration `0004`: pico por evento (`peak_alert_level/peak_pulse/peak_at`); `GET /api/history`.
 - **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
 - **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
