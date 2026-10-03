@@ -6,6 +6,7 @@ import { events } from "./routes/events";
 import { map } from "./routes/map";
 import { ingest } from "./routes/ingest";
 import { admin } from "./routes/admin";
+import { forecasts } from "./routes/forecasts";
 import type { AppEnv, Bindings } from "./env";
 import { dispatchCollection } from "./lib/dispatch";
 
@@ -20,6 +21,7 @@ app.route("/api/health", health);
 app.route("/api/pulse", pulse);
 app.route("/api/events", events);
 app.route("/api/map", map);
+app.route("/api/forecasts", forecasts);
 app.route("/api/ingest", ingest);
 app.route("/api/admin", admin);
 

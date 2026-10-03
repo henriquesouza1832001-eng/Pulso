@@ -14,6 +14,7 @@ from .baseline import ewma_baseline, hourly_counts
 from .collectors.news.rss import http_fetch
 from .collectors.registry import build_adapter
 from .config import load_sources
+from .forecast import make_nowcasts, resolve_due
 from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
@@ -107,6 +108,8 @@ def run_once(
     keywords: KeywordEngine | None = None,
     history: list[dict] | None = None,
     stored: list[dict] | None = None,
+    pulse_points: list[dict] | None = None,
+    open_forecasts: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -155,14 +158,24 @@ def run_once(
 
     # Só enviamos o que é novo ou mudou de evento; o resto já está gravado.
     to_send = [s for h, s in all_signals.items() if h not in known_ids or known_ids[h] != s.event_id]
+    pulses = build_pulses(events, now)
+
+    # Previsões: resolve as vencidas com o valor REAL e cria novas só se houver histórico suficiente.
+    br_now = {"timestamp": iso(now), "score": pulses[0]["score"]}
+    points = [*(pulse_points or []), br_now]
+    forecasts = [
+        *resolve_due(open_forecasts or [], points, now),
+        *make_nowcasts(points, now),
+    ]
     return {
         "batch_id": uuid.uuid4().hex,
         "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")} for s in sources],
         "events": events,
         "signals": [signal_dict(s) for s in to_send],
-        "pulses": build_pulses(events, now),
+        "pulses": pulses,
         "source_health": health,
         "series": build_series(list(all_signals.values()), now),
+        "forecasts": forecasts,
     }
 
 
@@ -202,7 +215,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
-         "series": batch["series"] if i == len(parts) - 1 else []}
+         "series": batch["series"] if i == len(parts) - 1 else [],
+         "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
@@ -216,11 +230,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
-    from .client import fetch_history, fetch_signals
-    # Histórico (baseline) e sinais gravados (agrupamento com estado): só com dado real do Worker.
+    from .client import fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
+    # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     history = fetch_history() if args.push else []
     stored = fetch_signals() if args.push else []
-    batch = run_once(sources, history=history, stored=stored)
+    pulse_points = fetch_pulse_history() if args.push else []
+    open_forecasts = fetch_open_forecasts() if args.push else []
+    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:

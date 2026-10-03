@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { CATEGORIES, EVENT_STATUSES, GEO_PRECISIONS, SOURCE_CLASSES, SOURCE_HEALTH } from "@pulso/shared";
+import {
+	CATEGORIES,
+	EVENT_STATUSES,
+	FORECAST_KINDS,
+	GEO_PRECISIONS,
+	SOURCE_CLASSES,
+	SOURCE_HEALTH,
+} from "@pulso/shared";
 import type { AppEnv } from "../env";
 import { engineAuthorized } from "../lib/auth";
 
@@ -67,6 +74,38 @@ const signalSchema = z.object({
 	city: z.string().max(100).nullable(),
 });
 
+const forecastSchema = z
+	.object({
+		forecast_id: z.string().regex(/^fc-[a-z0-9-]{1,100}$/),
+		kind: z.enum(FORECAST_KINDS),
+		question: z.string().min(5).max(300),
+		scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+		metric: z.string().regex(/^[a-z_]{1,40}$/),
+		comparator: z.enum(["gte", "lte"]),
+		threshold: z.number().finite(),
+		method: z.string().regex(/^[a-z0-9_]{1,60}$/),
+		method_version: z.string().max(20),
+		// Nunca 0 nem 1: certeza absoluta não existe numa previsão.
+		probability: z.number().gt(0).lt(1),
+		interval_low: z.number().min(0).max(1),
+		interval_high: z.number().min(0).max(1),
+		horizon_minutes: z.number().int().min(1).max(60 * 24 * 30),
+		created_at: iso,
+		resolves_at: iso,
+		evidence: z.record(z.string(), z.unknown()),
+		status: z.enum(["open", "resolved", "void"]),
+		outcome: z.union([z.literal(0), z.literal(1)]).nullable(),
+		observed_value: z.number().finite().nullable(),
+		resolved_at: iso.nullable(),
+		brier: z.number().min(0).max(1).nullable(),
+	})
+	.refine((f) => f.interval_low <= f.probability && f.probability <= f.interval_high, {
+		message: "probability fora do intervalo",
+	})
+	.refine((f) => (f.status === "resolved") === (f.outcome !== null && f.brier !== null), {
+		message: "forecast resolvida exige outcome e brier",
+	});
+
 const batchSchema = z.object({
 	batch_id: z.string().min(1).max(80),
 	sources: z.array(sourceSchema).max(100),
@@ -105,6 +144,7 @@ const batchSchema = z.object({
 		)
 		.max(3000)
 		.default([]),
+	forecasts: z.array(forecastSchema).max(200).default([]),
 });
 
 const SERIES_RETENTION_DAYS = 90;
@@ -118,7 +158,7 @@ ingest.post("/", async (c) => {
 	if (!parsed.success) {
 		return c.json({ error: "invalid_batch", detail: parsed.error.issues[0]?.message }, 400);
 	}
-	const { sources, events, signals, pulses, source_health, series } = parsed.data;
+	const { sources, events, signals, pulses, source_health, series, forecasts } = parsed.data;
 
 	const db = c.env.DB;
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
@@ -227,6 +267,21 @@ ingest.post("/", async (c) => {
 				.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
 		);
 	}
+	if (forecasts.length) {
+		// IMUTABILIDADE: a previsão (probabilidade, pergunta, método, evidência) é gravada uma vez e nunca
+		// reescrita; o reenvio só pode preencher a resolução, e apenas enquanto ainda estiver aberta.
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO forecasts (id,kind,question,scope,metric,comparator,threshold,method,method_version,probability,interval_low,interval_high,horizon_minutes,created_at,resolves_at,evidence,status,outcome,observed_value,resolved_at,brier)
+			 SELECT ${f("forecast_id")},${f("kind")},${f("question")},${f("scope")},${f("metric")},${f("comparator")},${f("threshold")},${f("method")},${f("method_version")},${f("probability")},${f("interval_low")},${f("interval_high")},${f("horizon_minutes")},${f("created_at")},${f("resolves_at")},${f("evidence")},${f("status")},${f("outcome")},${f("observed_value")},${f("resolved_at")},${f("brier")}
+			 FROM json_each(?1) j WHERE true
+			 ON CONFLICT(id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,observed_value=excluded.observed_value,resolved_at=excluded.resolved_at,brier=excluded.brier
+			 WHERE forecasts.status = 'open'`,
+				)
+				.bind(json(forecasts)),
+		);
+	}
 	if (stmts.length) await db.batch(stmts);
 	return c.json({
 		ok: true,
@@ -236,5 +291,6 @@ ingest.post("/", async (c) => {
 		pulses: pulses.length,
 		source_health: source_health.length,
 		series: series.length,
+		forecasts: forecasts.length,
 	});
 });

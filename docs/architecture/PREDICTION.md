@@ -48,3 +48,12 @@ A cobertura jornalística e a atividade social são **sinais**, não a verdade: 
 5. **Registro de previsões** (`forecasts` no D1, `/api/forecasts`): criar, resolver, pontuar.
 6. **Modelos por tipo** (NOWCAST → QUANTITY → EVENT → OPEN), cada um só sai de EXPERIMENTAL após calibrar.
 7. **Sensores extras** por vias oficiais: Reddit/X (API oficial; perfis pequenos pesam menos e nunca confirmam sozinhos), trânsito, Defesa Civil/INMET, câmeras públicas autorizadas. Convergência de **tipos** de fonte pesa mais que volume.
+
+## Estado da implementação (2026-10-03)
+**Pronto (v1, tudo EXPERIMENTAL):**
+- Tabela `forecasts` (migration 0003) e contrato `Forecast`. A previsão é **imutável**: o Worker só aceita preencher a resolução de uma previsão ainda aberta, e recusa probabilidade 0 ou 1, resolvida sem resultado e probabilidade fora do próprio intervalo.
+- API pública: `GET /api/forecasts`, `/api/forecasts/:id`, `/api/forecasts/track-record` (Brier por método, taxa observada, curva de calibração em faixas de 20% e *skill* contra a referência ingênua). Toda resposta traz o aviso "PREVISÃO (probabilidade), não fato". Um método é EXPERIMENTAL até resolver 100 previsões.
+- Previsor `pulse_empirical_delta` v1 (NOWCAST): "o Pulso do Brasil será ≥ T daqui a 60 min?", com T = atual+10 e atual+20 (arredondado a 5). Probabilidade pela distribuição empírica das variações de 60 min do próprio histórico do Pulso, com suavização de Laplace e intervalo de Wilson. **Só prevê com ≥ 36 pares de histórico (~3,5 h contínuas); sem isso não prevê.**
+- Resolução automática com o valor **real** observado; sem observação em até 30 min do vencimento a previsão é **anulada** (`void`), nunca estimada.
+
+**Falta:** previsores de EVENT (um evento chega ao nível 3+?), QUANTITY por estado e OPEN; modelos que usem mais do que a persistência do Pulso; sazonalidade; a avaliação de quando um método deixa de ser experimental com base no *skill*, não só na contagem.
