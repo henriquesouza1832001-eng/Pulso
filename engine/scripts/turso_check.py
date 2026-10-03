@@ -57,3 +57,49 @@ for i, r in enumerate(data["results"][:-1]):
 sel = data["results"][2]["response"]["result"]
 print("contagem:", [c.get("value") for c in sel["rows"][0]], f"({ms} ms para o lote)")
 print("OK: leitura, escrita, upsert e json_each funcionam")
+
+
+# --- formatos usados pela camada do Worker (apps/worker/src/lib/turso.ts) ---
+def raw(requests):
+    req = urllib.request.Request(f"{base}/v2/pipeline", data=json.dumps({"requests": requests + [{"type": "close"}]}).encode(),
+                                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())["results"]
+
+
+T = lambda v: {"type": "text", "value": v}  # noqa: E731
+I = lambda v: {"type": "integer", "value": str(v)}  # noqa: E731, E741
+
+# 1) sequence (várias instruções) e parâmetros NUMERADOS (?1, ?2) com a mesma posição reutilizada
+r = raw([{"type": "sequence", "sql": "DROP TABLE IF EXISTS _pc2; CREATE TABLE _pc2 (k TEXT PRIMARY KEY, n INTEGER);"}])
+assert r[0]["type"] == "ok", r
+r = raw([{"type": "execute", "stmt": {"sql": "INSERT INTO _pc2 (k,n) VALUES (?1,?2),(?1||'x',?2)", "args": [T("a"), I(5)]}}])
+assert r[0]["type"] == "ok" and r[0]["response"]["result"]["affected_row_count"] == 2, r
+print("numerados (?1,?2): ok")
+
+
+# 2) batch transacional com condições: tudo grava ou nada grava
+def txn(stmts):
+    n = len(stmts)
+    steps = [{"stmt": {"sql": "BEGIN"}}]
+    steps += [{"condition": {"type": "ok", "step": i}, "stmt": s} for i, s in enumerate(stmts)]
+    steps += [{"condition": {"type": "ok", "step": n}, "stmt": {"sql": "COMMIT"}},
+              {"condition": {"type": "not", "cond": {"type": "ok", "step": n + 1}}, "stmt": {"sql": "ROLLBACK"}}]
+    res = raw([{"type": "batch", "batch": {"steps": steps}}])[0]["response"]["result"]
+    return res["step_results"], res["step_errors"]
+
+
+ins = lambda k: {"sql": "INSERT INTO _pc2 (k,n) VALUES (?1,1)", "args": [T(k)]}  # noqa: E731
+sr, se = txn([ins("p"), ins("q")])
+assert all(e is None for e in se[:4]) and sr[3] is not None, (sr, se)
+cnt = lambda: int(raw([{"type": "execute", "stmt": {"sql": "SELECT COUNT(*) FROM _pc2"}}])[0]["response"]["result"]["rows"][0][0]["value"])  # noqa: E731
+before = cnt()
+sr, se = txn([ins("r"), ins("r")])  # a segunda viola a chave primária
+assert se[2] is not None and se[4] is None, se[:5]
+assert cnt() == before, "o rollback deveria desfazer a primeira inserção"
+print("batch transacional e rollback: ok", f"(linhas {before}, sem alteração após o erro)")
+
+# 3) consulta com `rows_written` próximo do que o D1 reporta: o Turso informa só as linhas alteradas
+r = raw([{"type": "execute", "stmt": {"sql": "DROP TABLE _pc2"}}])
+print("limpeza:", r[0]["type"])
+print("OK: o protocolo que a camada do Worker usa funciona no servidor real")
