@@ -6,6 +6,8 @@
 	"compatibility_date": "2025-10-08",
 	"workers_dev": true,
 	"preview_urls": false,
+	// Worker -> Worker da mesma conta pelo workers.dev dá "error code: 1042": a API vem por Service Binding.
+	"services": [{ "binding": "API", "service": "pulso-api" }],
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",

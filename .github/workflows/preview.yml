@@ -48,6 +48,11 @@ jobs:
       - name: Verificar prévia
         run: |
           url="https://pulso-web-${{ github.ref_name }}.henriquesouza.workers.dev"
-          for i in 1 2 3 4 5 6; do curl -fsS -o /dev/null "$url/" && curl -fsS "$url/api/pulse/br" >/dev/null && break; sleep 5; done
-          curl -fsS -o /dev/null "$url/" && curl -fsS "$url/api/pulse/br" | head -c 200; echo
+          # Worker recém-criado pode levar ~1 min para responder no workers.dev.
+          for i in $(seq 1 24); do
+            if curl -fsS -o /dev/null "$url/" && curl -fsS -o /dev/null "$url/api/pulse/br"; then ok=1; break; fi
+            sleep 5
+          done
+          if [ -z "$ok" ]; then echo "::error::prévia não respondeu em $url (página ou /api)"; exit 1; fi
+          curl -fsS "$url/api/pulse/br"; echo
           echo "### Prévia publicada: $url" >> "$GITHUB_STEP_SUMMARY"
