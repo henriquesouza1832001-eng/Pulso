@@ -595,3 +595,39 @@
 	.osf-time, .osf-ago { white-space: nowrap; }
 }
 .osf-gap { min-width: 18px; text-align: center; color: var(--tx2); font-size: 10px; }
+
+/* ---------- sanfona: resumo do evento no próprio item (feed e briefings) ---------- */
+.osf-caret { display: inline-block; width: 12px; color: var(--acc); font-size: 10px; }
+.osf-item.open .osf-text { -webkit-line-clamp: unset; }
+.osf-item:focus-visible, .brief:focus-visible { outline: 1px solid var(--acc); outline-offset: -1px; }
+.peek { margin-top: 8px; padding: 10px 12px; border-left: 2px solid var(--acc); background: var(--bg2); cursor: default; }
+.peek-sum { font-size: 12px; line-height: 1.6; color: var(--tx1); }
+.peek-meta { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 9.5px; letter-spacing: 0.06em; color: var(--tx2); }
+.peek-h { display: block; margin-top: 10px; font-size: 9px; letter-spacing: 0.14em; color: var(--tx2); }
+.peek-src { list-style: none; margin-top: 4px; }
+.peek-src li { display: grid; grid-template-columns: 38px 110px minmax(0, 1fr); gap: 8px; padding: 3px 0; font-size: 10.5px; border-bottom: 1px dotted var(--ln0); }
+.peek-src .t { color: var(--tx2); }
+.peek-src .s { color: var(--acc); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek-src .x { color: var(--tx1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.peek-src a.x:hover { color: var(--tx0); text-decoration: underline; }
+.peek-empty { margin-top: 4px; font-size: 10.5px; color: var(--tx2); }
+.peek-foot { margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 9.5px; letter-spacing: 0.06em; }
+.peek-more {
+	margin-left: auto; font-family: inherit; font-size: 9.5px; letter-spacing: 0.1em; cursor: pointer;
+	background: transparent; border: 1px solid var(--ln1); color: var(--acc); padding: 3px 9px;
+}
+.peek-more:hover { border-color: var(--acc); color: var(--tx0); }
+.brief.open { cursor: pointer; }
+.brief.open .brief-foot { margin-top: 8px; }
+.brief.open h3 { color: var(--acc); }
+@media (min-width: 1101px) {
+	/* briefing aberto: o cartão cresce o quanto precisar (sai da grade de altura fixa) e a coluna volta a contar */
+	.feedside:has(.briefs.has-open) { contain: none; }
+	.feedside .briefs.has-open { grid-template-rows: none; align-content: start; } /* sem esticar as linhas: nada de vão */
+	.feedside .brief.open { overflow: visible; }
+	.feedside .brief.open h3 { -webkit-line-clamp: unset; }
+}
+@media (max-width: 720px) {
+	.peek-src li { grid-template-columns: 38px minmax(0, 1fr); }
+	.peek-src .s { display: none; }
+}

@@ -3,6 +3,7 @@ import type { PulsoEvent } from "@pulso/shared";
 import { ago, brTime, CATEGORY_PT, evtId } from "../../lib/format";
 import { identicon } from "../../lib/identicon";
 import { LevelTag } from "../ui/LevelTag";
+import { EventPeek } from "../events/EventPeek";
 import { Pager } from "../ui/Pager";
 
 /**
@@ -48,6 +49,7 @@ export function OsintFeed({
 	onlineSources,
 	uf,
 	onUfChange,
+	onDossier,
 }: {
 	events: PulsoEvent[];
 	onSelect: (id: string) => void;
@@ -58,6 +60,8 @@ export function OsintFeed({
 	/** Estado em foco ("SP"), "BR" = só notícias sem UF (nacionais/internacionais), null = todos. */
 	uf: string | null;
 	onUfChange: (uf: string | null) => void;
+	/** "ver dossiê completo" dentro da sanfona */
+	onDossier: (id: string) => void;
 }) {
 	const [tab, setTab] = useState<"live" | "top">("live");
 	const [cat, setCat] = useState<string>("ALL");
@@ -164,40 +168,59 @@ export function OsintFeed({
 		.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour12: false })
 		.slice(0, 2);
 
-	const renderItem = (e: PulsoEvent) => (
-		<article
-			key={e.event_id}
-			data-evid={e.event_id}
-			className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${e.event_id === selectedId ? " sel" : ""}`}
-			onClick={() => onSelect(e.event_id)}
-		>
-			<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={16} height={16} />
-			<div className="osf-body">
-				{/* Uma linha só: hora · local · volume/confiança … há X · nível. Código EVT fica no dossiê e no title. */}
-				<div className="osf-line" title={evtId(e.event_id)}>
-					<span className="osf-time">{brTime(e.updated_at)}</span>
-					<span className="osf-place">
-						{[e.city, e.state].filter(Boolean).join("/") ||
-							(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
-					</span>
-					{demo ? (
-						<>
-							<span className="osf-src">{sourceFor(e, demo)}</span>
-							<span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>
-						</>
-					) : (
-						<span className="osf-stats dim">
-							{e.source_count} fonte{e.source_count === 1 ? "" : "s"} · {e.signal_count} sina
-							{e.signal_count === 1 ? "l" : "is"} · conf {e.confidence}%
+	// Item = sanfona: clicar abre o resumo ali mesmo, clicar de novo fecha (quem alterna é o App, via onSelect).
+	const renderItem = (e: PulsoEvent) => {
+		const open = e.event_id === selectedId;
+		return (
+			<article
+				key={e.event_id}
+				data-evid={e.event_id}
+				className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${open ? " sel open" : ""}`}
+				onClick={() => onSelect(e.event_id)}
+				onKeyDown={(ev) => {
+					if (ev.target === ev.currentTarget && (ev.key === "Enter" || ev.key === " ")) {
+						ev.preventDefault();
+						onSelect(e.event_id);
+					}
+				}}
+				role="button"
+				tabIndex={0}
+				aria-expanded={open}
+			>
+				<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={16} height={16} />
+				<div className="osf-body">
+					{/* Uma linha só: hora · local · volume/confiança … há X · nível. Código EVT fica no dossiê e no title. */}
+					<div className="osf-line" title={evtId(e.event_id)}>
+						<span className="osf-time">{brTime(e.updated_at)}</span>
+						<span className="osf-place">
+							{[e.city, e.state].filter(Boolean).join("/") ||
+								(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
 						</span>
-					)}
-					<span className="osf-ago dim">{ago(e.updated_at)}</span>
-					<LevelTag level={e.alert_level} compact />
+						{demo ? (
+							<>
+								<span className="osf-src">{sourceFor(e, demo)}</span>
+								<span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>
+							</>
+						) : (
+							<span className="osf-stats dim">
+								{e.source_count} fonte{e.source_count === 1 ? "" : "s"} · {e.signal_count} sina
+								{e.signal_count === 1 ? "l" : "is"} · conf {e.confidence}%
+							</span>
+						)}
+						<span className="osf-ago dim">{ago(e.updated_at)}</span>
+						<LevelTag level={e.alert_level} compact />
+					</div>
+					<p className="osf-text">
+						<span className="osf-caret" aria-hidden>
+							{open ? "▾" : "▸"}
+						</span>
+						{e.title}
+					</p>
+					{open && <EventPeek event={e} onDossier={onDossier} />}
 				</div>
-				<p className="osf-text">{e.title}</p>
-			</div>
-		</article>
-	);
+			</article>
+		);
+	};
 
 	const shown = rest.slice(curPage * PAGE, (curPage + 1) * PAGE);
 
