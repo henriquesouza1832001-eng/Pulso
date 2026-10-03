@@ -1,11 +1,16 @@
 {
   "generated_at": "2026-10-03T21:00:00Z",
-  "campaign": "forecast-evidence-2026-10-03",
+  "campaign": "intelligence-next-pass-2026-10-03",
   "checks": {
     "prospective_registry": {"status": "PARTIAL", "immutable_snapshot": true, "real_counts": "BLOCKED_EXTERNAL"},
     "temporal_integrity": {"status": "PASS", "tests": ["replay", "cutoff", "future-data rejection"]},
     "forecast_invariants": {"status": "PASS", "tests": 28},
     "coverage_missingness_abstention": {"status": "PARTIAL", "real_distribution": "INSUFFICIENT_DATA"},
+    "editorial_operational_gate": {"status": "PASS", "volumes": [1, 10, 50, 100, 500, 1000]},
+    "provenance_duplicate_volume": {"status": "PASS", "republication_origin_count": 1},
+    "clustering_paraphrase_geo": {"status": "PARTIAL", "drift_resurrection": "UNVERIFIED"},
+    "contradiction": {"status": "PASS", "state": "DISPUTED"},
+    "sentinel_information_gain": {"status": "UNVERIFIED"},
     "full_python_suite": {"status": "PASS", "tests": 795, "warnings": 24},
     "worker_invalid_uf": {"status": "FAILED", "finding": "GET /api/pulse/state/ZZ returns synthetic NORMAL 200; owned by Worker follow-up"}
   },

@@ -44,6 +44,16 @@ def dominant_category(signals: list[Signal]) -> str:
     return counts.most_common(1)[0][0] if counts else "OTHER"
 
 
+def _origin_key(signal: Signal) -> str:
+    """Conservadoramente agrupa cópias idênticas para não contar volume como evidência."""
+    title = normalized_title(signal.title)
+    return title if title else (signal.canonical_url or signal.url or signal.signal_id)
+
+
+def _independent_origin_count(signals: list[Signal]) -> int:
+    return len({_origin_key(s) for s in signals})
+
+
 def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
     gate = flags.enabled("NOISE_GATE")
@@ -51,9 +61,11 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
-    last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
-    prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
-    independent = len(sources)
+    last_hour = len({_origin_key(s) for s in signals if (now - s.timestamp).total_seconds() <= 3600})
+    prev_hour = len({_origin_key(s) for s in signals if 3600 < (now - s.timestamp).total_seconds() <= 7200})
+    raw_last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
+    raw_prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
+    independent = _independent_origin_count(signals)
     if gate:
         # QA-003: repost social não é evidência independente. Conta cada veículo não social, mais uma origem por relato
         # social que não é quase-cópia (Jaccard >= COPY_JACCARD, a regra do validador) de nenhuma manchete não social:
@@ -92,8 +104,10 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
         contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
-        extra={"acceleration": float(last_hour - prev_hour),
-               "content_roles": sorted({a.role for a in assessed})},
+        extra={"acceleration": float(raw_last_hour - raw_prev_hour),
+               "content_roles": sorted({a.role for a in assessed}),
+               "origin_count": float(_independent_origin_count(signals)),
+               "publisher_count": float(len(sources))},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
