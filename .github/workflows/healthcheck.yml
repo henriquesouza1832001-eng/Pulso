@@ -1,0 +1,31 @@
+name: Saúde da produção
+
+# A cada 30 min lê a rota pública /api/health e FALHA se a coleta parou, o banco caiu ou a maioria das fontes
+# saiu do ar. Workflow que falha avisa o dono do repositório (e-mail/notificação do GitHub).
+# Só lê rota pública: não usa nenhum segredo. Agendamentos só rodam a partir da branch principal.
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: healthcheck
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verificar /api/health
+        working-directory: engine
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m pulso_engine.healthcheck
