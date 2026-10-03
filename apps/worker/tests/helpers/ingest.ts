@@ -5,11 +5,11 @@ import { mockHrana, type Fault } from "./hrana";
 
 /** Harness de ingest compartilhado: Worker REAL (/api/ingest) sobre SQLite real (Hrana de mentira, com injeção de falha). */
 export const MIGRATIONS = [join(__dirname, "../../../../database/migrations"), join(__dirname, "../../../../database/pending")];
-export const TABLES = ["sources", "events", "signals", "pulse_history", "source_health", "series", "forecasts", "signal_observations", "investigations", "forecast_registry", "calibrators", "source_runtime", "engine_cycle"];
+export const TABLES = ["sources", "events", "signals", "pulse_history", "source_health", "series", "forecasts", "signal_observations", "investigations", "forecast_registry", "calibrators", "source_runtime", "engine_cycle", "shadow_results", "driver_registry"];
 export const NOW = "2026-10-03T12:00:00Z";
 
-export function setup(fault?: (n: number, body: any) => Fault | undefined) {
-	const m = mockHrana(fault);
+export function setup(fault?: (n: number, body: any) => Fault | undefined, opts: { timeoutMs?: number; slowMs?: number } = {}) {
+	const m = mockHrana(fault, opts);
 	for (const dir of MIGRATIONS) {
 		for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) m.sqlite.exec(readFileSync(join(dir, f), "utf8"));
 	}
@@ -43,6 +43,8 @@ export const BATCH = {
 	forecast_registry: [{ forecast_id: "fc-chaos-1", created_at: NOW, snapshot: '{"a":1}', snapshot_hash: "a".repeat(64) }],
 	source_runtime: [{ source_id: "fonte-a", transport: "ONLINE", freshness_state: "FRESH", newest_item_age_min: 12.5, last_content_advance: NOW, records: 10, new_records: 3, duplicate_records: 1, breaker_state: "CLOSED", consecutive_failures: 0, next_attempt_at: null, opened_count: 0, breaker_reason: null, updated_at: NOW }],
 	engine_cycle: { cycle_at: NOW, duration_s: 41.2, sources_due: 20, sources_skipped: 0, records: 120, new_records: 30, duplicate_records: 5, signals_sent: 2, events: 1, freshness: { FRESH: 15, STALE: 3, EMPTY: 1, QUIET: 1, UNKNOWN: 0 }, coverage: { NEWS_HIGH: { FRESH: 15, ready_ratio: 0.8 } }, age: { n: 18, p50: 40, p95: 600, max: 900 }, breakers_open: 0, flags: { SOURCE_FRESHNESS: true }, engine_ref: "abc1234" },
+	shadow_results: [{ item_id: "fc-chaos-1:pulse_empirical_delta", method: "pulse_empirical_delta", scope: "BR", p_v1: 0.2, p_v2: 0.3, outcome: 0 }],
+	driver_registry: [{ driver: "WEATHER", target: "TRAFFIC", scope: "BR", lag_hours: 2, correlation: 0.4, pairs: 100, samples: 80, brier_without: 0.2, brier_with: 0.18, state: "CANDIDATE", reason: "teste" }],
 	calibrators: [{ id: "cal-platt-v1", method: "platt", version: "v1", fit_start: "2026-09-01T00:00:00Z", fit_end: "2026-09-30T00:00:00Z", sample_count: 250, artifact: '{"a":1}', status: "candidate", created_at: NOW }],
 };
 export const onlyWrite = (f: Fault) => (_n: number, body: any) => (body.requests?.[0]?.type === "batch" ? f : undefined);
