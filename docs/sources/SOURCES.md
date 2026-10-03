@@ -196,6 +196,9 @@ Exibição pública permitida: headline_link, com atribuição ao Banco Central 
 Papel: sinal econômico oficial e objetivo (o dólar pressiona combustível, alimentos e viagens). Cobre a categoria ECONOMY sem depender da imprensa.
 ```
 
+## Fontes de alerta (`alert_source`)
+As fontes marcadas com `"alert_source": true` (`inmet-avisos`, `defesa-civil-idap`) são canais oficiais de alerta de desastre: um alerta delas classificado como EMERGENCY (risco extremo) dá ao evento um piso de nível PULSO 3 (ver `docs/SCORING.md`). Não marque como `alert_source` uma fonte de comunicados ou notícias.
+
 ## Fontes de limiar (`quiet_ok`)
 Fontes que só emitem quando passam de um limiar (`inmet-avisos`, `inpe-queimadas`, `bcb-ptax`) levam `"quiet_ok": true` em `sources.json`: sem ocorrência no limiar a saúde é ONLINE ("sem ocorrências no limiar"), e não DEGRADED. Fonte de feed contínuo (RSS) sem itens continua DEGRADED.
 

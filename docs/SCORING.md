@@ -52,6 +52,8 @@ O Pulso de um evento é multiplicado por um **fator de frescor** de 0,25 a 1, ca
 ## Nível PULSO 1–5
 1 Normal · 2 Atenção (score ≥ 30) · 3 Elevado (≥ 55 e confiança ≥ 40) · 4 Crítico (≥ 75, confiança ≥ 70, ≥ 2 fontes independentes) · 5 Emergência (≥ 90, confiança ≥ 85, **fonte oficial** e ≥ 3 fontes independentes). Social isolado nunca passa do nível 3.
 
+**Piso para alerta oficial extremo.** Se o evento contém um alerta de uma **fonte de alerta oficial** (`"alert_source": true` em `sources.json`: hoje o INMET e a Defesa Civil/IDAP) classificado como `EMERGENCY` (INMET "Grande Perigo", Defesa Civil "Extreme"), o nível nunca fica abaixo de **3 (Elevado)**: o próprio órgão já declarou o perigo e o score ainda não o enxerga (a anomalia só existe com 12 h de histórico). O piso **não altera o score**; aparece no "POR QUE?" como um item de 0 pontos ("Alerta oficial de risco extremo (piso nível 3)") e a soma dos pontos continua igual ao score. Comunicado de órgão que não é fonte de alerta, severidade menor e notícia não recebem o piso. O nível 4 e o 5 continuam exigindo confirmação por 2+ e 3+ fontes independentes.
+
 Os limiares são ponto de partida: calibrar com dados reais (ADR a cada mudança).
 
 ## Anomalia e baseline (implementado)

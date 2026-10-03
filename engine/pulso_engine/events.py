@@ -112,12 +112,23 @@ def event_place(sigs: list[Signal]) -> Signal | None:
     return max(candidates, key=lambda s: (s.latitude is not None, s.geo_confidence or 0))
 
 
-def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None) -> dict:
+OFFICIAL_ALERT_FLOOR = 3  # piso do nível PULSO quando o órgão oficial declara risco EXTREMO
+
+
+def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None,
+                alert_sources: frozenset[str] = frozenset()) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
     stats = stats_for(sigs, now, anomaly)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
     level = alert_level(score, conf, stats)
+    # Alerta OFICIAL de risco extremo (INMET "Grande Perigo", Defesa Civil "Extreme": o adaptador os classifica como
+    # EMERGENCY) nunca fica abaixo de "Elevado": o próprio órgão já declarou o perigo, e o score ainda não enxerga isso
+    # (anomalia só existe com 12 h de histórico). O piso é explícito no "POR QUE?" (0 pontos) e não altera o score.
+    official_extreme = any(s.source_id in alert_sources and s.category == "EMERGENCY" for s in sigs)
+    if official_extreme and level < OFFICIAL_ALERT_FLOOR:
+        level = OFFICIAL_ALERT_FLOOR
+        breakdown = [*breakdown, {"key": "official_alert", "label": "Alerta oficial de risco extremo (piso nível 3)", "points": 0}]
     located = event_place(sigs)
     first = sigs[0]
     # Id estável: reaproveita o de um evento já gravado; só gera novo se for uma história nova.
