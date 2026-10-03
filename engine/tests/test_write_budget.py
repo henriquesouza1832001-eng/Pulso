@@ -14,9 +14,10 @@ def known(*events):
 
 def test_unchanged_events_are_not_resent_but_relevant_changes_are():
     old = [ev(1), ev(2), ev(3), ev(4), ev(5), ev(6)]
-    now = [ev(1), ev(2, pulse=41), ev(3, pulse=45), ev(4, level=3), ev(5, signals=4), ev(7)]
+    now = [ev(1), ev(2, pulse=41), ev(3, pulse=49), ev(4, level=3), ev(5, signals=6), ev(6, signals=4), ev(7)]
     sent = {e["event_id"] for e in changed_events(now, known(*old))}
-    assert sent == {"ev-3", "ev-4", "ev-5", "ev-7"}  # ev-1 igual; ev-2 só variou 1 ponto; ev-7 é novo
+    # ev-1 igual; ev-2 variou 1 ponto; ev-6 ganhou só +1 sinal; ev-3 variou 9 pontos; ev-5 saltou de 3 para 6 sinais; ev-7 é novo
+    assert sent == {"ev-3", "ev-4", "ev-5", "ev-7"}
 
 
 def test_without_digest_everything_is_sent_safely():

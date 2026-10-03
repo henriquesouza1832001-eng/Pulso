@@ -1,0 +1,29 @@
+{
+  "_nota": "Catálogo de TIPOS de evento e seus precursores. As relações `raises` e `lead_hours` são HIPÓTESES editoriais a validar com dados reais (docs/architecture/PREDICTION.md): entram nas previsões como EVIDÊNCIA (\"por que esta previsão?\") e NÃO alteram a probabilidade até um backtest real provar ganho. O indicador do PULSO mostra só o momento atual; nada daqui é exibido como previsão nele.",
+  "types": [
+    {"id": "chuva_extrema", "name": "Chuva forte, temporal ou alagamento", "category": "WEATHER", "raises": ["TRAFFIC", "INFRASTRUCTURE", "HEALTH"], "lead_hours": [1, 12],
+     "terms": ["chuva forte", "temporal", "alagamento", "enchente", "inundacao", "ciclone", "tempestade", "deslizamento", "granizo", "alerta de chuva", "aviso de tempestade", "ressaca"]},
+    {"id": "calor_seca", "name": "Onda de calor, seca ou estiagem", "category": "WEATHER", "raises": ["HEALTH", "INFRASTRUCTURE", "ECONOMY"], "lead_hours": [24, 240],
+     "terms": ["onda de calor", "calor extremo", "estiagem", "seca", "baixa umidade", "crise hidrica", "reservatorio baixo", "racionamento de agua"]},
+    {"id": "queimadas", "name": "Queimadas e fumaça", "category": "WEATHER", "raises": ["HEALTH", "TRAFFIC"], "lead_hours": [2, 48],
+     "terms": ["queimada", "queimadas", "focos de incendio", "incendio florestal", "fumaca", "qualidade do ar"]},
+    {"id": "operacao_policial", "name": "Operação policial ou confronto", "category": "SECURITY", "raises": ["TRAFFIC", "SECURITY", "PROTEST"], "lead_hours": [0, 6],
+     "terms": ["operacao policial", "megaoperacao", "mandados de prisao", "confronto com a policia", "tiroteio", "operacao da policia", "policia federal deflagra", "baleado"]},
+    {"id": "crise_diplomatica", "name": "Embaixada, diplomacia e relações exteriores", "category": "INTERNATIONAL", "raises": ["POLITICS", "ECONOMY"], "lead_hours": [6, 168],
+     "terms": ["embaixada", "embaixador", "consulado", "diplomata", "rompimento de relacoes", "expulsa diplomata", "fecha embaixada", "ultimato", "sancoes"]},
+    {"id": "mobilizacao_social", "name": "Atos, greves e mobilização marcada", "category": "PROTEST", "raises": ["TRAFFIC", "PROTEST", "ECONOMY"], "lead_hours": [6, 72],
+     "terms": ["convocam ato", "manifestacao marcada", "greve geral", "caminhoneiros", "paralisacao", "bloqueio de rodovias", "ato marcado", "greve de onibus", "greve do metro"]},
+    {"id": "crise_energia", "name": "Energia: apagão, racionamento e bandeira tarifária", "category": "INFRASTRUCTURE", "raises": ["ECONOMY", "INFRASTRUCTURE", "TRAFFIC"], "lead_hours": [6, 720],
+     "terms": ["apagao", "racionamento de energia", "bandeira vermelha", "reservatorios em alerta", "falta de energia", "blecaute"]},
+    {"id": "surto_saude", "name": "Surto, epidemia e alerta sanitário", "category": "HEALTH", "raises": ["HEALTH"], "lead_hours": [24, 336],
+     "terms": ["surto", "epidemia", "dengue", "alerta sanitario", "vigilancia sanitaria", "casos confirmados", "emergencia em saude"]},
+    {"id": "choque_economico", "name": "Choque cambial ou de preços", "category": "ECONOMY", "raises": ["ECONOMY", "POLITICS"], "lead_hours": [6, 168],
+     "terms": ["dolar dispara", "dolar sobe", "choque cambial", "alta dos combustiveis", "reajuste de combustiveis", "inflacao dispara", "juros sobem"]},
+    {"id": "eleicao_tensionada", "name": "Eleição: apuração, contestação e tensão", "category": "POLITICS", "raises": ["POLITICS", "PROTEST", "SECURITY", "ECONOMY"], "lead_hours": [1, 96],
+     "terms": ["apuracao", "urna eletronica", "contestacao", "fraude eleitoral", "segundo turno", "resultado das eleicoes", "recontagem", "nao reconhece o resultado"]},
+    {"id": "preludio_crise_politica", "name": "Prelúdio de crise institucional", "category": "POLITICS", "raises": ["POLITICS", "PROTEST", "ECONOMY"], "lead_hours": [6, 240],
+     "terms": ["estado de sitio", "intervencao", "impeachment", "mobilizacao militar", "decreto de emergencia", "crise institucional", "ruptura", "prisao de ex-presidente"]},
+    {"id": "acidente_grave_via", "name": "Acidente grave ou bloqueio de via", "category": "TRAFFIC", "raises": ["TRAFFIC"], "lead_hours": [0, 3],
+     "terms": ["acidente grave", "interdicao total", "bloqueio da rodovia", "congestionamento de", "engavetamento", "queda de ponte", "interditada"]}
+  ]
+}

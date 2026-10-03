@@ -291,7 +291,7 @@ def run_once(
         *resolve_due(pulse_open, points, now),
         *(f for f in make_nowcasts(points, now) if f["forecast_id"] not in already_open),
         *resolve_surge_due(open_forecasts or [], series_rows, points, now),
-        *(f for f in make_surge_forecasts(series_rows, now) if f["forecast_id"] not in already_open),
+        *(f for f in make_surge_forecasts(series_rows, now, events) if f["forecast_id"] not in already_open),
     ]
     events_to_send = changed_events(events, known_events)
     series_to_send = changed_series(series_now, history)
@@ -312,7 +312,16 @@ def run_once(
     }
 
 
-PULSE_RESEND_DELTA = 3  # o Pulso só é reescrito se mudou ao menos isto (o frescor o faz cair a cada ciclo)
+PULSE_RESEND_DELTA = 8  # o Pulso só é reescrito se mudou ao menos isto (o frescor o faz cair a cada ciclo)
+# Cada upsert de evento grava a linha + 5 índices no D1 (≈6 linhas). Em 2026-10-03 o reenvio frequente de eventos estourou o
+# limite gratuito (113 mil de 100 mil linhas/dia): mudança de contagem só vale se for relevante, não +1 sinal.
+COUNT_RESEND_MIN = 2
+COUNT_RESEND_RATIO = 0.25
+
+
+def _count_jumped(old: int, new: int) -> bool:
+    """A contagem de sinais só justifica reescrever o evento se subiu pelo menos 2 e 25%: +1 sinal não vale 6 linhas no D1."""
+    return abs(new - old) >= max(COUNT_RESEND_MIN, COUNT_RESEND_RATIO * old)
 
 
 def changed_events(events: list[dict], known: list[dict] | None) -> list[dict]:
@@ -325,7 +334,7 @@ def changed_events(events: list[dict], known: list[dict] | None) -> list[dict]:
     for e in events:
         k = by_id.get(e["event_id"])
         if (k is None or k["alert_level"] != e["alert_level"] or k["status"] != e["status"]
-                or k["signal_count"] != e["signal_count"] or k["source_count"] != e["source_count"]
+                or k["source_count"] != e["source_count"] or _count_jumped(k["signal_count"], e["signal_count"])
                 or abs(k["pulse"] - e["pulse"]) >= PULSE_RESEND_DELTA):
             out.append(e)
     return out

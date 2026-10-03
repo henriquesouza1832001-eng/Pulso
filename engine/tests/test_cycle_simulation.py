@@ -132,5 +132,7 @@ def test_fast_decaying_traffic_is_rewritten_as_it_cools_but_keeps_its_id():
     b1 = cycle(w, feeds, T0, srcs)
     assert len(b1["events"]) == 1 and b1["events"][0]["category"] == "TRAFFIC"
     eid, p1 = b1["events"][0]["event_id"], b1["events"][0]["pulse"]
-    b2 = cycle(w, feeds, T0 + timedelta(minutes=30), srcs)  # trânsito esfria rápido (meia-vida de 1 h)
-    assert [e["event_id"] for e in b2["events"]] == [eid] and b2["events"][0]["pulse"] <= p1 - 3
+    quiet = cycle(w, feeds, T0 + timedelta(minutes=30), srcs)  # esfriou pouco (< PULSE_RESEND_DELTA): não vale reescrever
+    assert quiet["events"] == []
+    b2 = cycle(w, feeds, T0 + timedelta(minutes=90), srcs)  # trânsito esfria rápido (meia-vida de 1 h)
+    assert [e["event_id"] for e in b2["events"]] == [eid] and b2["events"][0]["pulse"] <= p1 - 8

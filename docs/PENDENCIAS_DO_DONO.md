@@ -32,3 +32,8 @@ Atenção especial: INPE, Defesa Civil (IDAP), InfoDengue, Banco Central e USGS 
 ## 5. O que o sistema NÃO faz (e por quê)
 - **Não raspa redes sociais com login por navegador nem tenta passar captcha.** É um limite do agente que trabalhou neste projeto, independente das regras do repositório; as fontes abertas e oficiais cobrem o essencial (ver `docs/sources/SOURCES.md`).
 - **Não afirma acurácia** que ainda não mediu: os backtests em `tests/` são sintéticos e provam a mecânica; só dados reais provam acerto.
+
+## URGENTE: limite diário de escrita do D1 (incidente de 2026-10-03)
+- O plano gratuito do D1 aceita 100 mil linhas escritas por dia (zera às 00:00 UTC = 21:00 em Brasília). Passamos disso (113.655) e a coleta parou de gravar a partir de 08:40Z.
+- O Engine foi ajustado para escrever bem menos, mas **domingo (eleição) o volume de notícias sobe**. Recomendação: assinar o Workers Paid (US$ 5/mês), que inclui 50 milhões de linhas escritas por mês no D1. É decisão de custo sua: https://dash.cloudflare.com (Workers & Pages > Plans).
+- Conferir o consumo: `npx wrangler d1 info pulso` (campo `rows_written_24h`) e `npx wrangler d1 insights pulso --timePeriod 1d --sort-type sum --sort-by writes`.
