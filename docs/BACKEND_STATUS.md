@@ -144,9 +144,11 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
 
 ## 9. Decisões registradas
-`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
+`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (X pela API oficial e filtro de importância). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — PR #11 em produção (previsões v1, correção do "para"=Pará, endpoints do front). Migration `0004`: pico por evento (`peak_alert_level/peak_pulse/peak_at`); `GET /api/history`. Em desenvolvimento por outra pessoa (não commitado): coletor do X (`collectors/social/x_api.py`), desligado por padrão.
+- **2026-10-02** — Coletor do X pela API oficial (`collectors/social/x_api.py`, desligado em `sources.json` até haver `X_BEARER_TOKEN`) e filtro de importância (`processing/importance.py`): só desastre/vítimas/emergência entram, fofoca é descartada. Reddit e Bluesky ainda pendentes. Ver ADR 0003.
 - **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
 - **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.

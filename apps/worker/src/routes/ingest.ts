@@ -184,14 +184,18 @@ ingest.post("/", async (c) => {
 		stmts.push(
 			db
 				.prepare(
-					`INSERT INTO events (id,title,summary,category,status,latitude,longitude,geo_precision,geo_confidence,state,city,severity,confidence,pulse,alert_level,score_breakdown,signal_count,source_count,detected_at,updated_at)
-			 SELECT ${f("event_id")},${f("title")},${f("summary")},${f("category")},${f("status")},${f("latitude")},${f("longitude")},${f("geo_precision")},${f("geo_confidence")},${f("state")},${f("city")},${f("severity")},${f("confidence")},${f("pulse")},${f("alert_level")},${f("score_breakdown")},${f("signal_count")},${f("source_count")},${f("detected_at")},${f("updated_at")}
+					`INSERT INTO events (id,title,summary,category,status,latitude,longitude,geo_precision,geo_confidence,state,city,severity,confidence,pulse,alert_level,score_breakdown,signal_count,source_count,detected_at,updated_at,peak_alert_level,peak_pulse,peak_at)
+			 SELECT ${f("event_id")},${f("title")},${f("summary")},${f("category")},${f("status")},${f("latitude")},${f("longitude")},${f("geo_precision")},${f("geo_confidence")},${f("state")},${f("city")},${f("severity")},${f("confidence")},${f("pulse")},${f("alert_level")},${f("score_breakdown")},${f("signal_count")},${f("source_count")},${f("detected_at")},${f("updated_at")},${f("alert_level")},${f("pulse")},${f("updated_at")}
 			 FROM json_each(?1) j WHERE true
 			 ON CONFLICT(id) DO UPDATE SET title=excluded.title,summary=excluded.summary,category=excluded.category,status=excluded.status,
 			   latitude=excluded.latitude,longitude=excluded.longitude,geo_precision=excluded.geo_precision,geo_confidence=excluded.geo_confidence,
 			   state=excluded.state,city=excluded.city,severity=excluded.severity,confidence=excluded.confidence,pulse=excluded.pulse,
 			   alert_level=excluded.alert_level,score_breakdown=excluded.score_breakdown,signal_count=excluded.signal_count,
-			   source_count=excluded.source_count,updated_at=excluded.updated_at`,
+			   source_count=excluded.source_count,updated_at=excluded.updated_at,
+			   -- pico: o máximo já atingido e quando (as expressões leem os valores ANTIGOS da linha)
+			   peak_at=CASE WHEN excluded.peak_pulse > events.peak_pulse THEN excluded.peak_at ELSE events.peak_at END,
+			   peak_alert_level=MAX(events.peak_alert_level,excluded.peak_alert_level),
+			   peak_pulse=MAX(events.peak_pulse,excluded.peak_pulse)`,
 				)
 				.bind(json(events)),
 		);
