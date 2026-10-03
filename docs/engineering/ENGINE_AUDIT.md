@@ -18,7 +18,7 @@ Legenda de estado: **PROD** = roda no ciclo de produção · **CÓDIGO** = exist
 | Tipos de evento e precursores | sim | `processing/event_types.py`, `config/event_types.json` | PROD (evidência nas previsões) | sim: virar `EVENT_SIGNATURE` com lead time medido |
 | Clustering lexical com estado | sim | `processing/clustering.py` (Jaccard, ids estáveis) | PROD | não substituir |
 | Refino de cluster (entidades, geo, afinidade) | sim | `processing/cluster_refine.py` | CÓDIGO (em desenvolvimento, passo 8) | parcial: zona cinza semântica/embedding fica **adiada** (decisão do dono: NLP pesado só depois de medir) |
-| Geolocalização | sim | `processing/geo.py` (cidade/UF/gentílico, ~150 cidades do interior, níveis 70/60/55/50/35) | PROD | **sim**: não há gazetteer dos 5.570 municípios; cidade fora da lista cai no estado |
+| Geolocalização | sim | `processing/geo.py` (cidade/UF/gentílico, ~150 cidades do interior, níveis 70/60/55/50/35) + `processing/geo_v2.py` (gazetteer IBGE dos 5.571 municípios, evidências) | V1 em PROD; V2 integrado atrás de `GEO_V2` (OFF) com estatística em sombra | em andamento: falta amostra rotulada e portão para ligar |
 | Importância do texto / ruído / rotina de campanha | sim | `processing/importance.py` | PROD | não |
 | Severidade | sim | `events.py` (`stats_for`: base por categoria + corroboração + texto) | PROD | sim: vetor de impacto (V2) em paralelo; hoje depende de categoria → severidade base |
 | Confiança | sim | `scoring/confidence.py` | PROD | sim: `publisher ≠ origin`, diversidade de sensores; `contradiction` hoje é sempre 0 |
