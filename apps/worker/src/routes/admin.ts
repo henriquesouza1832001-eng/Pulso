@@ -384,7 +384,10 @@ admin.get("/engine-status", async (c) => {
 			promotion: { min_samples: 200, shadow_samples: counts?.shadow_results ?? 0 },
 		});
 	} catch (e) {
-		return c.json({ error: "engine_status_failed", detail: String(e instanceof Error ? e.message : e).slice(0, 200) }, 500);
+		// FI-002: a mensagem do driver (turso_http_500, nome de tabela, host) fica só no log, como no handler global; o chamador
+		// recebe o código e o request_id para cruzar com o log.
+		console.error("engine_status_failed", c.get("requestId"), e);
+		return c.json({ error: "engine_status_failed" }, 500);
 	}
 });
 

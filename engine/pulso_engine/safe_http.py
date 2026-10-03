@@ -36,13 +36,25 @@ def _api_host() -> tuple[str | None, int | None]:
     return p.hostname, p.port
 
 
+# IPv6 que CARREGA um IPv4 (FI-001, docs/reliability/FAILURE_INJECTION_REPORT.md): o `is_global` do Python trata estes prefixos como
+# públicos, mas numa rede com DNS64/NAT64 `64:ff9b::a9fe:a9fe` chega em 169.254.169.254 (metadata). Valida o IPv4 embutido.
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")  # RFC 6052 (o local-use 64:ff9b:1::/48 já não é global)
+_IPV4_COMPAT = ipaddress.ip_network("::/96")  # IPv4-compatível (RFC 4291, obsoleto): ::7f00:1 = 127.0.0.1
+_SITE_LOCAL = ipaddress.ip_network("fec0::/10")  # site-local (RFC 3879, obsoleto) ainda roteado em redes internas antigas
+
+
 def is_public_ip(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip.split("%")[0])  # remove o escopo de IPv6 (fe80::1%eth0)
     except ValueError:
         return False  # endereço ilegível: não é seguro assumir que é público
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-        addr = addr.ipv4_mapped
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr in _SITE_LOCAL:
+            return False
+        if addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        elif addr in _NAT64 or addr in _IPV4_COMPAT:
+            addr = ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)  # o IPv4 é o que de fato será alcançado
     return addr.is_global and not addr.is_multicast
 
 
