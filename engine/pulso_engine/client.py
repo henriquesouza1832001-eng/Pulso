@@ -40,6 +40,30 @@ def fetch_signals(hours: int = 24, base_url: str | None = None, token: str | Non
         return []
 
 
+def _get_json(path: str, key: str, base_url: str | None, token: str | None) -> list[dict]:
+    base_url = base_url or os.environ.get("PULSO_API_URL", "http://localhost:8787")
+    token = token or os.environ.get("PULSO_INGEST_TOKEN")
+    if not token:
+        return []
+    req = urllib.request.Request(
+        f"{base_url}{path}",
+        headers={"Authorization": f"Bearer {token}", "User-Agent": "pulso-engine/0.1 (+https://github.com/henriquesouza1832001-eng/Pulso)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
+            return json.loads(resp.read()).get(key, [])
+    except Exception:  # noqa: BLE001 - previsões são opcionais: sem dado, o ciclo segue
+        return []
+
+
+def fetch_pulse_history(scope: str = "BR", hours: int = 72, base_url: str | None = None, token: str | None = None) -> list[dict]:
+    return _get_json(f"/api/admin/pulse-history?scope={scope}&hours={hours}", "points", base_url, token)
+
+
+def fetch_open_forecasts(base_url: str | None = None, token: str | None = None) -> list[dict]:
+    return _get_json("/api/admin/forecasts/open", "forecasts", base_url, token)
+
+
 def push_batch(batch: dict, base_url: str | None = None, token: str | None = None) -> dict:
     base_url = base_url or os.environ.get("PULSO_API_URL", "http://localhost:8787")
     token = token or os.environ.get("PULSO_INGEST_TOKEN")

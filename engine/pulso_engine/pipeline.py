@@ -5,6 +5,7 @@ import json
 import sys
 import uuid
 from collections import Counter
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
@@ -14,9 +15,11 @@ from .baseline import ewma_baseline, hourly_counts
 from .collectors.news.rss import http_fetch
 from .collectors.registry import build_adapter
 from .config import load_sources
+from .forecast import make_nowcasts, resolve_due
 from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
+from .processing.geo import locate
 from .series import build_series
 from .processing.keyword_engine import KeywordEngine
 
@@ -76,6 +79,18 @@ def signal_from_row(r: dict) -> Signal | None:
         return None  # linha corrompida nunca derruba o ciclo
 
 
+def regeolocate(s: Signal) -> Signal:
+    """Reaplica o geolocalizador ao texto do sinal (corrige localizações antigas erradas)."""
+    place = locate(f"{s.title}. {s.text or ''}")
+    return replace(
+        s,
+        latitude=place.lat if place else None, longitude=place.lon if place else None,
+        geo_precision=place.precision if place else None,  # type: ignore[arg-type]
+        geo_confidence=place.confidence if place else None,
+        state=place.uf if place else None, city=place.city if place else None,
+    )
+
+
 def choose_event_id(cluster, prior_ids: dict[str, str]) -> str | None:
     """Reaproveita o id de evento mais frequente entre os membros já gravados (empate: o menor id)."""
     counts = Counter(prior_ids[s.hash] for s in cluster.signals if s.hash in prior_ids)
@@ -107,6 +122,8 @@ def run_once(
     keywords: KeywordEngine | None = None,
     history: list[dict] | None = None,
     stored: list[dict] | None = None,
+    pulse_points: list[dict] | None = None,
+    open_forecasts: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -136,6 +153,7 @@ def run_once(
         known_ids[old.hash] = old.event_id  # mesmo fora da janela: já está no banco, não reenviar
         if (now - old.timestamp) > STATE_WINDOW:
             continue
+        old = regeolocate(old)  # correções do geolocalizador valem também para sinais já gravados
         if old.event_id:
             prior_ids[old.hash] = old.event_id
         all_signals[old.hash] = old
@@ -155,14 +173,24 @@ def run_once(
 
     # Só enviamos o que é novo ou mudou de evento; o resto já está gravado.
     to_send = [s for h, s in all_signals.items() if h not in known_ids or known_ids[h] != s.event_id]
+    pulses = build_pulses(events, now)
+
+    # Previsões: resolve as vencidas com o valor REAL e cria novas só se houver histórico suficiente.
+    br_now = {"timestamp": iso(now), "score": pulses[0]["score"]}
+    points = [*(pulse_points or []), br_now]
+    forecasts = [
+        *resolve_due(open_forecasts or [], points, now),
+        *make_nowcasts(points, now),
+    ]
     return {
         "batch_id": uuid.uuid4().hex,
         "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")} for s in sources],
         "events": events,
         "signals": [signal_dict(s) for s in to_send],
-        "pulses": build_pulses(events, now),
+        "pulses": pulses,
         "source_health": health,
         "series": build_series(list(all_signals.values()), now),
+        "forecasts": forecasts,
     }
 
 
@@ -202,7 +230,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
-         "series": batch["series"] if i == len(parts) - 1 else []}
+         "series": batch["series"] if i == len(parts) - 1 else [],
+         "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
@@ -216,11 +245,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
-    from .client import fetch_history, fetch_signals
-    # Histórico (baseline) e sinais gravados (agrupamento com estado): só com dado real do Worker.
+    from .client import fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
+    # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     history = fetch_history() if args.push else []
     stored = fetch_signals() if args.push else []
-    batch = run_once(sources, history=history, stored=stored)
+    pulse_points = fetch_pulse_history() if args.push else []
+    open_forecasts = fetch_open_forecasts() if args.push else []
+    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:

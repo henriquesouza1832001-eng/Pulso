@@ -85,11 +85,11 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
 1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
 2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
-3. **Classificação inicial por keywords** gera falsos positivos (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
+3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
 6. **Token exposto**: um token da Cloudflare foi colado em chat; deve ser **revogado**. O token em uso no GitHub é outro, criado depois.
-7. **Previsões não existem ainda** (é o coração do produto).
+7. **Previsões: só a v1 NOWCAST** (Pulso do Brasil, 60 min), EXPERIMENTAL e sem histórico de acertos ainda. Só começa a prever com ~3,5 h de histórico contínuo do Pulso; precisa de 100 previsões resolvidas para deixar de ser experimental.
 8. **Sem rate limiting** nem WAF; sem staging separado; sem painel admin protegido por Cloudflare Access (as rotas `/api/admin/*` usam o mesmo token do Engine).
 
 ## 8. Roadmap do backend (ordem sugerida)
@@ -97,7 +97,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 |---|---|---|
 | 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | em andamento (falta o segredo) |
 | 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
-| 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | a fazer |
+| 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | **v1 feita** (experimental). Faltam EVENT/QUANTITY/OPEN e modelos melhores |
 | 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
@@ -123,7 +123,7 @@ Fora de escopo por restrição de termos: extrair dados do Google Maps (o mapa d
 | N2 | **Revogar** o token da Cloudflare que foi exposto em chat | painel Cloudflare |
 | N3 | Revisar os termos das 5 fontes RSS e preencher `terms_url`/`reviewed_by` | `engine/config/sources.json` |
 | N4 | ~~Clusterização com estado~~ **feito** | `pipeline.py`, `events.py` |
-| N5 | **Previsões**: migration `forecasts`, `/api/forecasts`, resolução e pontuação (Brier); NOWCAST primeiro | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
+| N5 | **Previsões**: v1 NOWCAST feita; seguir com EVENT, QUANTITY, OPEN e calibração | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
 | N6 | SSE (`/api/events/live`) e `/api/trending` | `apps/worker/src/routes` |
 | N7 | Revisar e fazer o merge dos PRs da colega | — |
 
@@ -147,6 +147,8 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 `docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
+- **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
 - **2026-10-03** — PR #7 mergeado e em produção (migration `0002`, Cron Trigger, rotas admin). Registro de coletores. Divisão de trabalho e onboarding (seção 8.1).
 - **2026-10-03** — Cron Trigger da Cloudflare + `/api/health` com atraso da coleta; histórico em séries, baseline e anomalia; rotas admin; eventos só das últimas 24 h; política de branches (somente 5). 

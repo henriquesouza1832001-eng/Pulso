@@ -53,6 +53,34 @@ admin.get("/signals", async (c) => {
 	return c.json({ since, signals: results });
 });
 
+const pulseHistoryQuery = z.object({
+	scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/).default("BR"),
+	hours: z.coerce.number().int().min(1).max(24 * 30).default(72),
+});
+
+/** Série do Pulso por escopo: matéria-prima dos previsores e da resolução. */
+admin.get("/pulse-history", async (c) => {
+	const q = pulseHistoryQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare(
+		"SELECT timestamp, score FROM pulse_history WHERE scope = ?1 AND timestamp >= ?2 ORDER BY timestamp ASC LIMIT 20000",
+	)
+		.bind(q.data.scope, since)
+		.all();
+	return c.json({ scope: q.data.scope, since, points: results });
+});
+
+/** Previsões ainda abertas, para o Engine resolver as que venceram. */
+admin.get("/forecasts/open", async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT id AS forecast_id, kind, question, scope, metric, comparator, threshold, method, method_version,
+		        probability, interval_low, interval_high, horizon_minutes, created_at, resolves_at, evidence
+		 FROM forecasts WHERE status = 'open' ORDER BY resolves_at ASC LIMIT 1000`,
+	).all();
+	return c.json({ forecasts: results });
+});
+
 /** Visão do painel admin: volume por fonte nas últimas 24 h e estado de saúde. */
 admin.get("/overview", async (c) => {
 	const since = new Date(Date.now() - 24 * 3600_000).toISOString();
