@@ -170,22 +170,30 @@ export function OsintFeed({
 			className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${e.event_id === selectedId ? " sel" : ""}`}
 			onClick={() => onSelect(e.event_id)}
 		>
-			<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={20} height={20} />
+			<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={16} height={16} />
 			<div className="osf-body">
-				<div className="osf-line">
+				{/* Uma linha só: hora · local · volume/confiança … há X · nível. Código EVT fica no dossiê e no title. */}
+				<div className="osf-line" title={evtId(e.event_id)}>
 					<span className="osf-time">{brTime(e.updated_at)}</span>
-					<span className="osf-src">{sourceFor(e, demo)}</span>
-					{demo && <span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>}
-					<span className="osf-id dim">{evtId(e.event_id)}</span>
+					<span className="osf-place">
+						{[e.city, e.state].filter(Boolean).join("/") ||
+							(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
+					</span>
+					{demo ? (
+						<>
+							<span className="osf-src">{sourceFor(e, demo)}</span>
+							<span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>
+						</>
+					) : (
+						<span className="osf-stats dim">
+							{e.source_count} fonte{e.source_count === 1 ? "" : "s"} · {e.signal_count} sina
+							{e.signal_count === 1 ? "l" : "is"} · conf {e.confidence}%
+						</span>
+					)}
 					<span className="osf-ago dim">{ago(e.updated_at)}</span>
 					<LevelTag level={e.alert_level} compact />
 				</div>
 				<p className="osf-text">{e.title}</p>
-				<div className="osf-meta2">
-					{e.signal_count} sinais · {e.source_count} fonte(s) · conf {e.confidence}% ·{" "}
-					{[e.city, e.state].filter(Boolean).join("/") ||
-						(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
-				</div>
 			</div>
 		</article>
 	);
