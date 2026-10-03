@@ -13,4 +13,4 @@ export interface Bindings {
 	/** "dono/repositório" do GitHub. */
 	GITHUB_REPO: string;
 }
-export type AppEnv = { Bindings: Bindings };
+export type AppEnv = { Bindings: Bindings; Variables: { requestId: string } };

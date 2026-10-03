@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AppEnv } from "../env";
 import { engineAuthorized } from "../lib/auth";
 import { budgetMode, CRITICAL_FROM, DAILY_LIMIT, ECONOMY_FROM, utcDay } from "../lib/budget";
+import { assess } from "../lib/status";
 import { TursoDatabase } from "../lib/turso";
 
 /** Rotas internas (Engine e painel admin). Nunca públicas, nunca cacheadas. */
@@ -285,6 +286,7 @@ admin.get("/forecasts/open", async (c) => {
  */
 admin.get("/engine-status", async (c) => {
 	const day = utcDay();
+	const t0 = Date.now();
 	try {
 		const budget = await c.env.DB.prepare("SELECT rows FROM write_budget WHERE day = ?1").bind(day).first<{ rows: number }>();
 		const counts = await c.env.DB.prepare(
@@ -299,11 +301,21 @@ admin.get("/engine-status", async (c) => {
 			   (SELECT COUNT(*) FROM driver_registry) AS drivers_total,
 			   (SELECT COUNT(*) FROM calibrators WHERE status = 'active') AS calibrators_active,
 			   (SELECT COUNT(*) FROM calibrators) AS calibrators_total,
+			   (SELECT MAX(timestamp) FROM pulse_history WHERE scope = 'BR') AS last_pulse_at,
 			   (SELECT MAX(hour) FROM signal_observations) AS observations_last_hour,
 			   (SELECT COUNT(*) FROM (SELECT 1 FROM signal_observations LIMIT 200000)) AS observations_rows`,
 		).first<Record<string, number | string | null>>();
 		const used = budget?.rows ?? 0;
+		const lastPulse = typeof counts?.last_pulse_at === "string" ? counts.last_pulse_at : null;
+		const health = assess({
+			dbOk: true,
+			dbLatencyMs: Date.now() - t0,
+			collectionAgeSeconds: lastPulse ? Math.max(0, Math.round((Date.now() - Date.parse(lastPulse)) / 1000)) : null,
+			budgetMode: budgetMode(used),
+			investigationsActive: Number(counts?.investigations_active ?? 0),
+		});
 		return c.json({
+			verdict: health, // {status: ok|degraded|not_ready, reasons[]}: a resposta curta para o operador
 			backend: c.env.DB instanceof TursoDatabase ? "turso" : "d1", // o banco REALMENTE em uso (a variável sozinha mentiria sem os segredos)
 			write_budget: { day, rows_today: used, mode: budgetMode(used), economy_from: ECONOMY_FROM, critical_from: CRITICAL_FROM, daily_limit: DAILY_LIMIT },
 			...counts,
