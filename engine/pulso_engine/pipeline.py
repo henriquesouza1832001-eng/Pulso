@@ -133,6 +133,7 @@ def run_once(
     stored: list[dict] | None = None,
     pulse_points: list[dict] | None = None,
     open_forecasts: list[dict] | None = None,
+    catalog: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -195,7 +196,11 @@ def run_once(
     ]
     return {
         "batch_id": uuid.uuid4().hex,
-        "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")} for s in sources],
+        # Com `catalog`, envia TODAS as fontes ativas (mesmo as fora da janela de interval_s) e o Worker
+        # desativa as ausentes: o painel "Fontes ativas" acompanha o config/sources.json.
+        "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")}
+                    for s in (catalog if catalog is not None else sources)],
+        "catalog_complete": catalog is not None,
         "events": events,
         "signals": [signal_dict(s) for s in to_send],
         "pulses": pulses,
@@ -237,7 +242,7 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
     for i in range(0, len(orphans), max_signals):
         parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
-        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"],
+        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"], "catalog_complete": batch["catalog_complete"],
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
@@ -271,17 +276,20 @@ def main(argv: list[str] | None = None) -> int:
             if not sources:
                 print("nenhuma fonte na janela de interval_s; nada a fazer")
                 return 0
+        catalog = None  # piloto/rodada parcial nunca desativa outras fontes no Worker
     else:
         now = datetime.now(timezone.utc)
         # valida o protocolo; fonte fora do protocolo não roda
-        sources = [s for s in load_sources(args.config) if is_due(s, now)]
+        catalog = load_sources(args.config)
+        sources = [s for s in catalog if is_due(s, now)]
     from .client import fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     history = fetch_history() if args.push else []
     stored = fetch_signals() if args.push else []
     pulse_points = fetch_pulse_history() if args.push else []
     open_forecasts = fetch_open_forecasts() if args.push else []
-    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts)
+    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
+                     catalog=catalog)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
