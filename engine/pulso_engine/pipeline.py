@@ -191,6 +191,7 @@ def run_once(
     # Estado: sinais já gravados entram no agrupamento, então a história continua a mesma
     # (mesmo event_id) mesmo depois que a notícia mais antiga sai do feed.
     source_geo = geo_source_ids(catalog if catalog is not None else sources)
+    alert_sources = frozenset(s["id"] for s in (catalog if catalog is not None else sources) if s.get("alert_source"))
     prior_ids: dict[str, str] = {}
     known_ids: dict[str, str | None] = {}  # hash -> event_id já gravado (None = gravado sem evento)
     all_signals: dict[str, Signal] = {}
@@ -216,7 +217,7 @@ def run_once(
             continue
         events.append(build_event(
             cluster, now, cluster_anomaly(cluster, list(all_signals.values()), history, now),
-            event_id=choose_event_id(cluster, prior_ids),
+            event_id=choose_event_id(cluster, prior_ids), alert_sources=alert_sources,
         ))
 
     # Só enviamos o que é novo ou mudou de evento; o resto já está gravado.
