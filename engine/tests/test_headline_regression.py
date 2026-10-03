@@ -34,6 +34,31 @@ CATEGORY_CASES = [
     ("Manifestantes bloqueiam a avenida em protesto contra tarifa", "PROTEST"),
     ("Incêndio atinge prédio e bombeiros fazem resgate de moradores", "EMERGENCY"),
     ("Enem 2026 tem mais de 4 milhões de inscritos", "EVENT"),
+    # manchetes reais de 2026-10-02 que o motor deixava escapar
+    ("Casal é baleado em Satuba por criminosos em carro com adesivos de empresa de rastreio de motos", "SECURITY"),
+    ("Empresário de 36 anos foi morto a tiros segundos após colocar filha no carro", "SECURITY"),
+    ("Operação da Polícia Federal investiga envio e circulação de cédulas falsas em Alagoas", "SECURITY"),
+    ("Falta de chuva faz Manaus ter setembro mais seco dos últimos quatro anos", "WEATHER"),
+    ("Estrangeiro é a terceira vítima identificada entre mortos em queda de avião em MT", "EMERGENCY"),
+    ("Carro atropela multidão e deixa diversos feridos", "TRAFFIC"),
+    ("Produção de petróleo e gás natural no Brasil supera marca inédita, diz ANP", "ECONOMY"),
+    ("Há vida após a recuperação judicial? Levantamento mostra que 77% das empresas quebram", "ECONOMY"),
+    ("Distância entre Lula e Flávio Bolsonaro é de 3 pontos no 1º turno no Agregador de Pesquisas", "POLITICS"),
+    ("Fachin aperta regras para evitar que pedidos ao Supremo sejam direcionados a ministros específicos", "POLITICS"),
+    ("Trump diz que IA será grande tema de reunião com Xi Jinping", "INTERNATIONAL"),
+    ("Nvidia anuncia aumento recorde em programa de recompra de ações", "TECH"),
+]
+
+# Conteúdo sem relevância para o Pulso: deve continuar SEM categoria (o vocabulário novo não pode trazer ruído).
+NO_CATEGORY_CASES = [
+    "Omelete de forno: 5 receitas ricas em proteínas para o almoço",
+    "Mega-Sena 3062: aposta feita em Sergipe acerta quina e ganha prêmio de R$ 59 mil",
+    "'Galinha Pintadinha - O filme' estreia nos cinemas da Paraíba",
+    "Rapper Rick Ross é preso na Flórida por acusações de violência doméstica",
+    "Nike acelera expansão de lojas no Brasil após renovar acordo com o Grupo SBF até 2034",
+    "Taça das Favelas Feminina do ES realiza lançamento e sorteio das chaves neste sábado",
+    "Rondoniense fica em 2º lugar no Miss Brasil Café 2027",
+    "Promoção de Primavera do Steam começa com grandes jogos a preço de pinga",
 ]
 
 # (texto, deve passar no filtro de importância?)
@@ -63,3 +88,9 @@ def test_category_accuracy_is_high():
 def test_importance_separates_impact_from_noise():
     wrong = [(t, want, assess(t).score) for t, want in IMPORTANCE_CASES if assess(t).is_important() != want]
     assert not wrong, f"erros de importância: {wrong}"
+
+
+def test_irrelevant_content_stays_uncategorized():
+    kw = KeywordEngine()
+    noisy = [(t, kw.classify(t)) for t in NO_CATEGORY_CASES if kw.classify(t) is not None]
+    assert not noisy, f"ruído classificado: {noisy}"
