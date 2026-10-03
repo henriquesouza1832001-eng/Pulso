@@ -196,6 +196,20 @@ Exibição pública permitida: headline_link, com atribuição ao Banco Central 
 Papel: sinal econômico oficial e objetivo (o dólar pressiona combustível, alimentos e viagens). Cobre a categoria ECONOMY sem depender da imprensa.
 ```
 
+## Ficha: ONS, energia armazenada nos reservatórios (`ons-ear`)
+```
+Fonte / URL: https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/ear_subsistema_di/EAR_DIARIO_SUBSISTEMA_<ano>.csv (CSV anual, ";" como separador). Catálogo: https://dados.ons.org.br/dataset/ear-diario-por-subsistema
+Tipo de acesso: dados abertos do Operador Nacional do Sistema Elétrico, sem chave. Termos: https://dados.ons.org.br/
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Um arquivo de ~55 KB por rodada.
+Dados coletados e retenção: só o percentual de energia armazenada por subsistema (SE/CO, S, NE, N); título e texto curtos calculados; só quando algum subsistema fica abaixo de `min_level` (30%) ou cai `min_drop_pp` (8 p.p.) em 7 dias. Dado com mais de 5 dias é ignorado.
+Frequência: 3600 s (o ONS publica diariamente, com 1 a 2 dias de atraso).
+Fallback se cair: a fonte fica OFFLINE; as demais seguem. Situação normal = sem sinal (quiet_ok).
+Observação: validado com o CSV real (último dia 2026-10-01; SE 56,3%, S 83,2%, NE 68,2%, N 71,8%). O id do subsistema vem com espaço à direita ("N ", "S "); o adaptador faz strip.
+Exibição pública permitida: headline_link, com atribuição ao ONS.
+Papel: sinal oficial de INFRASTRUCTURE (bandeira tarifária, risco de racionamento), antes da imprensa.
+```
+
 ## Fontes de alerta (`alert_source`)
 As fontes marcadas com `"alert_source": true` (`inmet-avisos`, `defesa-civil-idap`) são canais oficiais de alerta de desastre: um alerta delas classificado como EMERGENCY (risco extremo) dá ao evento um piso de nível PULSO 3 (ver `docs/SCORING.md`). Não marque como `alert_source` uma fonte de comunicados ou notícias.
 
