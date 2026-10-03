@@ -288,6 +288,11 @@ export function OsintFeed({
 					{shown.map(renderItem)}
 				</div>
 			)}
+			{/* legenda antes da paginação: a paginação fecha a coluna e alinha com a dos briefings */}
+			<p className="osf-foot dim">
+				relatos brutos de fontes públicas, agregados pelo motor · clique para abrir o dossiê ·{" "}
+				{onlineSources || "--"} fontes online agora
+			</p>
 			{pages > 1 && (
 				<nav className="osf-pages" aria-label="páginas do feed">
 					<button disabled={curPage === 0} onClick={() => setPage(curPage - 1)} aria-label="página anterior">
@@ -311,10 +316,6 @@ export function OsintFeed({
 					</span>
 				</nav>
 			)}
-			<p className="osf-foot dim">
-				relatos brutos de fontes públicas, agregados pelo motor · clique para abrir o dossiê ·{" "}
-				{onlineSources || "--"} fontes online agora
-			</p>
 		</div>
 	);
 }
