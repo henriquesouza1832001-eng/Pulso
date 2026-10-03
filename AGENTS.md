@@ -1,5 +1,7 @@
 # AGENTS.md — regras para agentes de IA (e humanos) no PULSO
 
+**Contexto completo, divisão de tarefas e como entregar: `docs/OVERVIEW_PARA_AGENTES.md`. Passo a passo humano: `docs/ONBOARDING_BACKEND.md`.**
+
 Leia antes de qualquer alteração: `docs/architecture/ARCHITECTURE.md`, `docs/api/API.md`, `docs/SCORING.md`.
 
 ## Sempre
