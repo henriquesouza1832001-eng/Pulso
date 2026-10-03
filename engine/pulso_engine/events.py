@@ -6,11 +6,13 @@ from collections import Counter
 from datetime import datetime
 
 from .models import EventStats, Signal, SOCIAL_CLASSES
-from .processing.clustering import Cluster
+from .processing.clustering import Cluster, tokens
 from . import flags
 from .processing.importance import (EDITORIAL_ONLY, OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT,
                                      SCHEDULED_CONTEXT, assess, context)
+from .processing.keyword_engine import _fold
 from .processing.normalizer import normalized_title
+from .research.validator import CLAIM_PAIRS, COPY_JACCARD, _origins, claim_side
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
@@ -32,6 +34,11 @@ def iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _near_copy(a: frozenset[str], b: frozenset[str]) -> bool:
+    union = len(a | b)
+    return bool(union) and len(a & b) / union >= COPY_JACCARD
+
+
 def dominant_category(signals: list[Signal]) -> str:
     counts = Counter(s.category for s in signals if s.category != "OTHER")
     return counts.most_common(1)[0][0] if counts else "OTHER"
@@ -48,12 +55,13 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
     independent = len(sources)
     if gate:
-        # QA-003: repost social com o MESMO título não é evidência independente. Conta cada veículo não social, mais um
-        # por título social distinto que não repete nenhuma manchete não social.
+        # QA-003: repost social não é evidência independente. Conta cada veículo não social, mais uma origem por relato
+        # social que não é quase-cópia (Jaccard >= COPY_JACCARD, a regra do validador) de nenhuma manchete não social:
+        # "URGENTE: <manchete>" ou "RT <manchete>" é repost, não relato próprio.
         non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
-        news_titles = {normalized_title(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES}
-        social_titles = {normalized_title(s.title) for s in signals if s.source_class in SOCIAL_CLASSES} - news_titles
-        independent = len(non_social) + len(social_titles)
+        news_toks = [tokens(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES]
+        own = [s for s in signals if s.source_class in SOCIAL_CLASSES and not any(_near_copy(tokens(s.title), t) for t in news_toks)]
+        independent = len(non_social) + len(_origins(own))
         # QA-004: velocidade conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
         def distinct(lo: float, hi: float) -> int:
             return len({(s.source_id, normalized_title(s.title)) for s in signals
@@ -90,6 +98,27 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     )
 
 
+# Temas em que o lado B pode ser o DESFECHO do lado A (fogo controlado, energia restabelecida, via liberada): só é
+# disputa se os lados se sobrepõem no tempo. Vítimas não "deixam de existir": feridos x sem feridos é sempre disputa.
+RESOLUTION_TOPICS = frozenset({"extensão do bloqueio", "situação do fogo/alagamento", "energia/serviço"})
+
+
+def disputes(sigs: list[Signal]) -> list[str]:
+    """EVENT_CONTRADICTION: temas em que os relatos do evento afirmam coisas incompatíveis (reusa CLAIM_PAIRS do
+    validador do Sentinela, mesma `claim_side`). Lado B inteiro DEPOIS do lado A, em tema de desfecho, não é disputa."""
+    folded = [(s, _fold(f"{s.title} {s.text or ''}")) for s in sigs]
+    out = []
+    for topic, a, b in CLAIM_PAIRS:
+        side_a = [s for s, f in folded if claim_side(a, b, f) == "a"]
+        side_b = [s for s, f in folded if claim_side(a, b, f) == "b"]
+        if not side_a or not side_b:
+            continue
+        if topic in RESOLUTION_TOPICS and min(s.timestamp for s in side_b) > max(s.timestamp for s in side_a):
+            continue
+        out.append(topic)
+    return out
+
+
 def status_for(stats: EventStats) -> str:
     # Volume de relatos sociais não é confirmação independente.
     if stats.source_classes <= SOCIAL_CLASSES:
@@ -114,7 +143,9 @@ def is_publishable(cluster: Cluster) -> bool:
     # Volume, official provenance, and source diversity do not turn a purely
     # editorial/scheduled sports story into an operational event.
     if roles and not any(r in (OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT) for r in roles):
-        return False
+        # NOISE_GATE: incidente operacional em pauta de agenda ("pane nos trens após show") não é agenda: publica.
+        if not (flags.enabled("NOISE_GATE") and any(context(f"{s.title}. {s.text or ''}").operational for s in sigs)):
+            return False
     category = dominant_category(sigs)
     if len({s.source_id for s in sigs}) >= 2:
         return True
@@ -165,6 +196,9 @@ OFFICIAL_ALERT_FLOOR = 3  # piso do nível PULSO quando o órgão oficial declar
 def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None,
                 alert_sources: frozenset[str] = frozenset(), contradiction: float = 0.0) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
+    disputed = disputes(sigs) if flags.enabled("EVENT_CONTRADICTION") else []
+    if disputed:  # mesma escala do validador do Sentinela: 1 tema = 0,5; 2+ = 1
+        contradiction = max(contradiction, min(1.0, len(disputed) / 2))
     stats = stats_for(sigs, now, anomaly, contradiction)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
@@ -193,7 +227,7 @@ def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id:
         "title": best.title,
         "summary": best.text,
         "category": dominant_category(sigs),
-        "status": status_for(stats),
+        "status": "DISPUTED" if disputed else status_for(stats),
         "latitude": located.latitude if located else None,
         "longitude": located.longitude if located else None,
         "geo_precision": located.geo_precision if located else None,
