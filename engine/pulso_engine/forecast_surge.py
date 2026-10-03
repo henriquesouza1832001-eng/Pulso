@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from .baseline import ewma_baseline, hourly_counts
 from .drivers import leading_indicators
+from .processing.event_types import active_precursors
 from .forecast import HORIZON_MIN, VOID_AFTER_MIN, _iso, _scope_slug, _ts, brier, prob_at_least
 from .series import BUCKET_MIN, bucket_start
 
@@ -81,7 +82,7 @@ def _scope_text(scope: str) -> str:
     return "no Brasil" if scope == "BR" else f"em {scope.split(':')[1]}"
 
 
-def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
+def make_surge_forecasts(rows: list[dict], now: datetime, events: list[dict] | None = None) -> list[dict]:
     """Novas previsões de volume. [] se não houver histórico (nunca se inventa)."""
     now = now.astimezone(timezone.utc)
     candidates = sorted({(r["scope"], r["category"]) for r in rows if r["category"] != "OTHER"})
@@ -119,6 +120,8 @@ def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
                     "current_hour_signals": current, "baseline_mean": round(base.mean, 2), "baseline_std": round(base.std, 2),
                     "history_hours": base.hours, "pairs": len(deltas), "hits": k,
                     "leading_indicators": leading_indicators(rows, category, scope, now),  # contexto; não altera p
+                    # tipos de evento ativos que a hipótese editorial liga a esta categoria (config/event_types.json); só contexto
+                    "event_types": active_precursors(events or [], category.upper(), scope),
                     "note": "variações hora a hora observadas no próprio histórico de sinais deste tema e escopo",
                 },
                 "status": "open", "outcome": None, "observed_value": None, "resolved_at": None, "brier": None,
