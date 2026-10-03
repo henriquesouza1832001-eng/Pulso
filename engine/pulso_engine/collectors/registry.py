@@ -11,9 +11,19 @@ from __future__ import annotations
 from typing import Callable
 
 from .news.rss import RssAdapter
+from .news.gdelt import GdeltAdapter
+from .official.inmet import InmetAdapter
+from .official.usgs import UsgsAdapter
+from .social.mastodon import MastodonAdapter
+from .social.x_api import XAdapter
 
 ADAPTERS: dict[str, Callable] = {
     "rss": RssAdapter,
+    "x": XAdapter,
+    "inmet": InmetAdapter,
+    "gdelt": GdeltAdapter,
+    "mastodon": MastodonAdapter,
+    "usgs": UsgsAdapter,
     # "oficial-inmet": InmetAdapter,
     # "reddit": RedditAdapter,
 }
