@@ -1,4 +1,4 @@
-import type { PulsoEvent, PulseSnapshot, SourceHealth } from "@pulso/shared";
+import type { CameraFeed, PulsoEvent, PulseSnapshot, SourceHealth } from "@pulso/shared";
 
 /** Em produção defina VITE_API_BASE (URL pública do Worker). Nunca coloque segredos aqui. */
 const BASE: string =
@@ -40,4 +40,5 @@ export const api = {
 	events: (limit = 50) => get<{ events: PulsoEvent[] }>(`/api/events?limit=${limit}`),
 	event: (id: string) => get<EventDetail>(`/api/events/${encodeURIComponent(id)}`),
 	health: () => get<HealthSnapshot>("/api/health"),
+	cameras: () => get<{ cameras: CameraFeed[] }>("/api/cameras"),
 };

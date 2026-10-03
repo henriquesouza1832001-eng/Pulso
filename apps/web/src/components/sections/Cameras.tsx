@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CameraFeed } from "@pulso/shared";
 
 export interface CameraDef {
 	id: string;
@@ -12,16 +13,122 @@ export interface CameraDef {
  * Câmeras ao vivo: "still" gerado localmente em canvas (ruído + faixas +
  * timestamp), aparência de CCTV. Nenhuma imagem externa, nenhum dado real.
  */
-export function Cameras({ cameras }: { cameras: CameraDef[] }) {
-	if (cameras.length === 0)
+export function Cameras({ cameras, feeds = [] }: { cameras: CameraDef[]; feeds?: CameraFeed[] }) {
+	if (cameras.length === 0 && feeds.length === 0)
 		return <p className="state">NENHUMA CÂMERA AUTORIZADA NO ACERVO · AGUARDANDO PARCERIAS</p>;
 	return (
-		<div className="camgrid">
-			{cameras.map((c) => (
-				<CameraTile key={c.id} cam={c} />
-			))}
+		<>
+			{cameras.length > 0 && (
+				<div className="camgrid">
+					{cameras.map((c) => (
+						<CameraTile key={c.id} cam={c} />
+					))}
+				</div>
+			)}
+			{feeds.length > 0 && (
+				<div className="camgrid">
+					{feeds.map((f) => (
+						<CameraFeedTile key={f.id} cam={f} />
+					))}
+				</div>
+			)}
+		</>
+	);
+}
+
+/**
+ * Câmera REAL de um provedor. O PULSO é só o placeholder: a prévia vem do player do próprio provedor (iframe ou HLS,
+ * nunca retransmitida por nós) e o clique leva à página de origem. A prévia só carrega enquanto o cartão está visível
+ * na tela (cortesia com o provedor e leve para o navegador); se falhar, sobra o cartão com o link.
+ */
+function CameraFeedTile({ cam }: { cam: CameraFeed }) {
+	const box = useRef<HTMLDivElement>(null);
+	const [visible, setVisible] = useState(false);
+	const [failed, setFailed] = useState(false);
+
+	useEffect(() => {
+		const el = box.current;
+		if (!el || typeof IntersectionObserver === "undefined") return setVisible(true);
+		const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { rootMargin: "120px" });
+		io.observe(el);
+		return () => io.disconnect();
+	}, []);
+
+	const live = cam.preview !== null && !failed;
+	return (
+		<div className="camtile">
+			<div className="camview" ref={box}>
+				{live && visible && cam.preview!.type === "iframe" && (
+					<iframe
+						src={cam.preview!.url}
+						title={cam.label}
+						loading="lazy"
+						referrerPolicy="no-referrer"
+						sandbox="allow-scripts allow-same-origin"
+						tabIndex={-1}
+					/>
+				)}
+				{live && visible && cam.preview!.type === "hls" && (
+					<HlsVideo src={cam.preview!.url} onFail={() => setFailed(true)} />
+				)}
+				{!(live && visible) && (
+					<div className="camph">
+						<span>{cam.provider.toUpperCase()}</span>
+						<span className="dim">{live ? "carregando prévia…" : "ver ao vivo no site de origem"}</span>
+					</div>
+				)}
+				<a
+					className="camlink"
+					href={cam.page_url}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={`Abrir ${cam.label} em ${cam.provider}`}
+				>
+					<span>ver no site ↗</span>
+				</a>
+			</div>
+			<div className="caminfo">
+				<span className="nm">{cam.label.toUpperCase()}</span>
+				<span className="loc dim">
+					{cam.city.toUpperCase()} · {cam.state}
+				</span>
+				<span className="st dim">{cam.attribution}</span>
+			</div>
 		</div>
 	);
+}
+
+function HlsVideo({ src, onFail }: { src: string; onFail: () => void }) {
+	const ref = useRef<HTMLVideoElement>(null);
+	useEffect(() => {
+		const video = ref.current!;
+		let stop = () => {};
+		let alive = true;
+		if (video.canPlayType("application/vnd.apple.mpegurl")) {
+			video.src = src; // Safari/iOS tocam HLS nativamente
+			video.onerror = onFail;
+		} else {
+			import("hls.js")
+				.then(({ default: Hls }) => {
+					if (!alive) return;
+					if (!Hls.isSupported()) return onFail();
+					const hls = new Hls({ lowLatencyMode: true, maxBufferLength: 8 });
+					hls.on(Hls.Events.ERROR, (_e, d) => d.fatal && onFail());
+					hls.loadSource(src);
+					hls.attachMedia(video);
+					stop = () => hls.destroy();
+				})
+				.catch(onFail);
+		}
+		video.play().catch(() => {});
+		return () => {
+			alive = false;
+			stop();
+			video.removeAttribute("src");
+			video.load();
+		};
+	}, [src, onFail]);
+	return <video ref={ref} muted autoPlay playsInline />;
 }
 
 const STATUS_COLOR: Record<CameraDef["status"], string> = {
