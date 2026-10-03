@@ -3,10 +3,10 @@
   "TRAFFIC": ["acidente", "engarrafamento", "interditado", "interdição", "capotamento", "colisão", "congestionamento"],
   "WEATHER": ["alagamento", "enchente", "chuva forte", "granizo", "deslizamento", "temporal", "ciclone", "onda de calor", "estiagem"],
   "INFRASTRUCTURE": ["apagão", "sem energia", "queda de energia", "sem água", "rompimento", "desabamento"],
-  "PROTEST": ["manifestação", "protesto", "bloqueio", "ato", "greve"],
+  "PROTEST": ["manifestação", "protesto", "bloqueio", "ato", "greve", "protestos", "manifestações", "manifestantes", "passeata"],
   "EMERGENCY": ["incêndio", "evacuação", "resgate", "bombeiros", "defesa civil", "desmoronamento"],
-  "POLITICS": ["presidente", "congresso", "senado", "câmara dos deputados", "stf", "ministro", "eleição", "eleições", "tse", "governo federal", "planalto"],
+  "POLITICS": ["presidente", "congresso", "senado", "câmara dos deputados", "stf", "ministro", "eleição", "eleições", "tse", "governo federal", "planalto", "candidato", "candidata", "candidatos", "candidatura", "candidaturas", "pré-candidato", "pré-candidatura", "pesquisa eleitoral", "segundo turno", "primeiro turno", "urna", "urnas", "impeachment", "cpi", "deputado", "deputada", "senador", "senadora", "governador", "prefeito", "partido", "coligação", "propaganda eleitoral"],
   "ECONOMY": ["inflação", "selic", "dólar", "pib", "banco central", "desemprego", "ibovespa", "juros"],
   "HEALTH": ["surto", "dengue", "epidemia", "vacinação", "anvisa", "hospital"],
-  "INTERNATIONAL": ["eua", "estados unidos", "china", "onu", "guerra", "otan", "tarifa"]
+  "INTERNATIONAL": ["eua", "estados unidos", "china", "onu", "guerra", "otan", "tarifa", "sanções", "cessar-fogo"]
 }

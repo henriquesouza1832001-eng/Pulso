@@ -7,7 +7,7 @@ Um incêndio possivelmente grande com um só relato: severidade 92, confiança 3
 
 ## Confiança (0–100) — `confidence.py`
 `10` base `+ min(30, 10·(fontes independentes−1)) + min(20, 7·(tipos de fonte−1)) + 25 se confirmação oficial + 10·consistência geográfica + 5·consistência temporal − 30·contradição − 20·proporção de duplicatas`.
-Só redes sociais ("sensor social"): teto de **40**. Cópias da mesma matéria contam como uma fonte (dedup).
+Só redes sociais ("sensor social"): teto de **40**, e o status do evento fica `DETECTED` (nunca `CONFIRMED`, por mais perfis que repitam). Cópias da mesma matéria contam como uma fonte (dedup).
 
 ## Pulso Score (0–100) — `pulse.py`
 Soma de pontos = peso × componente (0–1). A lista de pontos é o "POR QUE 87?".

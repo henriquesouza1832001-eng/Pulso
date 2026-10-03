@@ -11,11 +11,13 @@ from __future__ import annotations
 from typing import Callable
 
 from .news.rss import RssAdapter
-
+from .social.reddit import RedditAdapter
+from .social.x import XAdapter
 ADAPTERS: dict[str, Callable] = {
     "rss": RssAdapter,
+    "reddit": RedditAdapter,
+    "x": XAdapter,
     # "oficial-inmet": InmetAdapter,
-    # "reddit": RedditAdapter,
 }
 
 
