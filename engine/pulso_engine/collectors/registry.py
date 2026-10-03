@@ -13,6 +13,7 @@ from typing import Callable
 from .news.rss import RssAdapter
 from .news.gdelt import GdeltAdapter
 from .official.bcb_ptax import BcbPtaxAdapter
+from .official.idap_cap import IdapCapAdapter
 from .official.inmet import InmetAdapter
 from .official.inpe_fires import InpeFiresAdapter
 from .official.usgs import UsgsAdapter
@@ -30,6 +31,7 @@ ADAPTERS: dict[str, Callable] = {
     "usgs": UsgsAdapter,
     "inpe_fires": InpeFiresAdapter,
     "bcb_ptax": BcbPtaxAdapter,
+    "idap_cap": IdapCapAdapter,
 }
 
 # Adaptadores que buscam URLs com o `fetcher` injetado (os sociais usam requisições autenticadas próprias).

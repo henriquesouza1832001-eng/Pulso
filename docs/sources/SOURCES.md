@@ -16,6 +16,7 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
 | **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Banco Central, dólar PTAX** (choque cambial) | OFFICIAL | Olinda OData aberto (`bcb_ptax`) | ✅ ativa; só emite com variação ≥ 1% |
+| **Defesa Civil Nacional** (alertas oficiais IDAP/CAP) | OFFICIAL | feed Atom/CAP aberto (`idap_cap`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
 | Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
@@ -196,3 +197,18 @@ Papel: sinal econômico oficial e objetivo (o dólar pressiona combustível, ali
 
 ## Fontes de limiar (`quiet_ok`)
 Fontes que só emitem quando passam de um limiar (`inmet-avisos`, `inpe-queimadas`, `bcb-ptax`) levam `"quiet_ok": true` em `sources.json`: sem ocorrência no limiar a saúde é ONLINE ("sem ocorrências no limiar"), e não DEGRADED. Fonte de feed contínuo (RSS) sem itens continua DEGRADED.
+
+## Ficha: Defesa Civil Nacional, alertas IDAP/CAP (`defesa-civil-idap`)
+```
+Fonte / URL: https://idapfile.mdr.gov.br/idap/api/rss/cap (feed Atom com mensagens CAP 1.2 da Interface de Divulgação de Alertas Públicos, do MIDR)
+Tipo de acesso: feed público, sem chave. É o mesmo canal que os alertas oficiais de celular e que projetos de Defesas Civis estaduais já consomem.
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. O feed é GRANDE (~22 MB, sem compressão, ~11 s por leitura) porque cada alerta carrega polígonos; o servidor mantém cache de 5 min (`X-Feed-Cache: NGINX - 5 minutes`). Por isso a leitura é em fluxo (pico de ~5 MB de memória) e o intervalo é de 900 s (~2 GB/dia de banda do GitHub Actions; reduzir se o MIDR pedir).
+Dados coletados e retenção: um sinal por alerta vigente (identifier), só severidade Moderate ou maior: evento, severidade, áreas, descrição curta e data. Nenhum polígono é guardado. Alertas vencidos, cancelados (msgType Cancel) ou de teste (status != Actual) não entram. Retenção 90 dias.
+Frequência: 900 s.
+Fallback se cair: a fonte fica OFFLINE; INMET e as demais seguem. Sem alerta vigente = ONLINE ("sem ocorrências no limiar", `quiet_ok`).
+Segurança: o leitor recusa DOCTYPE/ENTITY, impõe teto de 60 MB e lê em pedaços de 64 KB.
+Termos relevantes: feed público do MIDR; confirmar a política de uso antes de tratar a revisão como concluída (terms_url = PENDENTE). Atribuição: Defesa Civil Nacional / MIDR.
+Exibição pública permitida: headline_link.
+Papel: fonte OFICIAL do alerta de desastre (chuvas intensas, estiagem, corridas de massa...). Severidade Extreme vira categoria EMERGENCY; as demais, WEATHER.
+```
