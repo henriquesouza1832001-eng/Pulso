@@ -8,7 +8,7 @@ Data da medição: 2026-10-03. Esta rodada foi auditada sobre o branch `hen`; o 
 - Engine limpo, antes do WIP: **767 passed, 5 xfailed, 24 warnings**, 57,24s.
 - Engine com o WIP de Provenance/Cluster/Sentinela: **883 passed, 5 xfailed, 24 warnings**, 95,69s.
 - Testes adversariais novos e módulos de apoio: **115 passed**, 49,36s.
-- QA ainda aberto: QA-002 (4 casos de incidente operacional sem termo classificador) e QA-006 (resposta vazia tratada como falha de transporte).
+- QA ainda aberto: QA-002 (4 casos de incidente operacional sem termo classificador) e QA-006 (resposta vazia tratada como falha de transporte). QA-010 (briga de torcida em paráfrases) deixou de ser `xfail` após o refino.
 - `npm ci`: **BLOCKED_EXTERNAL/ENVIRONMENT** (`EBUSY` ao remover `node_modules/miniflare/dist/local-explorer-ui`). Consequentemente `npm test` não encontrou `vitest`; não houve alteração destrutiva em `node_modules`.
 
 ## PROVENANCE
@@ -25,7 +25,7 @@ As invariantes verificadas são: 1000 cópias não elevam `independent_origin_co
 
 Os testes cobrem falso merge (local/tempo/incidente), falso split, drift incremental, evento encerrado com matéria retrospectiva e estabilidade de ordem. A separação entre o mesmo incidente em paráfrases e incidentes em cidades/janelas diferentes é testada.
 
-**PARTIAL — causa de QA-008.** O corpus sintético reduz false split, mas a clusterização V1 continua lexical e pode fragmentar reescritas muito diferentes. Isso é medido, não escondido, e não há promoção automática.
+**PARTIAL — causa de QA-008.** O corpus sintético reduz false split, mas a clusterização V1 continua lexical e pode fragmentar reescritas muito diferentes. Isso é medido, não escondido, e não há promoção automática. O controle QA-010 (quatro paráfrases de incidente esportivo) agora passa sem `xfail`.
 
 ## SENTINELA
 
