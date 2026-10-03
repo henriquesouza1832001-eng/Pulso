@@ -24,6 +24,9 @@ from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
 from .processing.geo import locate
+from .flags import enabled as flag
+from .investigations_io import investigation_dict, investigation_from_row
+from .radar import analyze
 from .research.history import build_observations
 from .series import build_series
 from .processing.keyword_engine import KeywordEngine
@@ -205,6 +208,8 @@ def run_once(
     open_forecasts: list[dict] | None = None,
     catalog: list[dict] | None = None,
     known_events: list[dict] | None = None,
+    obs_rows: list[dict] | None = None,
+    active_investigations: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -300,7 +305,17 @@ def run_once(
     ]
     events_to_send = changed_events(events, known_events)
     series_to_send = changed_series(series_now, history)
-    observations = select_observations(build_observations(list(all_signals.values()), duplicates, now), now)
+    observations = select_observations(build_observations(list(all_signals.values()), duplicates, now), now) if flag("HISTORY_OBSERVATIONS") else []
+    # Sentinela (docs/research/SPEC_05_SENTINEL.md): `obs_rows is None` = radar desligado neste ciclo (fora do slot ou sem
+    # Worker). Uma falha aqui NUNCA derruba o ciclo: segue sem o campo `investigations`.
+    investigations: list[dict] = []
+    if obs_rows is not None and flag("SENTINEL"):
+        try:
+            radar = analyze(list(all_signals.values()), obs_rows, [investigation_from_row(r) for r in active_investigations or []],
+                            now, duplicates_by_hash=duplicates)
+            investigations = [investigation_dict(i) for i in radar["investigations"]]
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warn] radar: {type(exc).__name__}: {exc}"[:300], file=sys.stderr)
     return {
         "batch_id": uuid.uuid4().hex,
         # Com `catalog`, envia TODAS as fontes ativas (mesmo as fora da janela de interval_s) e o Worker
@@ -316,6 +331,7 @@ def run_once(
         "series": series_to_send,
         "forecasts": forecasts,
         "observations": observations,
+        "investigations": investigations,
     }
 
 
@@ -345,6 +361,13 @@ def changed_events(events: list[dict], known: list[dict] | None) -> list[dict]:
                 or abs(k["pulse"] - e["pulse"]) >= PULSE_RESEND_DELTA):
             out.append(e)
     return out
+
+
+RADAR_SLOT_MIN = 15  # o Sentinela roda em 1 de cada 3 ciclos: ler semanas de histórico a cada 5 min pesaria na cota de leitura do banco
+
+
+def radar_due(now: datetime) -> bool:
+    return now.minute % RADAR_SLOT_MIN < 5
 
 
 OBS_SLOT_MIN = 30  # o histórico por hora é reenviado só em 2 janelas por hora (minutos 0-4 e 30-34), não a cada ciclo
@@ -442,7 +465,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
          "series": batch["series"] if i == len(parts) - 1 else [],
          "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else [],
-         "observations": batch.get("observations", []) if i == len(parts) - 1 else []}
+         "observations": batch.get("observations", []) if i == len(parts) - 1 else [],
+         "investigations": batch.get("investigations", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
@@ -477,8 +501,8 @@ def main(argv: list[str] | None = None) -> int:
         # valida o protocolo; fonte fora do protocolo não roda
         catalog = load_sources(args.config)
         sources = [s for s in catalog if is_due(s, now)]
-    from .client import (WorkerAuthError, WorkerUnavailable, fetch_event_digest, fetch_history, fetch_open_forecasts,
-                         fetch_pulse_history, fetch_signals)
+    from .client import (WorkerAuthError, WorkerUnavailable, fetch_active_investigations, fetch_event_digest, fetch_history,
+                         fetch_observations, fetch_open_forecasts, fetch_pulse_history, fetch_signals)
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     # Janelas mínimas que bastam (o D1 gratuito limita as linhas LIDAS por dia): 36 h de séries (a previsão de
     # volume precisa de > 25 h) e 24 h do Pulso (o previsor exige ~3,5 h).
@@ -499,8 +523,17 @@ def main(argv: list[str] | None = None) -> int:
         except WorkerAuthError as exc:
             print(f"[erro] {exc}", file=sys.stderr)
             return 1
+    # Sentinela: só no slot do radar e só com Worker; se a leitura falhar, o ciclo segue sem radar (não há baseline para afirmar anomalia).
+    obs_rows, active_inv = None, []
+    if args.push and flag("SENTINEL") and radar_due(datetime.now(timezone.utc)):
+        try:
+            obs_rows = fetch_observations()
+            active_inv = fetch_active_investigations()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[aviso] radar pulado neste ciclo: {type(exc).__name__}", file=sys.stderr)
+            obs_rows = None
     batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
-                     catalog=catalog, known_events=known_events)
+                     catalog=catalog, known_events=known_events, obs_rows=obs_rows, active_investigations=active_inv)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])}/{batch['events_total']} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:

@@ -76,6 +76,25 @@ admin.get("/observations", async (c) => {
 	return c.json({ since, observations: results });
 });
 
+const investigationsQuery = z.object({
+	status: z.enum(["active", "all"]).default("active"),
+	limit: z.coerce.number().int().min(1).max(1000).default(200),
+});
+
+/** Investigações do Sentinela. `active` = tudo que não está CLOSED. O Engine reconstrói o estado a partir daqui. */
+admin.get("/investigations", async (c) => {
+	const q = investigationsQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, scope, category, status, started_at, last_update, last_anomalous_at, initial_anomaly, anomaly,
+		        evidence_count, official_confirmation, reasons
+		 FROM investigations WHERE (?1 = 'all' OR status != 'CLOSED') ORDER BY last_update DESC LIMIT ?2`,
+	)
+		.bind(q.data.status, q.data.limit)
+		.all();
+	return c.json({ investigations: results });
+});
+
 const signalsQuery = z.object({
 	hours: z.coerce.number().int().min(1).max(72).default(24),
 });
@@ -162,7 +181,8 @@ admin.get("/overview", async (c) => {
 			`SELECT (SELECT COUNT(*) FROM events WHERE resolved_at IS NULL) AS active_events,
 			        (SELECT COUNT(*) FROM signals WHERE collected_at >= ?1) AS signals_24h,
 			        (SELECT MAX(timestamp) FROM pulse_history WHERE scope='BR') AS last_pulse_at,
-			        (SELECT COUNT(*) FROM series) AS series_points`,
+			        (SELECT COUNT(*) FROM series) AS series_points,
+			        (SELECT COUNT(*) FROM investigations WHERE status != 'CLOSED') AS active_investigations`,
 		)
 			.bind(since)
 			.first(),

@@ -107,3 +107,20 @@ class ObservationPoint:
     signals: int
     sources: int
     duplicates: int = 0
+
+
+@dataclass(frozen=True)
+class InvestigationPoint:
+    """Espelho de `InvestigationPoint` em packages/shared/src/contracts.ts (campo opcional `investigations` do IngestBatch)."""
+    id: str
+    scope: str
+    category: str
+    status: str
+    started_at: str
+    last_update: str
+    initial_anomaly: float
+    anomaly: float
+    evidence_count: int
+    official_confirmation: bool
+    reasons: tuple[str, ...] = ()
+    last_anomalous_at: str | None = None

@@ -5,6 +5,7 @@ import {
 	EVENT_STATUSES,
 	FORECAST_KINDS,
 	GEO_PRECISIONS,
+	INVESTIGATION_STATUSES,
 	SOURCE_CLASSES,
 	SOURCE_HEALTH,
 } from "@pulso/shared";
@@ -169,9 +170,30 @@ const batchSchema = z.object({
 		)
 		.max(2000)
 		.default([]),
+	/** Investigações do Sentinela (docs/research/SPEC_05_SENTINEL.md). Opcional: só o que MUDOU nesta rodada. */
+	investigations: z
+		.array(
+			z.object({
+				id: z.string().regex(/^inv-[a-f0-9]{10}$/),
+				scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+				category: z.enum(CATEGORIES),
+				status: z.enum(INVESTIGATION_STATUSES),
+				started_at: iso,
+				last_update: iso,
+				last_anomalous_at: iso.nullable().default(null),
+				initial_anomaly: z.number().min(0).max(1000),
+				anomaly: z.number().min(0).max(1000),
+				evidence_count: z.number().int().min(0).max(1_000_000),
+				official_confirmation: z.boolean(),
+				reasons: z.array(z.string().max(200)).max(12),
+			}),
+		)
+		.max(200)
+		.default([]),
 });
 
 const SERIES_RETENTION_DAYS = 90;
+const INVESTIGATION_RETENTION_DAYS = 30;
 
 ingest.post("/", async (c) => {
 	if (!engineAuthorized(c.req.header("Authorization"), c.env.INGEST_TOKEN)) {
@@ -194,7 +216,7 @@ ingest.post("/", async (c) => {
 		.catch(() => 0);
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
-	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations } = plan;
+	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations, investigations } = plan;
 
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
@@ -344,6 +366,33 @@ ingest.post("/", async (c) => {
 			);
 		}
 	}
+	if (investigations.length) {
+		// Abre uma vez; depois só avança o estado (started_at e initial_anomaly nunca mudam) e só regrava se algo mudou.
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO investigations (id,scope,category,status,started_at,last_update,last_anomalous_at,initial_anomaly,anomaly,evidence_count,official_confirmation,reasons)
+			 SELECT ${f("id")},${f("scope")},${f("category")},${f("status")},${f("started_at")},${f("last_update")},${f("last_anomalous_at")},${f("initial_anomaly")},${f("anomaly")},${f("evidence_count")},${f("official_confirmation")},${f("reasons")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(id) DO UPDATE SET status=excluded.status,last_update=excluded.last_update,last_anomalous_at=excluded.last_anomalous_at,
+			   anomaly=excluded.anomaly,evidence_count=excluded.evidence_count,official_confirmation=excluded.official_confirmation,reasons=excluded.reasons
+			 WHERE investigations.status IS NOT excluded.status OR investigations.evidence_count IS NOT excluded.evidence_count
+			    OR investigations.anomaly IS NOT excluded.anomaly OR investigations.official_confirmation IS NOT excluded.official_confirmation
+			    OR investigations.last_anomalous_at IS NOT excluded.last_anomalous_at`,
+				)
+				.bind(json(investigations.map((i) => ({ ...i, official_confirmation: i.official_confirmation ? 1 : 0, reasons: JSON.stringify(i.reasons) })))),
+		);
+	}
+	// Investigação encerrada há mais de 30 dias sai (uma vez por dia, 03:10-03:20 UTC; o índice (status, last_update) cobre a busca).
+	{
+		const at = new Date();
+		if (at.getUTCHours() === 3 && at.getUTCMinutes() >= 10 && at.getUTCMinutes() < 20) {
+			stmts.push(
+				db
+					.prepare("DELETE FROM investigations WHERE status = 'CLOSED' AND last_update < ?1")
+					.bind(new Date(Date.now() - INVESTIGATION_RETENTION_DAYS * 86400_000).toISOString()),
+			);
+		}
+	}
 	if (forecasts.length) {
 		// IMUTABILIDADE: a previsão (probabilidade, pergunta, método, evidência) é gravada uma vez e nunca
 		// reescrita; o reenvio só pode preencher a resolução, e apenas enquanto ainda estiver aberta.
@@ -380,6 +429,7 @@ ingest.post("/", async (c) => {
 		series: series.length,
 		forecasts: forecasts.length,
 		observations: observations.length,
+		investigations: investigations.length,
 		budget: { mode, used_before: used, written, shed },
 	});
 });
