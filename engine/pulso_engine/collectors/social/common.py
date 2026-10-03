@@ -8,7 +8,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 from ...models import Signal
-from ...processing.geo import locate
+from ...processing.geo import locate, state_place
 from ...processing.keyword_engine import KeywordEngine
 from ...processing.normalizer import clean_text, content_hash
 USER_AGENT = "pulso-engine/0.1 (+https://github.com/henriquesouza1832001-eng/Pulso)"
@@ -48,7 +48,8 @@ def credential(name: str) -> str:
     return value
 
 def social_signal(source: dict, keywords: KeywordEngine, now: datetime, *,
-                  item_id: str, title: str, url: str, timestamp: datetime) -> Signal | None:
+                  item_id: str, title: str, url: str, timestamp: datetime,
+                  fallback_uf: str | None = None) -> Signal | None:
     # Links e @menções saem: não guardamos identificadores de pessoas privadas.
     title = clean_text(_MENTION.sub("@usuário", _URL.sub(" ", title or "")), 300)
     if not item_id or not title or not timestamp.tzinfo or not url.startswith("https://"):
@@ -58,7 +59,8 @@ def social_signal(source: dict, keywords: KeywordEngine, now: datetime, *,
     if allowed and category not in allowed:
         return None  # sensor temático: fora do tema é ruído, não sinal
     timestamp = min(timestamp.astimezone(timezone.utc), now)
-    place = locate(title)
+    # O título manda ("em Curitiba" num sub de SP é PR); sem local no título, a UF da comunidade regional.
+    place = locate(title) or (state_place(fallback_uf) if fallback_uf else None)
     # Não armazenar autoria, texto integral, métricas de perfil ou dados de usuários.
     digest = content_hash(url, title)
     return Signal(

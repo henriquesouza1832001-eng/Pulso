@@ -40,7 +40,7 @@ def test_reddit_oauth_and_normalization(monkeypatch):
     signals = RedditAdapter(sources()["reddit"], fetcher=fake, now=lambda: NOW).run()
     assert calls[0][0] == "https://www.reddit.com/api/v1/access_token"
     search = urlsplit(calls[1][0])
-    assert search.path == "/r/brasil/search"
+    assert search.path.startswith("/r/brasil+saopaulo+") and search.path.endswith("/search")
     assert parse_qs(search.query)["restrict_sr"] == ["on"] and "candidatura" in parse_qs(search.query)["q"][0]
     assert all(h["User-Agent"] for _, h, _ in calls)
     assert len(signals) == 1 and signals[0].author is None  # removido e fora do tema descartados
@@ -125,3 +125,43 @@ def test_pilot_log_shows_only_counts(monkeypatch, capsys):
     assert main(["--source", "x-politics"]) == 0
     out = capsys.readouterr().out
     assert "categorias:" in out and "Brasília" not in out  # logs do Actions são públicos
+
+
+def test_reddit_regional_subreddit_sets_state(monkeypatch):
+    monkeypatch.setenv("REDDIT_CLIENT_ID", "test-id")
+    monkeypatch.setenv("REDDIT_CLIENT_SECRET", "test-secret")
+    def fake(url, headers, data=None):
+        if data:
+            return {"access_token": "t"}
+        assert "saopaulo" in urlsplit(url).path
+        post = lambda i, sub, title: {"data": {"id": i, "subreddit": sub, "title": title, "created_utc": NOW.timestamp()}}
+        return {"data": {"children": [
+            post("a1", "saopaulo", "Vereador é cassado pela Câmara Municipal"),     # sem local no título: UF do sub
+            post("a2", "saopaulo", "Protesto em Curitiba contra o governador"),     # título manda: PR
+            post("a3", "brasil", "Senado aprova PEC das eleições"),                 # nacional: sem UF
+            post("a4", "riodejaneiro", "Alesp aprova orçamento do estado"),         # marcador político: SP
+        ]}}
+    sigs = {s.url.rsplit("/", 2)[-2]: s for s in RedditAdapter(sources()["reddit"], fetcher=fake, now=lambda: NOW).run()}
+    assert sigs["a1"].state == "SP" and sigs["a1"].geo_precision == "STATE" and sigs["a1"].geo_confidence == 40
+    assert sigs["a2"].state == "PR" and sigs["a2"].city == "Curitiba"
+    assert sigs["a3"].state is None
+    assert sigs["a4"].state == "SP"
+
+
+def test_subreddit_states_must_match_config():
+    reddit = sources()["reddit"]
+    with pytest.raises(SourceConfigError, match="subreddit_states"):
+        validate_source({**reddit, "subreddit_states": {"naoexiste": "SP"}})
+    with pytest.raises(SourceConfigError, match="subreddit_states"):
+        validate_source({**reddit, "subreddit_states": {"saopaulo": "XX"}})
+
+
+def test_pilot_log_counts_by_state(monkeypatch, capsys):
+    monkeypatch.setenv("X_BEARER_TOKEN", "test-token")
+    def fake(url, headers):
+        return {"data": [{"id": "1", "text": "Governo paulista e Alesp discutem eleição", "created_at": "2026-10-03T00:00:00Z"},
+                         {"id": "2", "text": "Senado vota PEC das eleições", "created_at": "2026-10-03T00:00:00Z"}]}
+    monkeypatch.setattr("pulso_engine.collectors.social.x.request_json", fake)
+    main(["--source", "x-politics"])
+    out = capsys.readouterr().out
+    assert "estados:" in out and "SP=1" in out and "sem_UF=1" in out and "paulista" not in out

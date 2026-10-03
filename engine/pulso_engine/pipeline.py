@@ -292,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
         for g in batch["signals"]:
             cats[g["category"]] = cats.get(g["category"], 0) + 1
         print("  categorias:", ", ".join(f"{k}={v}" for k, v in sorted(cats.items())) or "-")
+        ufs: dict[str, int] = {}
+        for g in batch["signals"]:
+            ufs[g["state"] or "sem_UF"] = ufs.get(g["state"] or "sem_UF", 0) + 1
+        print("  estados:", ", ".join(f"{k}={v}" for k, v in sorted(ufs.items())) or "-")
         return 0
     for e in sorted(batch["events"], key=lambda e: -e["pulse"])[:8]:
         print(f"  [{e['pulse']:>3}] {e['category']:<14} fontes={e['source_count']} conf={e['confidence']:>3} {e['title'][:70]}")

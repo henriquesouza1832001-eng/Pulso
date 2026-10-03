@@ -14,6 +14,8 @@ from .models import Category
 SOURCE_CLASSES = {"OFFICIAL", "NEWS_HIGH", "NEWS_REGIONAL", "TRAFFIC_PROVIDER", "SOCIAL_VERIFIED", "SOCIAL", "UNKNOWN"}
 ACCESS = {"official_api", "open_data", "public_feed", "sitemap", "public_page", "authorized_scrape"}
 CATEGORIES = set(get_args(Category))
+UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR",
+       "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
 DISPLAY = {"headline_link", "metrics_only", "full"}
 REQUIRED = ("id", "name", "adapter", "source_class", "url", "access", "terms_url", "interval_s",
             "retention_days", "display", "reviewed_by", "reviewed_at")
@@ -63,6 +65,11 @@ def validate_source(src: dict) -> None:
         needed = "subreddit" if src["adapter"] == "reddit" else "query"
         if not src.get(needed):
             raise SourceConfigError(f"{sid}: adapter {src['adapter']} exige '{needed}'")
+        if (regional := src.get("subreddit_states")) is not None:
+            subs = {s.lower() for s in str(src.get("subreddit", "")).split("+")}
+            if not isinstance(regional, dict) or not all(
+                    k.lower() in subs and v in UFS for k, v in regional.items()):
+                raise SourceConfigError(f"{sid}: subreddit_states deve mapear comunidades de 'subreddit' para UFs")
         if (cats := src.get("categories")) is not None and (not cats or not set(cats) <= CATEGORIES):
             raise SourceConfigError(f"{sid}: categories inválidas")
         if src.get("enabled") and (pending_items(src) or not src.get("authorization_ref")):

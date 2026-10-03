@@ -37,14 +37,16 @@ class RedditAdapter:
         if not isinstance(token, str) or not token:
             raise ValueError("Reddit não forneceu token OAuth")
         subreddit = subreddit_path(self.source["subreddit"])
+        # Comunidades regionais -> UF (ex.: {"saopaulo": "SP"}); r/brasil fica sem UF padrão.
+        regional = {k.lower(): v for k, v in (self.source.get("subreddit_states") or {}).items()}
         query = self.source.get("query")
         if query:  # busca temática nas comunidades escolhidas, mais recentes primeiro
             if not isinstance(query, str) or len(query) > 512:
                 raise ValueError("consulta Reddit inválida")
             url = f"https://oauth.reddit.com/r/{subreddit}/search?" + urlencode(
-                {"q": query, "restrict_sr": "on", "sort": "new", "t": "day", "limit": 25})
+                {"q": query, "restrict_sr": "on", "sort": "new", "t": "day", "limit": 50})
         else:
-            url = f"https://oauth.reddit.com/r/{subreddit}/new?limit=25"
+            url = f"https://oauth.reddit.com/r/{subreddit}/new?limit=50"
         data = self.fetcher(url, {"Authorization": f"Bearer {token}", "User-Agent": agent})
         signals = []
         for entry in data.get("data", {}).get("children", []):
@@ -58,7 +60,7 @@ class RedditAdapter:
                 continue
             sig = social_signal(self.source, self.keywords, self.now(), item_id=post_id,
                                 title=raw.get("title", ""), url=f"https://www.reddit.com/comments/{post_id}/",
-                                timestamp=ts)
+                                timestamp=ts, fallback_uf=regional.get(str(raw.get("subreddit", "")).lower()))
             if sig:
                 signals.append(sig)
         return signals

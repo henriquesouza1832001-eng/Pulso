@@ -85,3 +85,33 @@ def locate(text: str) -> Place | None:
             continue
         return place
     return None
+
+
+# Marcadores de política estadual, de prioridade MENOR que nomes de cidade/estado (vêm depois na lista):
+# gentílicos ("governo paulista"), assembleias legislativas ("Alesp") e tribunais eleitorais ("TRE-MG").
+# De fora por ambiguidade: "fluminense" (clube), "brasiliense" (jornal nacional), "Alba" (nome próprio).
+_COORDS = {uf: (capital, lat, lon) for uf, _s, capital, lat, lon in _STATES}
+_CITY_GENTILICS = {"SP": r"paulistan[oa]s?", "RJ": r"cariocas?"}
+_STATE_MARKERS = {
+    "SP": r"paulistas?|alesp", "MG": r"mineir[oa]s?|almg", "RS": r"gauch[oa]s?", "BA": r"baian[oa]s?",
+    "PE": r"pernambucan[oa]s?|alepe", "CE": r"cearenses?|alece", "PR": r"paranaenses?|alep",
+    "SC": r"catarinenses?|alesc", "GO": r"goian[oa]s?|alego", "ES": r"capixabas?", "AM": r"amazonenses?|aleam",
+    "PA": r"paraenses?|alepa", "MA": r"maranhenses?|alema", "RN": r"potiguar(?:es)?", "PB": r"paraiban[oa]s?",
+    "AL": r"alagoan[oa]s?", "SE": r"sergipan[oa]s?", "PI": r"piauienses?|alepi", "TO": r"tocantinenses?",
+    "RO": r"rondonienses?", "RR": r"roraimenses?", "AC": r"acrean[oa]s?|acrian[oa]s?", "AP": r"amapaenses?",
+    "MS": r"sul-mato-grossenses?", "MT": r"(?<!sul-)mato-grossenses?", "RJ": r"alerj", "DF": r"cldf",
+}
+for _uf, _rx in _CITY_GENTILICS.items():
+    _capital, _lat, _lon = _COORDS[_uf]
+    _PATTERNS.append((re.compile(rf"\b(?:{_rx})\b"), Place(_uf, _capital, _lat, _lon, "CITY", 60), False))
+for _uf, (_capital, _lat, _lon) in _COORDS.items():
+    _rx = rf"tre-{_uf.lower()}" + (f"|{_STATE_MARKERS[_uf]}" if _uf in _STATE_MARKERS else "")
+    _PATTERNS.append((re.compile(rf"\b(?:{_rx})\b"), Place(_uf, None, _lat, _lon, "STATE", 50), False))
+
+
+def state_place(uf: str, confidence: int = 40) -> Place | None:
+    """Lugar no nível de estado para uma UF conhecida (ex.: comunidade regional de rede social)."""
+    if uf not in _COORDS:
+        return None
+    _capital, lat, lon = _COORDS[uf]
+    return Place(uf, None, lat, lon, "STATE", confidence)
