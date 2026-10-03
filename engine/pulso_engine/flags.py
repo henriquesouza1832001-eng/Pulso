@@ -27,6 +27,7 @@ FLAGS: dict[str, tuple[bool, str, str]] = {
     "DRIVER_VALIDATOR": (False, "OFF", "driver só afeta previsão se melhorar o Brier (registro de drivers)"),
     "EVENT_ESCALATION": (False, "OFF", "P(evento subir de nível) em shadow, depois experimental"),
     "FORECAST_V2_SHADOW": (False, "OFF", "previsor V2 do Pulso (condicionado à hora do dia) em shadow: guarda a probabilidade em evidence.shadow_v2 e grava V1 x V2 x desfecho em shadow_results quando resolve; nunca muda a previsão exibida"),
+    "SOURCE_FRESHNESS": (True, "SHADOW", "separa transporte, frescor do conteúdo, qualidade e cobertura por fonte (RT-002); só calcula, registra no log do ciclo e acompanha o lote; não muda evento, Pulso nem alerta"),
     "CONTEXT_ENGINE": (False, "OFF", "feriados, jogos e eventos ajustam baseline/anomalia (nunca viram confirmação)"),
 }
 

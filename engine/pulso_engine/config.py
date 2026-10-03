@@ -59,6 +59,12 @@ def validate_source(src: dict) -> None:
         raise SourceConfigError(f"{sid}: authorized_scrape exige authorization_ref (autorização escrita)")
     if not (1 <= int(src["retention_days"]) <= 3650):
         raise SourceConfigError(f"{sid}: retention_days fora de 1–3650")
+    # Conformidade (docs/maturity/COMPLIANCE_REPORT.md): APPROVED/RESTRICTED só com decisão HUMANA e evidência; nunca automático.
+    if (decision := src.get("review_status")) is not None:
+        if decision not in ("APPROVED", "RESTRICTED", "PENDING", "DISABLED"):
+            raise SourceConfigError(f"{sid}: review_status deve ser APPROVED, RESTRICTED, PENDING ou DISABLED")
+        if decision in ("APPROVED", "RESTRICTED") and pending_items(src):
+            raise SourceConfigError(f"{sid}: {decision} exige terms_url, reviewed_by e reviewed_at reais (revisão humana)")
     if src["adapter"] in ("reddit", "x", "bluesky"):
         if src["access"] != "official_api" or src["source_class"] != "SOCIAL":
             raise SourceConfigError(f"{sid}: sensor social exige official_api e SOCIAL")
