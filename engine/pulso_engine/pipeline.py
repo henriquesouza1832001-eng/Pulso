@@ -140,8 +140,8 @@ def run_once(
     health: list[dict] = []
     for src in sources:
         try:
-            # O fetcher RSS recebe uma URL; sensores sociais usam requisições OAuth próprias.
-            got = build_adapter(src, keywords, fetcher if src["adapter"] == "rss" else None, lambda: now).run()
+            # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
+            got = build_adapter(src, keywords, fetcher if src["adapter"] in ("rss", "inmet") else None, lambda: now).run()
             status, detail = ("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos")
             for s in got:
                 signals.setdefault(s.hash, s)  # dedup por URL canônica/título

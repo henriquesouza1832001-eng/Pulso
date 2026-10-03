@@ -23,6 +23,8 @@ Soma de pontos = peso × componente (0–1). A lista de pontos é o "POR QUE 87?
 | Persistência | 5 |
 | Alcance geográfico | 5 |
 
+Avisos do INMET: "Grande Perigo" entra como `EMERGENCY` (base 70) e "Perigo" como `WEATHER` (base 55); "Perigo Potencial" não entra por padrão (ADR 0004).
+
 ## Nível PULSO 1–5
 1 Normal · 2 Atenção (score ≥ 30) · 3 Elevado (≥ 55 e confiança ≥ 40) · 4 Crítico (≥ 75, confiança ≥ 70, ≥ 2 fontes independentes) · 5 Emergência (≥ 90, confiança ≥ 85, **fonte oficial** e ≥ 3 fontes independentes). Social isolado nunca passa do nível 3.
 

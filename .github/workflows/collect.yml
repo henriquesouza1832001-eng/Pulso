@@ -58,7 +58,15 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           ids=""
-          if [ -n "$REDDIT_CLIENT_ID" ] && [ -n "$REDDIT_CLIENT_SECRET" ]; then ids="$ids --source reddit-politics"; fi
-          if [ -n "$X_BEARER_TOKEN" ]; then ids="$ids --source x-politics"; fi
+          if [ -n "$REDDIT_CLIENT_ID" ] && [ -n "$REDDIT_CLIENT_SECRET" ]; then ids="$ids --source reddit-politics --source reddit-clima"; fi
+          if [ -n "$X_BEARER_TOKEN" ]; then ids="$ids --source x-politics --source x-clima"; fi
           if [ -z "$ids" ]; then echo "sem secrets sociais: piloto não roda"; exit 0; fi
           python -m pulso_engine.pipeline $ids --respect-interval
+      # Piloto das fontes oficiais propostas (sem secret, sem envio): Senado, Câmara e avisos do INMET.
+      - name: Piloto das fontes oficiais propostas (sem envio)
+        if: always()
+        continue-on-error: true
+        working-directory: engine
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m pulso_engine.pipeline --source agencia-senado --source agencia-camara --source inmet-avisos --respect-interval

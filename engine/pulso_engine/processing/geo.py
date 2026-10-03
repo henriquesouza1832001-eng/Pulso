@@ -115,3 +115,11 @@ def state_place(uf: str, confidence: int = 40) -> Place | None:
         return None
     _capital, lat, lon = _COORDS[uf]
     return Place(uf, None, lat, lon, "STATE", confidence)
+
+
+_UF_BY_STATE_NAME = {fold(state): uf for uf, state, *_ in _STATES}
+
+
+def uf_from_state_name(name: str) -> str | None:
+    """'Ceará' / 'ceara' -> 'CE' (nome oficial completo do estado, como vem de APIs oficiais)."""
+    return _UF_BY_STATE_NAME.get(fold(name.strip()))

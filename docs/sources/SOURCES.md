@@ -8,6 +8,7 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | (modelo) PRF | OFFICIAL | API | ⏳ verificar termos |
 | Agência Senado | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
 | Agência Câmara de Notícias | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
+| INMET — avisos meteorológicos | OFFICIAL | API de avisos (`inmet`) | ⏳ proposta (`enabled: false`), aguarda revisão |
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
 | Trânsito, câmeras públicas | — | — | Fase 2/3 |
@@ -58,6 +59,26 @@ Exibição pública: título + link com crédito "Agência Câmara Notícias" (h
 Classe OFFICIAL: mesma justificativa da Agência Senado.
 ```
 Para ativar: uma pessoa lê os dois termos, preenche `reviewed_by`/`reviewed_at` e muda `enabled` para `true`. Piloto: `py -m pulso_engine.pipeline --source agencia-senado --source agencia-camara`.
+
+## INMET — avisos meteorológicos — PROPOSTA
+```
+Fonte / URL: https://apiprevmet3.inmet.gov.br/avisos/ativos (JSON; mesma base do RSS /avisos/rss e de avisos.inmet.gov.br)
+Tipo de acesso: dados abertos, sem autenticação
+Autenticação e secrets: nenhum
+Limites e custo: gratuito; sem limite publicado; cadência 900 s (avisos mudam em horas)
+Dados coletados: tipo do aviso, severidade, UFs, início/fim, 1º texto de "riscos" (≤ 500); retenção 90 dias.
+  Não guardamos polígono nem lista de municípios (geo no nível de UF).
+Frequência: 900 s
+Fallback: notícias (Agência Brasil, G1...) e, futuro, Defesa Civil/CEMADEN
+Termos: comentário de licença no RSS oficial: "O conteudo deste site, podera ser reproduzido desde que citada
+  a fonte, excetuando os casos especificados em contrario e os conteudos replicados de outras fontes."; <copyright>public domain</copyright>
+Exibição pública: sim, com crédito "INMET" e link para o aviso
+Classe OFFICIAL: órgão federal responsável pelos avisos meteorológicos.
+```
+Regras: só `hoje` (vigentes), nunca `futuro`; descarta vencidos/encerrados e, por padrão, "Perigo Potencial" (`min_severity`). Um sinal por UF; "Grande Perigo" → `EMERGENCY`, "Perigo" → `WEATHER` (ADR 0004). Piloto em 2026-10-03: ONLINE, aviso de acumulado de chuva (Perigo) → 3 eventos (MG, ES, RJ).
+
+## Reddit e X de clima (`reddit-clima`, `x-clima`) — PILOTO DESATIVADO
+Mesmo modelo dos sensores de política (mesmas comunidades e `subreddit_states` no Reddit), com consulta de enchente, alagamento, deslizamento, temporal, vendaval, granizo, queimada, onda de calor, estiagem, desabrigados, Defesa Civil e estado de calamidade; `categories`: WEATHER, EMERGENCY, INFRASTRUCTURE. Mesmas pendências de autorização. **Custo do X:** `x-clima` dobra o teto de leituras (até 1.920/dia somando os dois); decidir se liga só um.
 
 ## Piloto Reddit — NÃO ATIVO
 **Situação (verificada em 2026-10-03):** pela [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy), *todo* acesso à Data API exige pedido e aprovação explícita (inclusive não comercial); uso comercial exige aprovação escrita. O RSS público (`/r/<sub>/.rss`) **não** é alternativa: o `robots.txt` do Reddit é `Disallow: /` e a [Public Content Policy](https://support.reddithelp.com/hc/en-us/articles/26410290525844-Public-Content-Policy) restringe o uso. Caminho: abrir o pedido de acesso descrevendo o caso de uso (título + link de posts de r/brasil sobre política, contagem agregada, sem dados de usuários, sem treino de IA) e aguardar.

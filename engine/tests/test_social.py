@@ -12,7 +12,8 @@ NOW = datetime(2026, 10, 3, tzinfo=timezone.utc)
 
 
 def sources():
-    return {s["adapter"]: s for s in load_sources(DEFAULT_SOURCES_PATH, only_enabled=False) if s["adapter"] in ("reddit", "x")}
+    by_id = {s["id"]: s for s in load_sources(DEFAULT_SOURCES_PATH, only_enabled=False)}
+    return {"reddit": by_id["reddit-politics"], "x": by_id["x-politics"]}
 
 
 def test_social_sources_disabled_and_fail_closed():

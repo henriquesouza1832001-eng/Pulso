@@ -45,6 +45,10 @@ class Cluster:
     def matches(self, s: Signal, toks: frozenset[str]) -> bool:
         if abs(s.timestamp - self.signals[-1].timestamp) > WINDOW:
             return False
+        # A mesma fonte publicando o mesmo assunto para UFs diferentes (ex.: um aviso do INMET por estado)
+        # descreve eventos distintos: juntar apagaria estados do mapa.
+        if s.state and any(m.source_id == s.source_id and m.state and m.state != s.state for m in self.signals):
+            return False
         return any(similar(toks, m) for m in self.member_tokens)
 
 

@@ -84,6 +84,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 - [x] Adaptadores Reddit/X completos para política BR (busca temática, filtro por categoria, geo, `RATE_LIMITED`/`AUTH_ERROR`, cadência por `interval_s`, modo piloto `--source`); `enabled: false`, sem autorização nem credenciais (ADR 0003)
 - [x] Fontes oficiais de política propostas: RSS da Agência Senado e da Agência Câmara (`OFFICIAL`, `enabled: false`, termos lidos, piloto OK); falta revisão humana para ativar
 - [ ] Reddit: abrir pedido de acesso (Responsible Builder Policy exige aprovação prévia desde nov/2025; RSS do Reddit é bloqueado pelo robots.txt)
+- [x] Clima impactante por estado: coletor oficial `inmet` (avisos Perigo/Grande Perigo, um evento por UF) + `reddit-clima`/`x-clima`; geo com gentílicos/assembleias/TRE; Reddit regional por UF (ADR 0004). Tudo `enabled: false` aguardando revisão
 - [x] Piloto automático no `collect.yml`: liga sozinho quando os secrets sociais existirem, sem envio e sem conteúdo no log
 - [ ] Reddit/X: registrar app/contratar plano (com teto de gasto), revisar termos, criar secrets (inicia o piloto), avaliar 48 h e só então `enabled: true` (checklist em `docs/sources/SOURCES.md`)
 - [ ] Confirmar cadência do Cron pelos logs de produção: `/api/health` mostra a presença do token, não sucesso do dispatch
@@ -150,9 +151,10 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
 
 ## 9. Decisões registradas
-`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
+`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação) · `0004` (eventos separados por UF; avisos do INMET). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — Clima e política por estado: coletor `inmet` (avisos oficiais, só Perigo/Grande Perigo, um sinal por UF), `reddit-clima`/`x-clima`, comunidades regionais do Reddit com UF, geo com gentílicos/assembleias/TRE-UF, clusterização não junta UFs diferentes da mesma fonte, piloto das fontes oficiais no `collect.yml`. ADR 0004.
 - **2026-10-03** — RSS da Agência Senado e da Agência Câmara propostos como fontes `OFFICIAL` de política (fichas em `SOURCES.md`). Reddit: confirmado que todo acesso à API exige aprovação prévia; RSS do Reddit descartado (robots.txt).
 - **2026-10-03** — Coletores Reddit e X (desativados) focados em política BR: busca temática, filtro `categories`, geo, título sem links/@menções, 429/401/403 mapeados na saúde, `interval_s` respeitado (`is_due`), `start_time` no X, modo piloto `--source`, secrets no `collect.yml`, novas keywords de política/protesto. ADR 0003. Piloto automático no `collect.yml` (`--respect-interval`; log só com contagens).
 - **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
