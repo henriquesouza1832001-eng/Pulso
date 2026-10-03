@@ -33,6 +33,9 @@ export interface BatchLike {
 	forecasts: { status: string }[];
 	observations: { scope: string }[];
 	investigations: { status: string }[];
+	forecast_registry: unknown[];
+	shadow_results: unknown[];
+	driver_registry: unknown[];
 }
 
 /**
@@ -54,7 +57,11 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 	const observations = mode === "critical" ? [] : b.observations.filter((o) => o.scope === "BR");
 	// investigações: em economia só abertura (NEW) e encerramento (CLOSED); em modo crítico nada
 	const investigations = mode === "critical" ? [] : b.investigations.filter((i) => i.status === "NEW" || i.status === "CLOSED");
-	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations };
+	// validação V2: em economia o registro de previsões (auditoria, minúsculo) continua e a comparação/drivers esperam; em crítico nada
+	const forecast_registry = mode === "critical" ? [] : b.forecast_registry;
+	const shadow_results: unknown[] = [];
+	const driver_registry: unknown[] = [];
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry };
 	const shed = {
 		events: b.events.length - events.length,
 		signals: b.signals.length - signals.length,
@@ -65,6 +72,9 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 		forecasts: b.forecasts.length - forecasts.length,
 		observations: b.observations.length - observations.length,
 		investigations: b.investigations.length - investigations.length,
+		forecast_registry: b.forecast_registry.length - forecast_registry.length,
+		shadow_results: b.shadow_results.length,
+		driver_registry: b.driver_registry.length,
 	};
 	return { batch, shed };
 }

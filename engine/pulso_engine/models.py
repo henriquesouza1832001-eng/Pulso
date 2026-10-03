@@ -124,3 +124,39 @@ class InvestigationPoint:
     official_confirmation: bool
     reasons: tuple[str, ...] = ()
     last_anomalous_at: str | None = None
+
+
+@dataclass(frozen=True)
+class ForecastRegistryEntry:
+    """Espelho de `ForecastRegistryEntry` (contracts.ts): trilha de auditoria imutável da previsão."""
+    forecast_id: str
+    created_at: str
+    snapshot: str  # JSON canônico
+    snapshot_hash: str  # sha256 do snapshot
+
+
+@dataclass(frozen=True)
+class ShadowResultRow:
+    """Espelho de `ShadowResultRow` (contracts.ts): V1 x V2 x desfecho de uma previsão ou evento já resolvido."""
+    item_id: str
+    method: str
+    scope: str
+    p_v1: float
+    p_v2: float
+    outcome: int  # 0 | 1
+
+
+@dataclass(frozen=True)
+class DriverRegistryRow:
+    """Espelho de `DriverRegistryRow` (contracts.ts). Só state == "ACTIVE" altera a probabilidade."""
+    driver: str
+    target: str
+    scope: str
+    lag_hours: int
+    correlation: float
+    pairs: int
+    samples: int
+    state: str  # CANDIDATE | TESTING | ACTIVE | DEGRADED | DISABLED
+    brier_without: float | None = None
+    brier_with: float | None = None
+    reason: str = ""

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
 	CATEGORIES,
 	EVENT_STATUSES,
+	DRIVER_STATES,
 	FORECAST_KINDS,
 	GEO_PRECISIONS,
 	INVESTIGATION_STATUSES,
@@ -190,10 +191,54 @@ const batchSchema = z.object({
 		)
 		.max(200)
 		.default([]),
+	/** Validação V2 (docs/engineering/ENGINE_V2_PLAN.md). Tudo opcional e aditivo. */
+	forecast_registry: z
+		.array(
+			z.object({
+				forecast_id: z.string().regex(/^fc-[a-z0-9-]{1,100}$/),
+				created_at: iso,
+				snapshot: z.string().min(2).max(8000),
+				snapshot_hash: z.string().regex(/^[a-f0-9]{64}$/),
+			}),
+		)
+		.max(200)
+		.default([]),
+	shadow_results: z
+		.array(
+			z.object({
+				item_id: z.string().min(1).max(120),
+				method: z.string().regex(/^[a-z0-9_]{1,60}$/),
+				scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+				p_v1: z.number().min(0).max(1),
+				p_v2: z.number().min(0).max(1),
+				outcome: z.union([z.literal(0), z.literal(1)]),
+			}),
+		)
+		.max(500)
+		.default([]),
+	driver_registry: z
+		.array(
+			z.object({
+				driver: z.string().regex(/^[A-Z_]{2,20}$/),
+				target: z.string().regex(/^[A-Z_]{2,20}$/),
+				scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+				lag_hours: z.number().int().min(0).max(168),
+				correlation: z.number().min(-1).max(1),
+				pairs: z.number().int().min(0).max(1_000_000),
+				samples: z.number().int().min(0).max(1_000_000),
+				brier_without: z.number().min(0).max(1).nullable().default(null),
+				brier_with: z.number().min(0).max(1).nullable().default(null),
+				state: z.enum(DRIVER_STATES),
+				reason: z.string().max(200).default(""),
+			}),
+		)
+		.max(200)
+		.default([]),
 });
 
 const SERIES_RETENTION_DAYS = 90;
 const INVESTIGATION_RETENTION_DAYS = 30;
+const VALIDATION_RETENTION_DAYS = 180;
 
 ingest.post("/", async (c) => {
 	if (!engineAuthorized(c.req.header("Authorization"), c.env.INGEST_TOKEN)) {
@@ -217,6 +262,7 @@ ingest.post("/", async (c) => {
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
 	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations, investigations } = plan;
+	const { forecast_registry, shadow_results, driver_registry } = plan;
 
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
@@ -382,6 +428,47 @@ ingest.post("/", async (c) => {
 				.bind(json(investigations.map((i) => ({ ...i, official_confirmation: i.official_confirmation ? 1 : 0, reasons: JSON.stringify(i.reasons) })))),
 		);
 	}
+	if (forecast_registry.length) {
+		// IMUTÁVEL: a trilha de auditoria de uma previsão nunca é reescrita (DO NOTHING); reenvio não grava nada.
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO forecast_registry (forecast_id,created_at,snapshot,snapshot_hash)
+			 SELECT ${f("forecast_id")},${f("created_at")},${f("snapshot")},${f("snapshot_hash")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(forecast_id) DO NOTHING`,
+				)
+				.bind(json(forecast_registry)),
+		);
+	}
+	if (shadow_results.length) {
+		// Só linhas já resolvidas e imutáveis por (item, método).
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO shadow_results (item_id,method,scope,p_v1,p_v2,outcome,created_at)
+			 SELECT ${f("item_id")},${f("method")},${f("scope")},${f("p_v1")},${f("p_v2")},${f("outcome")},?2 FROM json_each(?1) j WHERE true
+			 ON CONFLICT(item_id,method) DO NOTHING`,
+				)
+				.bind(json(shadow_results), new Date().toISOString()),
+		);
+	}
+	if (driver_registry.length) {
+		// DISABLED é manual: o ingest nunca reativa um driver desligado. Só regrava se algo mudou.
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO driver_registry (driver,target,scope,lag_hours,correlation,pairs,samples,brier_without,brier_with,state,reason,updated_at)
+			 SELECT ${f("driver")},${f("target")},${f("scope")},${f("lag_hours")},${f("correlation")},${f("pairs")},${f("samples")},${f("brier_without")},${f("brier_with")},${f("state")},${f("reason")},?2 FROM json_each(?1) j WHERE true
+			 ON CONFLICT(driver,target,scope,lag_hours) DO UPDATE SET correlation=excluded.correlation,pairs=excluded.pairs,samples=excluded.samples,
+			   brier_without=excluded.brier_without,brier_with=excluded.brier_with,state=excluded.state,reason=excluded.reason,updated_at=excluded.updated_at
+			 WHERE driver_registry.state != 'DISABLED'
+			   AND (driver_registry.state IS NOT excluded.state OR driver_registry.samples IS NOT excluded.samples
+			        OR driver_registry.brier_with IS NOT excluded.brier_with OR driver_registry.brier_without IS NOT excluded.brier_without
+			        OR driver_registry.pairs IS NOT excluded.pairs OR driver_registry.correlation IS NOT excluded.correlation)`,
+				)
+				.bind(json(driver_registry), new Date().toISOString()),
+		);
+	}
 	// Investigação encerrada há mais de 30 dias sai (uma vez por dia, 03:10-03:20 UTC; o índice (status, last_update) cobre a busca).
 	{
 		const at = new Date();
@@ -391,6 +478,10 @@ ingest.post("/", async (c) => {
 					.prepare("DELETE FROM investigations WHERE status = 'CLOSED' AND last_update < ?1")
 					.bind(new Date(Date.now() - INVESTIGATION_RETENTION_DAYS * 86400_000).toISOString()),
 			);
+			// auditoria e comparação V2: 180 dias (a janela de 03:10-03:20 UTC roda uma vez por dia)
+			const cutoff = new Date(Date.now() - VALIDATION_RETENTION_DAYS * 86400_000).toISOString();
+			stmts.push(db.prepare("DELETE FROM forecast_registry WHERE created_at < ?1").bind(cutoff));
+			stmts.push(db.prepare("DELETE FROM shadow_results WHERE created_at < ?1").bind(cutoff));
 		}
 	}
 	if (forecasts.length) {
@@ -430,6 +521,9 @@ ingest.post("/", async (c) => {
 		forecasts: forecasts.length,
 		observations: observations.length,
 		investigations: investigations.length,
+		forecast_registry: forecast_registry.length,
+		shadow_results: shadow_results.length,
+		driver_registry: driver_registry.length,
 		budget: { mode, used_before: used, written, shed },
 	});
 });

@@ -179,6 +179,45 @@ export interface IngestBatch {
 	observations?: ObservationPoint[];
 	/** Investigações do Sentinela que MUDARAM nesta rodada (docs/research/SPEC_05_SENTINEL.md). */
 	investigations?: InvestigationPoint[];
+	/** Trilha de auditoria das previsões (imutável). docs/engineering/ENGINE_V2_PLAN.md. */
+	forecast_registry?: ForecastRegistryEntry[];
+	/** Comparação V1 x V2 x desfecho (só linhas já resolvidas, imutáveis). */
+	shadow_results?: ShadowResultRow[];
+	/** Registro de drivers antecedentes validados. */
+	driver_registry?: DriverRegistryRow[];
+}
+
+export interface ForecastRegistryEntry {
+	forecast_id: string;
+	created_at: string;
+	snapshot: string; // JSON canônico: features, versões, flags, probabilidade, método, escopo, limiar
+	snapshot_hash: string; // sha256 do snapshot
+}
+
+export interface ShadowResultRow {
+	item_id: string; // forecast_id ou event_id
+	method: string;
+	scope: string;
+	p_v1: number;
+	p_v2: number;
+	outcome: 0 | 1;
+}
+
+export const DRIVER_STATES = ["CANDIDATE", "TESTING", "ACTIVE", "DEGRADED", "DISABLED"] as const;
+export type DriverState = (typeof DRIVER_STATES)[number];
+
+export interface DriverRegistryRow {
+	driver: string;
+	target: string;
+	scope: string;
+	lag_hours: number;
+	correlation: number;
+	pairs: number;
+	samples: number;
+	brier_without: number | null;
+	brier_with: number | null;
+	state: DriverState; // só ACTIVE pode alterar a probabilidade de uma previsão
+	reason: string;
 }
 
 export const INVESTIGATION_STATUSES = [
