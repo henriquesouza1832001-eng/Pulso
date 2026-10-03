@@ -286,6 +286,24 @@ admin.get("/forecasts/open", async (c) => {
  * já acumulou (investigações, auditoria de previsões, comparação V1 x V2, drivers). Serve ao dono, ao Reliability Gate e ao red team.
  * `promotion.shadow_samples` é o que o portão de promoção conta (mínimo de 200 desfechos resolvidos).
  */
+/** Tabelas que o Engine/Worker esperam (versão do esquema): o que faltar aparece em `schema.missing`, nunca esconde. */
+const EXPECTED_TABLES = [
+	"sources", "source_health", "signals", "events", "event_sources", "pulse_history", "series", "forecasts", "write_budget", "signal_observations",
+	"investigations", "forecast_registry", "shadow_results", "driver_registry", "calibrators", "source_runtime", "engine_cycle",
+];
+
+/** Estado por fonte (frescor e circuit breaker). O Engine lê o breaker daqui no início do ciclo. */
+admin.get("/source-runtime", async (c) => {
+	const { results } = await c.env.DB.prepare(
+		`SELECT source_id, transport, freshness_state, newest_item_age_min, last_content_advance, records, new_records, duplicate_records,
+		        breaker_state, consecutive_failures, next_attempt_at, opened_count, breaker_reason, updated_at
+		 FROM source_runtime ORDER BY source_id LIMIT 1000`,
+	)
+		.all()
+		.catch(() => ({ results: [] }));
+	return c.json({ source_runtime: results });
+});
+
 admin.get("/engine-status", async (c) => {
 	const day = utcDay();
 	const t0 = Date.now();
@@ -307,6 +325,39 @@ admin.get("/engine-status", async (c) => {
 			   (SELECT MAX(hour) FROM signal_observations) AS observations_last_hour,
 			   (SELECT COUNT(*) FROM (SELECT 1 FROM signal_observations LIMIT 200000)) AS observations_rows`,
 		).first<Record<string, number | string | null>>();
+		// Observabilidade do Engine: cada consulta é tolerante (tabela ausente = "não medido", nunca erro nem zero).
+		const [cycleRow, freshRows, breakerRows, openRows, tableRows] = await Promise.all([
+			c.env.DB.prepare("SELECT cycle_at, duration_s, summary FROM engine_cycle WHERE id = 'latest'").first<{ cycle_at: string; duration_s: number; summary: string }>().catch(() => null),
+			c.env.DB.prepare(
+				`SELECT COALESCE(s.source_class,'?') AS family, r.freshness_state AS state, COUNT(*) AS n
+				 FROM source_runtime r LEFT JOIN sources s ON s.id = r.source_id GROUP BY 1, 2`,
+			).all<{ family: string; state: string; n: number }>().catch(() => null),
+			c.env.DB.prepare("SELECT breaker_state AS state, COUNT(*) AS n FROM source_runtime GROUP BY 1").all<{ state: string; n: number }>().catch(() => null),
+			c.env.DB.prepare(
+				`SELECT source_id, breaker_state, consecutive_failures, next_attempt_at, opened_count, breaker_reason
+				 FROM source_runtime WHERE breaker_state != 'CLOSED' ORDER BY next_attempt_at LIMIT 20`,
+			).all().catch(() => null),
+			c.env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{ name: string }>().catch(() => null),
+		]);
+		let cycle: Record<string, unknown> | null = null;
+		try {
+			cycle = cycleRow ? (JSON.parse(cycleRow.summary) as Record<string, unknown>) : null;
+		} catch {
+			cycle = null;
+		}
+		const byState: Record<string, number> = {};
+		const byFamily: Record<string, Record<string, number>> = {};
+		for (const r of freshRows?.results ?? []) {
+			byState[r.state] = (byState[r.state] ?? 0) + r.n;
+			(byFamily[r.family] ??= {})[r.state] = r.n;
+		}
+		const reporting = Object.values(byState).reduce((a, b) => a + b, 0);
+		const stuck = (byState.STALE ?? 0) + (byState.UNKNOWN ?? 0);
+		const breakers: Record<string, number> = { CLOSED: 0, OPEN: 0, HALF_OPEN: 0 };
+		for (const r of breakerRows?.results ?? []) breakers[r.state] = r.n;
+		const present = new Set((tableRows?.results ?? []).map((t) => t.name));
+		const missing = tableRows ? EXPECTED_TABLES.filter((t) => !present.has(t)) : null;
+		const cycleAge = cycleRow ? Math.max(0, Math.round((Date.now() - Date.parse(cycleRow.cycle_at)) / 1000)) : null;
 		const used = budget?.rows ?? 0;
 		const lastPulse = typeof counts?.last_pulse_at === "string" ? counts.last_pulse_at : null;
 		const health = assess({
@@ -315,11 +366,19 @@ admin.get("/engine-status", async (c) => {
 			collectionAgeSeconds: lastPulse ? Math.max(0, Math.round((Date.now() - Date.parse(lastPulse)) / 1000)) : null,
 			budgetMode: budgetMode(used),
 			investigationsActive: Number(counts?.investigations_active ?? 0),
+			breakersOpen: breakerRows ? breakers.OPEN + breakers.HALF_OPEN : undefined,
+			staleOrUnknownRatio: reporting > 0 ? stuck / reporting : undefined,
+			engineCycleAgeSeconds: cycleAge,
 		});
 		return c.json({
 			admin_token_separate: Boolean(c.env.ADMIN_TOKEN), // false = o painel ainda usa o token do ingest (RT-007 aberto)
 			verdict: health, // {status: ok|degraded|not_ready, reasons[]}: a resposta curta para o operador
 			backend: c.env.DB instanceof TursoDatabase ? "turso" : "d1", // o banco REALMENTE em uso (a variável sozinha mentiria sem os segredos)
+			engine: { last_cycle_at: cycleRow?.cycle_at ?? null, age_seconds: cycleAge, duration_s: cycleRow?.duration_s ?? null, reporting: cycleRow !== null },
+			cycle, // resumo do último ciclo (contagens, frescor agregado, flags); null = o Engine ainda não relatou
+			freshness: { sources_reporting: reporting, by_state: byState, by_family: byFamily, age: (cycle?.age as unknown) ?? null, coverage: (cycle?.coverage as unknown) ?? null },
+			breakers: { by_state: breakers, open: openRows?.results ?? [] },
+			schema: { expected: EXPECTED_TABLES.length, missing }, // missing = null: não foi possível ler o esquema
 			write_budget: { day, rows_today: used, mode: budgetMode(used), economy_from: ECONOMY_FROM, critical_from: CRITICAL_FROM, daily_limit: DAILY_LIMIT },
 			...counts,
 			promotion: { min_samples: 200, shadow_samples: counts?.shadow_results ?? 0 },

@@ -187,6 +187,50 @@ export interface IngestBatch {
 	driver_registry?: DriverRegistryRow[];
 	/** Artefatos de calibração versionados (artefato imutável; só o status evolui). */
 	calibrators?: CalibratorArtifact[];
+	/** Estado por fonte (frescor + circuit breaker): só o que mudou ou o batimento periódico. */
+	source_runtime?: SourceRuntimeRow[];
+	/** Resumo do ciclo do Engine (uma linha 'latest'). */
+	engine_cycle?: EngineCycle | null;
+}
+
+export const FRESHNESS_STATES = ["FRESH", "STALE", "EMPTY", "QUIET", "UNKNOWN", "UNAVAILABLE"] as const;
+export type FreshnessState = (typeof FRESHNESS_STATES)[number];
+export const BREAKER_STATES = ["CLOSED", "OPEN", "HALF_OPEN"] as const;
+export type BreakerState = (typeof BREAKER_STATES)[number];
+
+export interface SourceRuntimeRow {
+	source_id: string;
+	transport: string; // ONLINE | DEGRADED | RATE_LIMITED | OFFLINE | AUTH_ERROR
+	freshness_state: FreshnessState; // UNKNOWN != 0: o transporte falhou, nada se afirma sobre o dado
+	newest_item_age_min: number | null; // no instante updated_at
+	last_content_advance: string | null;
+	records: number;
+	new_records: number;
+	duplicate_records: number;
+	breaker_state: BreakerState;
+	consecutive_failures: number;
+	next_attempt_at: string | null;
+	opened_count: number;
+	breaker_reason: string | null;
+	updated_at: string;
+}
+
+export interface EngineCycle {
+	cycle_at: string;
+	duration_s: number;
+	sources_due: number;
+	sources_skipped: number; // puladas pelo breaker (só com CIRCUIT_BREAKER_ENFORCE)
+	records: number;
+	new_records: number;
+	duplicate_records: number;
+	signals_sent: number;
+	events: number;
+	freshness: Record<string, number>; // FRESH/STALE/EMPTY/QUIET/UNKNOWN -> contagem
+	coverage: Record<string, unknown>; // por família
+	age: { n: number; p50: number | null; p95: number | null; max: number | null };
+	breakers_open: number;
+	flags: Record<string, boolean>;
+	engine_ref: string | null;
 }
 
 export const CALIBRATOR_STATUSES = ["candidate", "active", "retired"] as const;
