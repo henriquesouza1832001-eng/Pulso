@@ -9,6 +9,7 @@ import {
 	SOURCE_HEALTH,
 } from "@pulso/shared";
 import type { AppEnv } from "../env";
+import { budgetMode, shedBatch, utcDay } from "../lib/budget";
 import { engineAuthorized } from "../lib/auth";
 
 export const ingest = new Hono<AppEnv>();
@@ -166,9 +167,20 @@ ingest.post("/", async (c) => {
 	if (!parsed.success) {
 		return c.json({ error: "invalid_batch", detail: parsed.error.issues[0]?.message }, 400);
 	}
-	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts } = parsed.data;
-
 	const db = c.env.DB;
+	// Orçamento diário de escrita do D1 (lib/budget.ts): conforme o consumo do dia, descarta o que é de baixa prioridade
+	// ANTES de gravar, em vez de deixar a cota estourar e derrubar tudo com erro 500. Se a tabela ainda não existe, segue normal.
+	const day = utcDay();
+	const used = await db
+		.prepare("SELECT rows FROM write_budget WHERE day = ?1")
+		.bind(day)
+		.first<{ rows: number }>()
+		.then((r) => r?.rows ?? 0)
+		.catch(() => 0);
+	const mode = budgetMode(used);
+	const { batch: plan, shed } = shedBatch(parsed.data, mode);
+	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts } = plan;
+
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
 	// Idempotente: reenviar o mesmo lote não duplica nada (upsert por chave).
@@ -183,7 +195,9 @@ ingest.post("/", async (c) => {
 					`INSERT INTO sources (id,name,domain,adapter,source_class,url,state)
 			 SELECT ${f("id")},${f("name")},${f("domain")},${f("adapter")},${f("source_class")},${f("url")},${f("state")}
 			 FROM json_each(?1) j WHERE true
-			 ON CONFLICT(id) DO UPDATE SET name=excluded.name,domain=excluded.domain,adapter=excluded.adapter,source_class=excluded.source_class,url=excluded.url,state=excluded.state,enabled=1`,
+			 ON CONFLICT(id) DO UPDATE SET name=excluded.name,domain=excluded.domain,adapter=excluded.adapter,source_class=excluded.source_class,url=excluded.url,state=excluded.state,enabled=1
+				 -- só regrava se algo mudou: linha idêntica não custa escrita no D1
+				 WHERE sources.name IS NOT excluded.name OR sources.domain IS NOT excluded.domain OR sources.adapter IS NOT excluded.adapter OR sources.source_class IS NOT excluded.source_class OR sources.url IS NOT excluded.url OR sources.state IS NOT excluded.state OR sources.enabled != 1`,
 				)
 				.bind(json(sources)),
 		);
@@ -224,7 +238,8 @@ ingest.post("/", async (c) => {
 					`INSERT INTO signals (id,source_id,source_class,timestamp,collected_at,title,text,url,canonical_url,author,category,latitude,longitude,geo_precision,geo_confidence,state,city,reliability,hash,event_id)
 			 SELECT ${f("signal_id")},${f("source_id")},${f("source_class")},${f("timestamp")},${f("collected_at")},${f("title")},${f("text")},${f("url")},${f("canonical_url")},${f("author")},${f("category")},${f("latitude")},${f("longitude")},${f("geo_precision")},${f("geo_confidence")},${f("state")},${f("city")},${f("reliability")},${f("hash")},${f("event_id")}
 			 FROM json_each(?1) j WHERE true
-			 ON CONFLICT(hash) DO UPDATE SET event_id=excluded.event_id,category=excluded.category,state=excluded.state,city=excluded.city`,
+			 ON CONFLICT(hash) DO UPDATE SET event_id=excluded.event_id,category=excluded.category,state=excluded.state,city=excluded.city
+				 WHERE signals.event_id IS NOT excluded.event_id OR signals.category IS NOT excluded.category OR signals.state IS NOT excluded.state OR signals.city IS NOT excluded.city`,
 				)
 				.bind(json(signals)),
 		);
@@ -242,7 +257,8 @@ ingest.post("/", async (c) => {
 			 SELECT event_id,source_id,COUNT(*),MIN(timestamp) FROM signals
 			 WHERE event_id IN (SELECT DISTINCT json_extract(value,'$.event_id') FROM json_each(?1))
 			 GROUP BY event_id,source_id
-			 ON CONFLICT(event_id,source_id) DO UPDATE SET signal_count=excluded.signal_count,first_seen=excluded.first_seen`,
+			 ON CONFLICT(event_id,source_id) DO UPDATE SET signal_count=excluded.signal_count,first_seen=excluded.first_seen
+				 WHERE event_sources.signal_count != excluded.signal_count OR event_sources.first_seen != excluded.first_seen`,
 				)
 				.bind(json(signals.map((g) => ({ event_id: g.event_id })))),
 		);
@@ -302,7 +318,17 @@ ingest.post("/", async (c) => {
 				.bind(json(forecasts)),
 		);
 	}
-	if (stmts.length) await db.batch(stmts);
+	let written = 0;
+	if (stmts.length) {
+		const results = await db.batch(stmts);
+		written = results.reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+	}
+	// Soma o consumo do dia (1 a 2 linhas por ciclo). Falhar aqui nunca derruba a ingestão.
+	await db
+		.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
+		.bind(day, written)
+		.run()
+		.catch(() => undefined);
 	return c.json({
 		ok: true,
 		sources: sources.length,
@@ -312,5 +338,6 @@ ingest.post("/", async (c) => {
 		source_health: source_health.length,
 		series: series.length,
 		forecasts: forecasts.length,
+		budget: { mode, used_before: used, written, shed },
 	});
 });
