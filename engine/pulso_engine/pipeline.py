@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
+import zlib
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -169,7 +170,11 @@ def is_due(src: dict, now: datetime, tick_s: int = 300) -> bool:
     # Fonte muito lenta (>= 1 h): janela de DUAS rodadas. O agendador do GitHub atrasa e, se a única rodada da janela
     # escorregasse para a seguinte, uma fonte de 6 h ficaria 6 h sem rodar. Rodar duas vezes é inofensivo (idempotente).
     window = 2 if every >= 12 else 1
-    return int(now.timestamp()) // tick_s % every < window
+    # Deslocamento estável por fonte (derivado do id): espalha a carga entre as rodadas em vez de concentrar todas as
+    # fontes de 10 min nas rodadas pares (32 fontes numa, 87 na outra, 109 a cada 6 h) e as de um mesmo servidor juntas.
+    # Sem `id` (testes, fontes avulsas) o deslocamento é 0: a janela cai no relógio redondo (:00, :15, :30, :45).
+    offset = zlib.crc32(str(src.get("id", "")).encode()) % every
+    return (int(now.timestamp()) // tick_s - offset) % every < window
 
 
 def run_once(
