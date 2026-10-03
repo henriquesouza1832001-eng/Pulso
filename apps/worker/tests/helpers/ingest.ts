@@ -1,10 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Hono } from "hono";
-import { admin } from "../../src/routes/admin";
-import { ingest } from "../../src/routes/ingest";
-import { errorHandler, requestContext } from "../../src/lib/http";
-import type { AppEnv } from "../../src/env";
+import { app } from "../../src/index";
 import { mockHrana, type Fault } from "./hrana";
 
 /** Harness de ingest compartilhado: Worker REAL (/api/ingest) sobre SQLite real (Hrana de mentira, com injeção de falha). */
@@ -17,18 +13,15 @@ export function setup(fault?: (n: number, body: any) => Fault | undefined) {
 	for (const dir of MIGRATIONS) {
 		for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) m.sqlite.exec(readFileSync(join(dir, f), "utf8"));
 	}
-	const app = new Hono<AppEnv>();
-	app.use("*", requestContext);
-	app.onError(errorHandler);
-	app.route("/api/ingest", ingest);
-	app.route("/api/admin", admin);
 	const env = (extra: Record<string, string> = {}) => ({ DB: m.db, INGEST_TOKEN: "segredo-de-teste", ALLOWED_ORIGINS: "", GITHUB_REPO: "x/y", ...extra }) as never;
 	const post = (batch: unknown) =>
 		app.request("/api/ingest", { method: "POST", headers: { Authorization: "Bearer segredo-de-teste", "Content-Type": "application/json" }, body: JSON.stringify(batch) }, env());
+	const get = (path: string, headers: Record<string, string> = {}) => app.request(path, { headers }, env());
+	const raw = (path: string, init: RequestInit, extra: Record<string, string> = {}) => app.request(path, init, env(extra));
 	const getAdmin = (path: string, token = "segredo-de-teste", extra: Record<string, string> = {}) =>
 		app.request(`/api/admin${path}`, { headers: { Authorization: `Bearer ${token}` } }, env(extra));
 	const counts = () => Object.fromEntries(TABLES.map((t) => [t, (m.sqlite.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get() as { c: number }).c]));
-	return { ...m, post, getAdmin, counts };
+	return { ...m, post, get, raw, getAdmin, counts };
 }
 
 export const forecast = {
