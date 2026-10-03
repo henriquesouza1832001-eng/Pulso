@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
 	CATEGORIES,
 	EVENT_STATUSES,
+	BREAKER_STATES,
 	CALIBRATOR_STATUSES,
+	FRESHNESS_STATES,
 	DRIVER_STATES,
 	FORECAST_KINDS,
 	GEO_PRECISIONS,
@@ -12,7 +14,7 @@ import {
 	SOURCE_HEALTH,
 } from "@pulso/shared";
 import type { AppEnv } from "../env";
-import { budgetMode, shedBatch, utcDay } from "../lib/budget";
+import { budgetMode, RESERVE_FIXED, RESERVE_ROWS_PER_ITEM, shedBatch, utcDay } from "../lib/budget";
 import { engineAuthorized } from "../lib/auth";
 
 export const ingest = new Hono<AppEnv>();
@@ -265,6 +267,49 @@ const batchSchema = z.object({
 		)
 		.max(20)
 		.default([]),
+	/** Estado por fonte (frescor + breaker): só o que mudou ou o batimento periódico. No máximo 400 por lote. */
+	source_runtime: z
+		.array(
+			z.object({
+				source_id: z.string().regex(/^[a-z0-9-]{1,60}$/),
+				transport: z.enum(SOURCE_HEALTH),
+				freshness_state: z.enum(FRESHNESS_STATES),
+				newest_item_age_min: z.number().min(0).max(10_000_000).nullable(),
+				last_content_advance: iso.nullable(),
+				records: z.number().int().min(0).max(1_000_000),
+				new_records: z.number().int().min(0).max(1_000_000),
+				duplicate_records: z.number().int().min(0).max(1_000_000),
+				breaker_state: z.enum(BREAKER_STATES),
+				consecutive_failures: z.number().int().min(0).max(1_000_000),
+				next_attempt_at: iso.nullable(),
+				opened_count: z.number().int().min(0).max(1_000_000),
+				breaker_reason: z.string().max(80).nullable(),
+				updated_at: iso,
+			}),
+		)
+		.max(400)
+		.default([]),
+	/** Resumo do último ciclo do Engine (uma linha 'latest'; JSON limitado, sem segredos). */
+	engine_cycle: z
+		.object({
+			cycle_at: iso,
+			duration_s: z.number().min(0).max(100_000),
+			sources_due: z.number().int().min(0).max(100_000),
+			sources_skipped: z.number().int().min(0).max(100_000),
+			records: z.number().int().min(0).max(100_000_000),
+			new_records: z.number().int().min(0).max(100_000_000),
+			duplicate_records: z.number().int().min(0).max(100_000_000),
+			signals_sent: z.number().int().min(0).max(100_000_000),
+			events: z.number().int().min(0).max(100_000_000),
+			freshness: z.record(z.string().max(20), z.number().int().min(0).max(100_000)),
+			coverage: z.record(z.string().max(40), z.unknown()),
+			age: z.object({ n: z.number().int().min(0), p50: z.number().nullable(), p95: z.number().nullable(), max: z.number().nullable() }),
+			breakers_open: z.number().int().min(0).max(100_000),
+			flags: z.record(z.string().max(40), z.boolean()),
+			engine_ref: z.string().max(64).nullable(),
+		})
+		.nullable()
+		.default(null),
 });
 
 const SERIES_RETENTION_DAYS = 90;
@@ -284,21 +329,28 @@ ingest.post("/", async (c) => {
 	// Orçamento diário de escrita do D1 (lib/budget.ts): conforme o consumo do dia, descarta o que é de baixa prioridade
 	// ANTES de gravar, em vez de deixar a cota estourar e derrubar tudo com erro 500. Se a tabela ainda não existe, segue normal.
 	const day = utcDay();
+	let budgetTable = true; // a tabela pode não existir (D1 sem a migration 0005): então não há reserva nem contagem, e o ingest segue
 	const used = await db
 		.prepare("SELECT rows FROM write_budget WHERE day = ?1")
 		.bind(day)
 		.first<{ rows: number }>()
 		.then((r) => r?.rows ?? 0)
-		.catch(() => 0);
+		.catch(() => {
+			budgetTable = false;
+			return 0;
+		});
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
 	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations, investigations } = plan;
-	const { forecast_registry, shadow_results, driver_registry, calibrators } = plan;
+	const { forecast_registry, shadow_results, driver_registry, calibrators, source_runtime, engine_cycle } = plan;
 
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
 	// Idempotente: reenviar o mesmo lote não duplica nada (upsert por chave).
 	const stmts: D1PreparedStatement[] = [];
+	// Observabilidade (estado por fonte, resumo do ciclo): lote À PARTE e best-effort. Se a tabela ainda não existe (migration atrasada)
+	// ou o banco falha aqui, o dado de verdade (eventos, sinais, Pulso) já foi gravado e NUNCA se perde por causa disto.
+	const obsStmts: D1PreparedStatement[] = [];
 	const json = (v: unknown) => JSON.stringify(v);
 	const f = (path: string) => `json_extract(j.value,'$.${path}')`;
 
@@ -524,6 +576,33 @@ ingest.post("/", async (c) => {
 				.bind(json(calibrators)),
 		);
 	}
+	if (source_runtime.length) {
+		// Só avança no tempo: um reenvio idêntico ou atrasado (mesmo updated_at ou mais velho) não grava nada.
+		obsStmts.push(
+			db
+				.prepare(
+					`INSERT INTO source_runtime (source_id,transport,freshness_state,newest_item_age_min,last_content_advance,records,new_records,duplicate_records,breaker_state,consecutive_failures,next_attempt_at,opened_count,breaker_reason,updated_at)
+			 SELECT ${f("source_id")},${f("transport")},${f("freshness_state")},${f("newest_item_age_min")},${f("last_content_advance")},${f("records")},${f("new_records")},${f("duplicate_records")},${f("breaker_state")},${f("consecutive_failures")},${f("next_attempt_at")},${f("opened_count")},${f("breaker_reason")},${f("updated_at")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(source_id) DO UPDATE SET transport=excluded.transport,freshness_state=excluded.freshness_state,newest_item_age_min=excluded.newest_item_age_min,
+			   last_content_advance=excluded.last_content_advance,records=excluded.records,new_records=excluded.new_records,duplicate_records=excluded.duplicate_records,
+			   breaker_state=excluded.breaker_state,consecutive_failures=excluded.consecutive_failures,next_attempt_at=excluded.next_attempt_at,
+			   opened_count=excluded.opened_count,breaker_reason=excluded.breaker_reason,updated_at=excluded.updated_at
+			 WHERE excluded.updated_at > source_runtime.updated_at`,
+				)
+				.bind(json(source_runtime)),
+		);
+	}
+	if (engine_cycle) {
+		obsStmts.push(
+			db
+				.prepare(
+					`INSERT INTO engine_cycle (id,cycle_at,duration_s,summary) VALUES ('latest',?1,?2,?3)
+			 ON CONFLICT(id) DO UPDATE SET cycle_at=excluded.cycle_at,duration_s=excluded.duration_s,summary=excluded.summary
+			 WHERE excluded.cycle_at > engine_cycle.cycle_at`,
+				)
+				.bind(engine_cycle.cycle_at, engine_cycle.duration_s, json(engine_cycle)),
+		);
+	}
 	// Investigação encerrada há mais de 30 dias sai (uma vez por dia, 03:10-03:20 UTC; o índice (status, last_update) cobre a busca).
 	{
 		const at = new Date();
@@ -554,17 +633,57 @@ ingest.post("/", async (c) => {
 				.bind(json(forecasts)),
 		);
 	}
+	// CONTAGEM DO ORÇAMENTO sem subcontar (RT-005/A1b). Antes: contava DEPOIS do lote, em separado; se a resposta se perdia depois do
+	// commit, o dado estava salvo e o orçamento não. Agora: uma RESERVA (estimativa por cima) entra na MESMA transação do lote; se a
+	// resposta se perder, a reserva já está lá (erra para MAIS, a direção segura para um governador). No caminho normal a reserva é
+	// trocada pelo valor real logo depois, então fica exata. O orçamento continua sendo uma cortesia do governador, não a garantia
+	// forte: quem barra de verdade é o limite do próprio banco.
+	const estimate =
+		RESERVE_ROWS_PER_ITEM *
+			(sources.length + events.length + 2 * signals.length + pulses.length + source_health.length + series.length + forecasts.length +
+				observations.length + investigations.length + forecast_registry.length + shadow_results.length + driver_registry.length +
+				calibrators.length + source_runtime.length + (engine_cycle ? 1 : 0)) +
+		RESERVE_FIXED;
+	const reserve = budgetTable && (stmts.length > 0 || obsStmts.length > 0);
 	let written = 0;
 	if (stmts.length) {
+		if (reserve) {
+			stmts.unshift(
+				db
+					.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
+					.bind(day, estimate),
+			);
+		}
 		const results = await db.batch(stmts);
-		written = results.reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+		written = results.slice(reserve ? 1 : 0).reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+	} else if (reserve) {
+		// só observabilidade neste lote: a reserva vai sozinha (best-effort, não derruba nada)
+		await db
+			.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
+			.bind(day, estimate)
+			.run()
+			.catch(() => {
+				budgetTable = false;
+			});
 	}
-	// Soma o consumo do dia (1 a 2 linhas por ciclo). Falhar aqui nunca derruba a ingestão.
-	await db
-		.prepare("INSERT INTO write_budget (day,rows) VALUES (?1,?2) ON CONFLICT(day) DO UPDATE SET rows = rows + excluded.rows")
-		.bind(day, written)
-		.run()
-		.catch(() => undefined);
+	let observability: "ok" | "skipped" | "failed" = obsStmts.length ? "ok" : "skipped";
+	if (obsStmts.length) {
+		try {
+			const results = await db.batch(obsStmts);
+			written += results.reduce((a, r) => a + (r.meta?.rows_written ?? 0), 0);
+		} catch (e) {
+			observability = "failed";
+			console.error("observability_write_failed", c.get("requestId"), e instanceof Error ? e.message.slice(0, 200) : "erro");
+		}
+	}
+	// Troca a reserva pelo consumo REAL do dia. Falhar aqui nunca derruba a ingestão e só deixa o contador a MAIS (reserva mantida).
+	if (reserve && budgetTable) {
+		await db
+			.prepare("UPDATE write_budget SET rows = MAX(0, rows - ?2 + ?3) WHERE day = ?1")
+			.bind(day, estimate, written)
+			.run()
+			.catch(() => undefined);
+	}
 	return c.json({
 		ok: true,
 		sources: sources.length,
@@ -580,6 +699,9 @@ ingest.post("/", async (c) => {
 		shadow_results: shadow_results.length,
 		driver_registry: driver_registry.length,
 		calibrators: calibrators.length,
+		source_runtime: source_runtime.length,
+		engine_cycle: engine_cycle ? 1 : 0,
+		observability,
 		budget: { mode, used_before: used, written, shed },
 	});
 });

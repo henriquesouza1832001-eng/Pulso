@@ -60,7 +60,7 @@ describe("adminAuthorized (menor privilégio, RT-007)", () => {
 		expect(adminAuthorized("Bearer x", {}, "/series")).toBe(false);
 	});
 	it("o conjunto de rotas do Engine cobre exatamente o que o client.py chama", () => {
-		expect([...ENGINE_READ_ROUTES].sort()).toEqual(["/events-digest", "/forecasts/open", "/investigations", "/observations", "/pulse-history", "/series", "/signals"]);
+		expect([...ENGINE_READ_ROUTES].sort()).toEqual(["/events-digest", "/forecasts/open", "/investigations", "/observations", "/pulse-history", "/series", "/signals", "/source-runtime"]);
 	});
 });
 

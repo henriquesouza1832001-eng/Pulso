@@ -12,6 +12,10 @@ export const ECONOMY_FROM = 60_000; // a partir daqui só o que tem relevância
 export const CRITICAL_FROM = 85_000; // a partir daqui só alertas altos e o indicador nacional
 export const RESERVE = 5_000; // folga para o que não passa pelo ingest (migrations, ajustes manuais)
 
+// Reserva do orçamento (ver ingest.ts): estimativa POR CIMA do que um item pode custar (linha + índices no D1) e linhas fixas do contador.
+export const RESERVE_ROWS_PER_ITEM = 3;
+export const RESERVE_FIXED = 2;
+
 export type BudgetMode = "normal" | "economy" | "critical";
 
 export function budgetMode(usedToday: number): BudgetMode {
@@ -37,6 +41,8 @@ export interface BatchLike {
 	shadow_results: unknown[];
 	driver_registry: unknown[];
 	calibrators: unknown[];
+	source_runtime: unknown[];
+	engine_cycle: unknown | null;
 }
 
 /**
@@ -64,7 +70,10 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 	const driver_registry: unknown[] = [];
 	// calibradores são raros e minúsculos (versões novas): continuam em economia; em modo crítico nada
 	const calibrators = mode === "critical" ? [] : b.calibrators;
-	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry, calibrators };
+	// estado por fonte e resumo do ciclo são minúsculos e operacionais (breaker, frescor): continuam em economia; em crítico nada
+	const source_runtime = mode === "critical" ? [] : b.source_runtime;
+	const engine_cycle = mode === "critical" ? null : b.engine_cycle;
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry, calibrators, source_runtime, engine_cycle };
 	const shed = {
 		events: b.events.length - events.length,
 		signals: b.signals.length - signals.length,
@@ -79,6 +88,8 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 		shadow_results: b.shadow_results.length,
 		driver_registry: b.driver_registry.length,
 		calibrators: b.calibrators.length - calibrators.length,
+		source_runtime: b.source_runtime.length - source_runtime.length,
+		engine_cycle: b.engine_cycle && !engine_cycle ? 1 : 0,
 	};
 	return { batch, shed };
 }
