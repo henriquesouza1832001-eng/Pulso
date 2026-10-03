@@ -3,12 +3,13 @@
  * Numeral grande + estado do país + gauge discreto. É o bloco mais
  * importante da página: responde "como está o Brasil agora".
  */
-import type { PulseSnapshot, SourceHealth } from "@pulso/shared";
+import type { PulseSnapshot } from "@pulso/shared";
 import type { Polling } from "../../hooks/usePolling";
+import type { PulseHistoryPoint } from "../../lib/api";
 import { LEVEL_PT } from "../../lib/format";
 import { Gauge } from "../ui/Gauge";
 import { HeroArt } from "../ui/HeroArt";
-import { Sparkline } from "../sections/Forecasts";
+import { PulseSparkline } from "../sections/Forecasts";
 
 export const LEVEL_SUB: Record<number, string> = {
 	1: "SEM ANOMALIAS RELEVANTES NO PAÍS",
@@ -20,21 +21,27 @@ export const LEVEL_SUB: Record<number, string> = {
 
 export function PulseIndicator({
 	pulse,
-	sources,
+	sourcesOnline,
 	eventsCount,
 	signals2h,
 	statesActive,
+	pulseHistory,
+	pulseHistoryLoading,
+	pulseHistoryError,
 }: {
 	pulse: Polling<PulseSnapshot>;
-	sources: SourceHealth[] | null;
-	eventsCount: number;
-	signals2h: number;
-	statesActive: number;
+	sourcesOnline: number | null;
+	eventsCount: number | null;
+	signals2h: number | null;
+	statesActive: number | null;
+	pulseHistory: PulseHistoryPoint[];
+	pulseHistoryLoading: boolean;
+	pulseHistoryError: string | null;
 }) {
 	const d = pulse.data;
 	const lv = d?.alert_level ?? 3;
 	const lvVar = `var(--lv${lv})`;
-	const onlineSources = sources ? sources.filter((s) => s.status === "ONLINE").length : null;
+	const onlineSources = sourcesOnline;
 
 	return (
 		<section className="pi" id="topo">
@@ -62,15 +69,15 @@ export function PulseIndicator({
 
 				<div className="pi-stats">
 					<span>
-						<b className="pi-b">{eventsCount}</b> eventos ativos
+						<b className="pi-b">{eventsCount?.toLocaleString("pt-BR") ?? "--"}</b> eventos ativos
 					</span>
 					<span className="sep">·</span>
 					<span>
-						<b className="pi-b">{signals2h.toLocaleString("pt-BR")}</b> sinais · 2h
+						<b className="pi-b">{signals2h?.toLocaleString("pt-BR") ?? "--"}</b> sinais · 2h
 					</span>
 					<span className="sep">·</span>
 					<span>
-						<b className="pi-b">{statesActive}/27</b> UFs ativas
+						<b className="pi-b">{statesActive == null ? "--" : `${statesActive}/27`}</b> UFs ativas
 					</span>
 					<span className="sep">·</span>
 					<span>
@@ -90,7 +97,7 @@ export function PulseIndicator({
 
 				<div className="pi-curve">
 					<span className="pc-label">PULSO · ÚLTIMAS 24H</span>
-					<Sparkline seed={(d?.score ?? 50) * 13} trend={d?.score ?? 50} />
+					<PulseSparkline points={pulseHistory} loading={pulseHistoryLoading} error={pulseHistoryError} />
 				</div>
 
 				{d && d.contributors.length > 0 && (
