@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import html
 import re
+import socket
 import threading
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 import zlib
@@ -45,8 +48,17 @@ def http_fetch(url: str) -> bytes:
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml, text/xml", "Accept-Encoding": "gzip"})
     with _host_gate(url):  # coleta em paralelo, mas educada: nunca martela um servidor só
-        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URLs vêm de config/sources.json
-            data = resp.read(MAX_BYTES + 1)
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URLs vêm de config/sources.json
+                    data = resp.read(MAX_BYTES + 1)
+                break
+            except urllib.error.HTTPError:
+                raise  # 4xx/5xx é resposta do servidor (429, 403...): não insistir
+            except (TimeoutError, socket.timeout, ConnectionError, urllib.error.URLError):
+                if attempt == 2:
+                    raise
+                time.sleep(1.0)  # falha de rede transitória: uma segunda tentativa, só
     if len(data) > MAX_BYTES:
         raise ValueError("feed excede o tamanho máximo")
     if data[:2] == b"\x1f\x8b":  # gzip (alguns servidores comprimem mesmo sem pedido)

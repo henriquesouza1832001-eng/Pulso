@@ -66,3 +66,43 @@ def test_http_429_is_reported_as_rate_limited_and_other_errors_as_offline():
     srcs = [{**base, "id": "a", "url": "https://limitado/feed"}, {**base, "id": "b", "url": "https://quebrado/feed"}]
     health = {h["source_id"]: h["status"] for h in run_once(srcs, fetcher=fetch, now=datetime(2026, 10, 3, 3, 0, tzinfo=timezone.utc))["source_health"]}
     assert health == {"a": "RATE_LIMITED", "b": "OFFLINE"}
+
+
+def test_transient_network_failure_is_retried_once_but_http_errors_are_not(monkeypatch):
+    monkeypatch.setattr(rss.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def flaky(req, timeout=0):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("timed out")
+        return _Resp(b"<rss/>")
+
+    monkeypatch.setattr(rss.urllib.request, "urlopen", flaky)
+    assert rss.http_fetch("https://a.example/feed") == b"<rss/>" and calls["n"] == 2
+
+    http_calls = {"n": 0}
+
+    def forbidden(req, timeout=0):
+        http_calls["n"] += 1
+        raise urllib.error.HTTPError("https://b.example/feed", 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(rss.urllib.request, "urlopen", forbidden)
+    try:
+        rss.http_fetch("https://b.example/feed")
+    except urllib.error.HTTPError:
+        pass
+    assert http_calls["n"] == 1  # 403 não é repetido (e nunca se contorna bloqueio)
+
+    always = {"n": 0}
+
+    def down(req, timeout=0):
+        always["n"] += 1
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(rss.urllib.request, "urlopen", down)
+    try:
+        rss.http_fetch("https://c.example/feed")
+    except TimeoutError:
+        pass
+    assert always["n"] == 2  # no máximo uma repetição
