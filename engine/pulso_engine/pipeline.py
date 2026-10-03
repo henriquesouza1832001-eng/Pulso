@@ -214,11 +214,13 @@ def run_once(
     series_now = build_series(list(all_signals.values()), now)
     series_rows = merge_series(history, series_now)
     pulse_open = [f for f in open_forecasts or [] if not str(f.get("metric", "")).startswith(METRIC_PREFIX)]
+    # Previsão nova com id que já está aberta no Worker (o id leva a hora) não é reenviada: seria uma escrita sem efeito.
+    already_open = {f["forecast_id"] for f in open_forecasts or []}
     forecasts = [
         *resolve_due(pulse_open, points, now),
-        *make_nowcasts(points, now),
+        *(f for f in make_nowcasts(points, now) if f["forecast_id"] not in already_open),
         *resolve_surge_due(open_forecasts or [], series_rows, points, now),
-        *make_surge_forecasts(series_rows, now),
+        *(f for f in make_surge_forecasts(series_rows, now) if f["forecast_id"] not in already_open),
     ]
     events_to_send = changed_events(events, known_events)
     series_to_send = changed_series(series_now, history)
