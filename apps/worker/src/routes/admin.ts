@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { engineAuthorized } from "../lib/auth";
+import { budgetMode, CRITICAL_FROM, DAILY_LIMIT, ECONOMY_FROM, utcDay } from "../lib/budget";
 import { TursoDatabase } from "../lib/turso";
 
 /** Rotas internas (Engine e painel admin). Nunca públicas, nunca cacheadas. */
@@ -27,7 +28,7 @@ admin.get("/turso-ping", async (c) => {
 		const v = await t.prepare("SELECT sqlite_version() AS v").first<{ v: string }>();
 		const [w] = await t.batch([t.prepare("CREATE TABLE IF NOT EXISTS _worker_ping (k TEXT PRIMARY KEY, n INTEGER)"), t.prepare("INSERT INTO _worker_ping (k,n) VALUES ('x',1) ON CONFLICT(k) DO UPDATE SET n=n+1")]);
 		const n = await t.prepare("SELECT n FROM _worker_ping WHERE k = 'x'").first<{ n: number }>("n" as never);
-		return c.json({ ok: true, backend_ativo: c.env.DB_BACKEND === "turso" ? "turso" : "d1", sqlite: v?.v, ping_n: n, ms: Date.now() - t0, ddl_ok: w.success });
+		return c.json({ ok: true, backend_ativo: c.env.DB instanceof TursoDatabase ? "turso" : "d1", sqlite: v?.v, ping_n: n, ms: Date.now() - t0, ddl_ok: w.success });
 	} catch (e) {
 		return c.json({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 240) }, 502);
 	}
@@ -225,6 +226,40 @@ admin.get("/forecasts/open", async (c) => {
 });
 
 /** Visão do painel admin: volume por fonte nas últimas 24 h e estado de saúde. */
+/**
+ * Painel do motor em uma chamada: banco ativo, orçamento de escrita do dia (e o modo do governador) e o que cada camada do V2
+ * já acumulou (investigações, auditoria de previsões, comparação V1 x V2, drivers). Serve ao dono, ao Reliability Gate e ao red team.
+ * `promotion.shadow_samples` é o que o portão de promoção conta (mínimo de 200 desfechos resolvidos).
+ */
+admin.get("/engine-status", async (c) => {
+	const day = utcDay();
+	try {
+		const budget = await c.env.DB.prepare("SELECT rows FROM write_budget WHERE day = ?1").bind(day).first<{ rows: number }>();
+		const counts = await c.env.DB.prepare(
+			`SELECT
+			   (SELECT COUNT(*) FROM investigations WHERE status != 'CLOSED') AS investigations_active,
+			   (SELECT COUNT(*) FROM investigations) AS investigations_total,
+			   (SELECT COUNT(*) FROM forecasts WHERE status = 'open') AS forecasts_open,
+			   (SELECT COUNT(*) FROM forecasts WHERE status = 'resolved') AS forecasts_resolved,
+			   (SELECT COUNT(*) FROM forecast_registry) AS forecast_registry,
+			   (SELECT COUNT(*) FROM shadow_results) AS shadow_results,
+			   (SELECT COUNT(*) FROM driver_registry WHERE state = 'ACTIVE') AS drivers_active,
+			   (SELECT COUNT(*) FROM driver_registry) AS drivers_total,
+			   (SELECT MAX(hour) FROM signal_observations) AS observations_last_hour,
+			   (SELECT COUNT(*) FROM (SELECT 1 FROM signal_observations LIMIT 200000)) AS observations_rows`,
+		).first<Record<string, number | string | null>>();
+		const used = budget?.rows ?? 0;
+		return c.json({
+			backend: c.env.DB instanceof TursoDatabase ? "turso" : "d1", // o banco REALMENTE em uso (a variável sozinha mentiria sem os segredos)
+			write_budget: { day, rows_today: used, mode: budgetMode(used), economy_from: ECONOMY_FROM, critical_from: CRITICAL_FROM, daily_limit: DAILY_LIMIT },
+			...counts,
+			promotion: { min_samples: 200, shadow_samples: counts?.shadow_results ?? 0 },
+		});
+	} catch (e) {
+		return c.json({ error: "engine_status_failed", detail: String(e instanceof Error ? e.message : e).slice(0, 200) }, 500);
+	}
+});
+
 admin.get("/overview", async (c) => {
 	const since = new Date(Date.now() - 24 * 3600_000).toISOString();
 	const [bySource, totals] = await Promise.all([
