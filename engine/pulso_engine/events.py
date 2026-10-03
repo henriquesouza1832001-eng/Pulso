@@ -12,6 +12,7 @@ from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
+ROUTINE_SEVERITY_CAP = 20  # teto de severidade de um evento cujos textos são todos rotina de campanha (importance.ROUTINE)
 IMPACT_WEIGHT = 0.3  # pontos de severidade por ponto de importância do texto (importance.assess: 0-100)
 
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
@@ -39,8 +40,11 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> Eve
     last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
-    impact = max(assess(f"{s.title}. {s.text or ''}").score for s in signals)
+    assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
+    impact = max(a.score for a in assessed)
     severity = BASE_SEVERITY.get(category, 15) + min(20, 4 * (len(sources) - 1)) + round(IMPACT_WEIGHT * impact)
+    if all(a.routine for a in assessed):  # comício, carreata, agenda de candidato: esperado e agendado, não é impacto
+        severity = min(severity, ROUTINE_SEVERITY_CAP)
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
