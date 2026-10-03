@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PulsoEvent } from "@pulso/shared";
 import { ago, CATEGORY_PT } from "../../lib/format";
 import { LevelTag } from "../ui/LevelTag";
@@ -26,12 +26,38 @@ export function Briefings({
 	const pages = Math.max(1, Math.ceil(list.length / pageSize));
 	const cur = Math.min(page, pages - 1); // a lista encolheu na recarga: fica na última página válida
 	const top = list.slice(cur * pageSize, (cur + 1) * pageSize);
+
+	// No painel largo os cartões têm altura fixa (dividem a altura do feed): o resumo usa 2 linhas quando cabem e 1
+	// quando não, para nunca cortar texto no meio da linha nem empurrar o rodapé para fora. Em altura livre, fica em 2.
+	const box = useRef<HTMLDivElement>(null);
+	const shownKey = top.map((e) => e.event_id).join(",");
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (!el) return;
+		const fit = () => {
+			for (const card of el.querySelectorAll<HTMLElement>(".brief")) {
+				const p = card.querySelector("p");
+				const h3 = card.querySelector("h3");
+				if (!p || !h3) continue;
+				const over = () => card.scrollHeight > card.clientHeight + 1;
+				p.style.setProperty("-webkit-line-clamp", "2");
+				h3.style.removeProperty("-webkit-line-clamp");
+				if (over()) p.style.setProperty("-webkit-line-clamp", "1");
+				if (over()) h3.style.setProperty("-webkit-line-clamp", "1"); // aperto extremo: título também em 1 linha
+			}
+		};
+		fit();
+		if (typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(fit);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [shownKey]);
 	if (top.length === 0)
 		return <p className="state">SEM BRIEFINGS · AGUARDANDO EVENTOS{minLevel > 1 ? ` DE NÍVEL ${minLevel}+` : " CONFIRMADOS"}</p>;
 
 	return (
 		<>
-			<div className="briefs">
+			<div className="briefs" ref={box} style={{ "--brief-rows": pageSize } as CSSProperties}>
 				{top.map((e) => (
 					<article key={e.event_id} className="brief" onClick={() => onSelect(e.event_id)} role="button" tabIndex={0}>
 						<span className="brief-kicker">

@@ -207,7 +207,9 @@ export function OsintFeed({
 					<i className="dot-live" /> FEED OSINT
 				</span>
 				<span className="osf-meta dim">AUTO</span>
-				<span className="osf-meta dim">MONITORANDO {sourcesCount || "--"} FONTES</span>
+				<span className="osf-meta dim">
+					MONITORANDO {sourcesCount || "--"} FONTES · {onlineSources || "--"} ONLINE
+				</span>
 				<span className="osf-meta">
 					{reports} RELATÓRIOS · <b className="l4">{alerts} ALERTAS</b>
 				</span>
@@ -288,11 +290,6 @@ export function OsintFeed({
 					{shown.map(renderItem)}
 				</div>
 			)}
-			{/* legenda antes da paginação: a paginação fecha a coluna e alinha com a dos briefings */}
-			<p className="osf-foot dim">
-				relatos brutos de fontes públicas, agregados pelo motor · clique para abrir o dossiê ·{" "}
-				{onlineSources || "--"} fontes online agora
-			</p>
 			{pages > 1 && (
 				<nav className="osf-pages" aria-label="páginas do feed">
 					<button disabled={curPage === 0} onClick={() => setPage(curPage - 1)} aria-label="página anterior">

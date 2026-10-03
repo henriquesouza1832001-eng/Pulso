@@ -184,7 +184,7 @@ export function App() {
 					id="feed"
 					kicker="monitoramento"
 					title="feed osint"
-					desc="relatos brutos das fontes públicas, agregados em eventos pelo motor · atualiza a cada 15 segundos"
+					desc="relatos brutos das fontes públicas, agregados em eventos pelo motor · atualiza a cada 15 segundos · clique em um relato para abrir o dossiê"
 				>
 					<div className="feedcols">
 						<OsintFeed
