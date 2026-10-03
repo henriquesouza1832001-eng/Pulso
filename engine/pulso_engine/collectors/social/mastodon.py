@@ -38,7 +38,9 @@ class MastodonAdapter:
             for tag in list(self.source.get("tags", DEFAULT_TAGS))[:MAX_TAGS]:
                 url = f"https://{inst}/api/v1/timelines/tag/{urllib.parse.quote(tag)}?limit=40"
                 try:
-                    out += loads(self._fetch(url))
+                    data = loads(self._fetch(url))
+                    if isinstance(data, list):  # erro da instância vem como objeto {"error": ...}
+                        out += [x for x in data if isinstance(x, dict)]
                 except Exception:  # uma instância/tag fora do ar não derruba as outras
                     continue
         return out

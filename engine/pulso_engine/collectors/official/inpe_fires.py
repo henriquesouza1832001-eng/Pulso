@@ -112,7 +112,7 @@ class InpeFiresAdapter:
             newest = max(d[0] for d in dets)
             towns = Counter(d[2] for d in dets).most_common(3)
             biome = Counter(d[3] for d in dets if d[3]).most_common(1)
-            frp = sum(d[6] for d in dets)
+            frp = sum(d[6] for d in dets if d[6] > 0)  # o INPE usa -999 para FRP ausente
             place = state_place(uf, confidence=60)
             lat = sum(d[4] for d in dets) / len(dets)
             lon = sum(d[5] for d in dets) / len(dets)
@@ -123,7 +123,7 @@ class InpeFiresAdapter:
                               + f". Potência radiativa somada: {frp:,.0f} MW. Cada foco é uma detecção de calor por satélite.", 500)
             # Um sinal por UF por janela de `window_h` horas (hash estável): a contagem sobe durante a janela, mas
             # reescrever o sinal a cada ciclo estouraria o orçamento de escrita do banco.
-            bucket = int(newest.timestamp() // self._window.total_seconds())
+            bucket = int(now.timestamp() // self._window.total_seconds())  # janela de calendário do RELÓGIO, estável no ciclo
             digest = content_hash(f"{PORTAL}?uf={uf}&janela={bucket}", f"focos-{uf}")
             out.append(Signal(
                 signal_id=f"sig-{digest}", source_id=self.source_id, source_class=self.source_class,  # type: ignore[arg-type]

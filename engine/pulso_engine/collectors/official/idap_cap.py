@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import IO, Any, Callable
 
 from ...models import Signal
-from ...processing.geo import locate, state_place
+from ...processing.geo import _COORDS, locate, state_place
 from ...processing.keyword_engine import KeywordEngine
 from ...processing.normalizer import clean_text, content_hash
 from ..news.rss import RELIABILITY, USER_AGENT
@@ -29,6 +29,7 @@ CHUNK = 64 * 1024
 SEVERITY = ["Minor", "Moderate", "Severe", "Extreme"]
 SEVERITY_PT = {"Minor": "baixo", "Moderate": "moderado", "Severe": "severo", "Extreme": "extremo"}
 UF_RE = re.compile(r"/([A-Z]{2})\b")
+VALID_UF = frozenset(_COORDS)  # "/BR", "/XX" não são UF
 
 
 def open_stream(url: str) -> IO[bytes]:
@@ -74,6 +75,8 @@ def iter_alerts(stream: IO[bytes], max_bytes: int = MAX_STREAM_BYTES):
                     "event": _t(info.find(f"{CAP}event")), "severity": _t(info.find(f"{CAP}severity")),
                     "expires": _t(info.find(f"{CAP}expires")), "senderName": _t(info.find(f"{CAP}senderName")),
                     "description": _t(info.find(f"{CAP}description")),
+                    # "remetente,identificador,envio" separados por espaço: o que este Update/Cancel substitui
+                    "references": _t(elem.find(f"{CAP}references")),
                     "areas": [_t(a.find(f"{CAP}areaDesc")) for a in info.findall(f"{CAP}area") if _t(a.find(f"{CAP}areaDesc"))],
                 }
             elem.clear()  # libera os polígonos da memória
@@ -113,7 +116,7 @@ class IdapCapAdapter:
         if sent is None or (expires is not None and expires <= now):
             return None  # vencido (ou sem data): não é alerta de agora
         areas = raw["areas"]
-        ufs = {u for a in areas for u in UF_RE.findall(a)}
+        ufs = {u for a in areas for u in UF_RE.findall(a) if u in VALID_UF}
         shown = ", ".join(areas[:3]) + (f" e mais {len(areas) - 3} áreas" if len(areas) > 3 else "")
         event = raw["event"].capitalize() or "Alerta"
         title = clean_text(f"Defesa Civil: {event} ({SEVERITY_PT[sev]}) em {shown}", 300)
@@ -122,7 +125,7 @@ class IdapCapAdapter:
         if uf:
             city = re.match(r"\s*([^/,]+)/" + uf, areas[0])
             place = (locate(f"{city.group(1).title()}, {uf}") if city and len(areas) == 1 else None) or state_place(uf, confidence=70)
-            if place.precision == "STATE":  # a área do alerta oficial é dado estruturado: confiança plena no estado
+            if place is not None and place.precision == "STATE":  # área do alerta oficial é dado estruturado: confiança plena
                 place = state_place(uf, confidence=70)
         digest = content_hash(f"{PORTAL}?alerta={raw['identifier']}", f"idap-{raw['identifier']}")
         return Signal(
@@ -138,9 +141,16 @@ class IdapCapAdapter:
         )
 
     def run(self) -> list[Signal]:
+        raws = self.fetch()
+        # CAP: um Update ou Cancel traz em <references> os alertas que substitui ("remetente,identificador,envio"). O
+        # alerta original continua no feed até vencer: sem isto, um alerta cancelado seguiria vigente e um Update viraria duplicata.
+        superseded = {ref.split(",")[1] for r in raws if r.get("msgType") in ("Update", "Cancel")
+                      for ref in (r.get("references") or "").split() if ref.count(",") >= 2}
         out: dict[str, Signal] = {}
-        for raw in self.fetch():
+        for raw in raws:
+            if raw["identifier"] in superseded:
+                continue
             s = self.normalize(raw)
             if s is not None:
-                out.setdefault(s.hash, s)  # Update com o mesmo identifier não duplica
+                out.setdefault(s.hash, s)
         return list(out.values())
