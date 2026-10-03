@@ -13,6 +13,7 @@ Cada agente usa o seu NOME (ex.: `claude-hen`, `claude-motor`, `codex`) em todos
     py scripts/agentbus.py lock status                              quem tem o TURNO DE COMMIT/PUSH
     py scripts/agentbus.py lock acquire <nome> --note "o que vai subir"   pega o turno (falha se outro está com ele)
     py scripts/agentbus.py lock release <nome>                      devolve o turno
+    py scripts/agentbus.py check-staged <nome>                      ANTES do commit: confere a trava e os arquivos em `git add` (sai com erro se algo for de outro agente)
 
 Regra do projeto: só quem tem a trava faz `git add/commit/push` (sempre `git add` por nome de arquivo). A trava expira em 45
 minutos sem renovação (agente que travou/fechou não bloqueia os outros). Veja AGENTS.md e docs/agents/COORDENACAO.md.
@@ -217,6 +218,41 @@ def lock_release(name: str, force: bool = False) -> int:
     return 0
 
 
+def _staged_files() -> list[str]:
+    import subprocess
+
+    out = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    return [_norm(f) for f in out.splitlines() if f.strip()]
+
+
+def check_staged(name: str, staged: list[str] | None = None) -> int:
+    """Rede de segurança do commit (dois acidentes de 2026-10-03: commit sem a trava e arquivo compartilhado levando a edição alheia).
+    Falha se: o agente não tem a trava; ou há arquivo em `git add` reservado por OUTRO agente. Avisa dos arquivos sem dono."""
+    name = _name(name)
+    staged = _staged_files() if staged is None else staged
+    problems: list[str] = []
+    info = _lock_info()
+    if not info or info["holder"] != name:
+        problems.append(f"você ({name}) NÃO tem a trava de commit (com: {info['holder'] if info else 'ninguém'}). Use `lock acquire`.")
+    claims = _read(DIR / "claims.json", {})
+    unowned = []
+    for f in staged:
+        owners = [o for o, owned in claims.items() if any(_overlap(f, q) for q in owned)]
+        if owners and name not in owners:
+            problems.append(f"{f} é reservado por {', '.join(owners)}: confira `git diff --cached {f}` e combine antes de commitar.")
+        elif not owners:
+            unowned.append(f)
+    for f in unowned:
+        print(f"aviso: {f} não tem dono no quadro (reserve com `claim`).", file=sys.stderr)
+    if not staged:
+        problems.append("nenhum arquivo em `git add`.")
+    for m in problems:
+        print(f"BLOQUEADO: {m}", file=sys.stderr)
+    if not problems:
+        print(f"ok: {len(staged)} arquivo(s) e a trava são seus")
+    return 1 if problems else 0
+
+
 def who() -> None:
     roster = _read(DIR / "roster.json", {})
     print("AGENTES:")
@@ -243,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("inbox"); p.add_argument("name"); p.add_argument("--all", action="store_true")
     p = sub.add_parser("claim"); p.add_argument("name"); p.add_argument("paths", nargs="+")
     p = sub.add_parser("unclaim"); p.add_argument("name"); p.add_argument("paths", nargs="*")
+    p = sub.add_parser("check-staged"); p.add_argument("name")
     p = sub.add_parser("lock"); p.add_argument("action", choices=["status", "acquire", "release"]); p.add_argument("name", nargs="?")
     p.add_argument("--note", default=""); p.add_argument("--force", action="store_true")
     a = ap.parse_args(argv)
@@ -256,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
         inbox(a.name, a.all)
     elif a.cmd == "claim":
         return claim(a.name, a.paths)
+    elif a.cmd == "check-staged":
+        return check_staged(a.name)
     elif a.cmd == "unclaim":
         unclaim(a.name, a.paths)
     elif a.cmd == "lock":

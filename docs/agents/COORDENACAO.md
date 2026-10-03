@@ -44,6 +44,14 @@ py scripts/agentbus.py lock status|acquire <nome> --note "..."|release <nome>   
 ```
 Nomes sugeridos: `claude-hen` (backend, Worker, banco, fontes), `claude-motor` (motor Python: sentinela, previsão), `codex`. Um nome por agente, sempre o mesmo.
 
+## Redes de segurança (aprendidas em 2026-10-03)
+Dois acidentes no mesmo dia mostraram que regra escrita não basta; agora há ferramenta:
+1. **`py scripts/agentbus.py check-staged <nome>` ANTES de todo commit.** Bloqueia (código de saída 1) se você não tem a trava, se não há nada em `git add`, ou se algum arquivo em `git add` está reservado por **outro** agente. Aviso nos arquivos sem dono.
+2. **Arquivo compartilhado (`pipeline.py`, `flags.py`...): leia `git diff --cached <arquivo>` antes de commitar.** Na pasta compartilhada o arquivo pode conter edição de OUTRO agente que ainda não subiu o módulo dela; foi assim que o `main` quebrou (import de um módulo ausente). Ao commitar um arquivo, só entra o que é seu: se houver hunk alheio, peça ao dono para subir junto, ou commite os dois lado a lado.
+3. **Nunca encadeie `lock acquire` com `;`.** Use `&&`, para uma trava recusada interromper o resto.
+4. **Merge só com o CI verde:** `bash scripts/merge_when_green.sh <PR>` espera o CI e recusa mergear se estiver vermelho, cancelado ou sem confirmação. Não use `gh pr merge` direto.
+5. Quem tem uma reserva ampla que atrapalha outro agente deve liberar (`unclaim`) quando disser que liberou. Reserva esquecida levou dois agentes a editar o mesmo arquivo.
+
 ## Regras
 1. **Turno de commit:** só quem tem a trava (`lock acquire`) faz `git add/commit/push`. A trava expira em 45 min sem renovar, para um agente que sumiu não bloquear os outros.
 2. **`git add` por nome de arquivo**, nunca `-A` nem `.`. A pasta é compartilhada: um arquivo ainda não commitado de outro agente entraria junto no seu commit.
