@@ -33,7 +33,10 @@ function sourceFor(e: PulsoEvent, demo: boolean): string {
 	return CAT_SOURCE[e.category] ?? "@pulso";
 }
 
-const PAGE = 14;
+const PAGE = 10;
+/** Nível a partir do qual o evento fica FIXO no topo, em todas as páginas (alertas). */
+const PIN_LEVEL = 3;
+const MAX_PINNED = 5;
 
 export function OsintFeed({
 	events,
@@ -42,6 +45,8 @@ export function OsintFeed({
 	demo,
 	sourcesCount,
 	onlineSources,
+	uf,
+	onUfChange,
 }: {
 	events: PulsoEvent[];
 	onSelect: (id: string) => void;
@@ -49,45 +54,96 @@ export function OsintFeed({
 	demo: boolean;
 	sourcesCount: number;
 	onlineSources: number;
+	/** Estado em foco ("SP"), "BR" = só notícias sem UF (nacionais/internacionais), null = todos. */
+	uf: string | null;
+	onUfChange: (uf: string | null) => void;
 }) {
 	const [tab, setTab] = useState<"live" | "top">("live");
 	const [cat, setCat] = useState<string>("ALL");
-	const [visible, setVisible] = useState(PAGE);
+	const [page, setPage] = useState(0);
 	const listRef = useRef<HTMLDivElement>(null);
-	const endRef = useRef<HTMLDivElement>(null);
+	const rootRef = useRef<HTMLDivElement>(null);
+
+	// Recorte por estado primeiro: categorias, contagens e páginas passam a falar só daquela UF.
+	const ufCounts = useMemo(() => {
+		const m = new Map<string, number>();
+		for (const e of events) if (e.state) m.set(e.state, (m.get(e.state) ?? 0) + 1);
+		return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+	}, [events]);
+	const nationalCount = useMemo(() => events.filter((e) => !e.state).length, [events]);
+	const inScope = useMemo(
+		() => (uf === null ? events : events.filter((e) => (uf === "BR" ? !e.state : e.state === uf))),
+		[events, uf],
+	);
 
 	const cats = useMemo(() => {
 		const present = new Map<string, number>();
-		for (const e of events) present.set(e.category, (present.get(e.category) ?? 0) + 1);
+		for (const e of inScope) present.set(e.category, (present.get(e.category) ?? 0) + 1);
 		return [...present.entries()].sort((a, b) => b[1] - a[1]);
-	}, [events]);
+	}, [inScope]);
 
 	const filtered = useMemo(() => {
-		const list = cat === "ALL" ? [...events] : events.filter((e) => e.category === cat);
-		if (tab === "top") list.sort((a, b) => b.pulse - a.pulse);
-		else list.sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at));
-		return list;
-	}, [events, cat, tab]);
-
-	// troca de filtro/tab reinicia a paginação
-	useEffect(() => {
-		setVisible(PAGE);
-	}, [cat, tab]);
-
-	// rolagem infinita: sentinela no fim da lista
-	useEffect(() => {
-		const list = listRef.current;
-		const end = endRef.current;
-		if (!list || !end) return;
-		const io = new IntersectionObserver(
-			(entries) => {
-				if (entries[0]?.isIntersecting) setVisible((v) => (v < filtered.length ? v + 10 : v));
-			},
-			{ root: list, rootMargin: "40px" },
+		const list = cat === "ALL" ? [...inScope] : inScope.filter((e) => e.category === cat);
+		// Nível mais alto sempre primeiro; dentro do nível, AO VIVO = mais recente, TOP = maior Pulso.
+		list.sort(
+			(a, b) =>
+				b.alert_level - a.alert_level ||
+				(tab === "top"
+					? b.pulse - a.pulse
+					: +new Date(b.updated_at) - +new Date(a.updated_at) || b.pulse - a.pulse),
 		);
-		io.observe(end);
-		return () => io.disconnect();
-	}, [filtered.length]);
+		return list;
+	}, [inScope, cat, tab]);
+
+	// Destaques: alertas (nível ≥ 3) fixos acima da lista, visíveis em qualquer página.
+	const pinned = useMemo(() => filtered.filter((e) => e.alert_level >= PIN_LEVEL).slice(0, MAX_PINNED), [filtered]);
+	const rest = useMemo(() => {
+		const ids = new Set(pinned.map((e) => e.event_id));
+		return filtered.filter((e) => !ids.has(e.event_id));
+	}, [filtered, pinned]);
+	const pages = Math.max(1, Math.ceil(rest.length / PAGE));
+	const curPage = Math.min(page, pages - 1); // a lista encolheu (atualização/filtro): fica na última página válida
+
+	// página nova começa do topo da lista
+	useEffect(() => {
+		listRef.current?.scrollTo({ top: 0 });
+	}, [curPage]);
+
+	// troca de filtro/tab/estado volta para a primeira página
+	useEffect(() => {
+		setPage(0);
+	}, [cat, tab, uf]);
+
+	// Evento escolhido no mapa/cidades/painel de UF: garante que ele apareça no feed (tira o filtro
+	// de categoria que o esconda, carrega a página onde ele está) e rola a lista até ele.
+	// Só uma vez por seleção: a atualização a cada 15 s ou um filtro escolhido depois não puxam a lista de volta.
+	const pendingReveal = useRef<string | null>(null);
+	useEffect(() => {
+		pendingReveal.current = selectedId;
+	}, [selectedId]);
+	useEffect(() => {
+		if (!selectedId || pendingReveal.current !== selectedId) return;
+		if (uf !== null && !inScope.some((e) => e.event_id === selectedId)) {
+			onUfChange(null); // o estado em foco escondia o evento escolhido
+			return;
+		}
+		if (cat !== "ALL" && !filtered.some((e) => e.event_id === selectedId)) {
+			setCat("ALL");
+			return; // reexecuta com a lista sem filtro
+		}
+		const idx = rest.findIndex((e) => e.event_id === selectedId);
+		const target = idx < 0 ? curPage : Math.floor(idx / PAGE); // fixo nos destaques: qualquer página serve
+		if (idx < 0 && !pinned.some((e) => e.event_id === selectedId)) return;
+		if (target !== curPage) {
+			setPage(target);
+			return; // reexecuta depois de renderizar a página do item
+		}
+		pendingReveal.current = null;
+		rootRef.current
+			?.querySelector(`[data-evid="${CSS.escape(selectedId)}"]`)
+			?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	}, [selectedId, filtered, rest, pinned, cat, curPage, uf, inScope, onUfChange]);
+
 
 	const reports = events.length;
 	const alerts = events.filter((e) => e.alert_level >= 3).length;
@@ -107,10 +163,37 @@ export function OsintFeed({
 		.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour12: false })
 		.slice(0, 2);
 
-	const shown = filtered.slice(0, visible);
+	const renderItem = (e: PulsoEvent) => (
+		<article
+			key={e.event_id}
+			data-evid={e.event_id}
+			className={`osf-item${e.alert_level >= 2 ? ` hot n${e.alert_level}` : ""}${e.event_id === selectedId ? " sel" : ""}`}
+			onClick={() => onSelect(e.event_id)}
+		>
+			<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={20} height={20} />
+			<div className="osf-body">
+				<div className="osf-line">
+					<span className="osf-time">{brTime(e.updated_at)}</span>
+					<span className="osf-src">{sourceFor(e, demo)}</span>
+					{demo && <span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>}
+					<span className="osf-id dim">{evtId(e.event_id)}</span>
+					<span className="osf-ago dim">{ago(e.updated_at)}</span>
+					<LevelTag level={e.alert_level} compact />
+				</div>
+				<p className="osf-text">{e.title}</p>
+				<div className="osf-meta2">
+					{e.signal_count} sinais · {e.source_count} fonte(s) · conf {e.confidence}% ·{" "}
+					{[e.city, e.state].filter(Boolean).join("/") ||
+						(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
+				</div>
+			</div>
+		</article>
+	);
+
+	const shown = rest.slice(curPage * PAGE, (curPage + 1) * PAGE);
 
 	return (
-		<div className="osf">
+		<div className="osf" ref={rootRef}>
 			<div className="osf-head">
 				<span className="osf-title">
 					<i className="dot-live" /> FEED OSINT
@@ -148,9 +231,33 @@ export function OsintFeed({
 				<span className="oss-label">SINAIS/24H</span>
 			</div>
 
+			<div className="osf-uf">
+				<label>
+					<span className="dim">ESTADO</span>
+					<select
+						value={uf ?? ""}
+						onChange={(ev) => onUfChange(ev.target.value || null)}
+						aria-label="filtrar o feed por estado"
+					>
+						<option value="">TODOS · {events.length}</option>
+						{ufCounts.map(([u, n]) => (
+							<option key={u} value={u}>
+								{u} · {n}
+							</option>
+						))}
+						<option value="BR">NACIONAL/SEM UF · {nationalCount}</option>
+					</select>
+				</label>
+				{uf && (
+					<button className="osf-ufchip" onClick={() => onUfChange(null)} aria-label="mostrar todos os estados">
+						{uf === "BR" ? "NACIONAL" : uf} ✕
+					</button>
+				)}
+			</div>
+
 			<div className="osf-cats" role="tablist" aria-label="filtrar por categoria">
 				<button className={cat === "ALL" ? "on" : ""} onClick={() => setCat("ALL")}>
-					TODAS · {events.length}
+					TODAS · {inScope.length}
 				</button>
 				{cats.map(([c, n]) => (
 					<button key={c} className={cat === c ? "on" : ""} onClick={() => setCat(c)}>
@@ -159,40 +266,42 @@ export function OsintFeed({
 				))}
 			</div>
 
-			{shown.length === 0 ? (
+			{pinned.length > 0 && (
+				<div className="osf-pin" aria-label="destaques: alertas de nível 3 ou mais">
+					<span className="osf-pin-h">EM DESTAQUE · NÍVEL {PIN_LEVEL}+</span>
+					{pinned.map(renderItem)}
+				</div>
+			)}
+
+			{shown.length === 0 && pinned.length === 0 ? (
 				<p className="state">AGUARDANDO COLETA · NENHUM RELATO COM ESSE FILTRO</p>
 			) : (
 				<div className="osf-list" ref={listRef}>
-					{shown.map((e) => (
-						<article
-							key={e.event_id}
-							className={`osf-item${e.event_id === selectedId ? " sel" : ""}`}
-							onClick={() => onSelect(e.event_id)}
-						>
-							<img className="osf-avat" src={identicon(e.event_id, 20)} alt="" width={20} height={20} />
-							<div className="osf-body">
-								<div className="osf-line">
-									<span className="osf-time">{brTime(e.updated_at)}</span>
-									<span className="osf-src">{sourceFor(e, demo)}</span>
-									{demo && <span className="osf-class">{SRC_CLASS[e.category] ?? "PUBLICO"}</span>}
-									<span className="osf-id dim">{evtId(e.event_id)}</span>
-									<span className="osf-ago dim">{ago(e.updated_at)}</span>
-									<LevelTag level={e.alert_level} compact />
-								</div>
-								<p className="osf-text">{e.title}</p>
-								<div className="osf-meta2">
-									{e.signal_count} sinais · {e.source_count} fonte(s) · conf {e.confidence}% ·{" "}
-									{[e.city, e.state].filter(Boolean).join("/") || "localizando…"}
-								</div>
-							</div>
-						</article>
-					))}
-					<div ref={endRef} className="osf-more dim">
-						{visible < filtered.length
-							? `CARREGANDO MAIS… (${visible}/${filtered.length})`
-							: `FIM · ${filtered.length} RELATOS CARREGADOS`}
-					</div>
+					{shown.map(renderItem)}
 				</div>
+			)}
+			{pages > 1 && (
+				<nav className="osf-pages" aria-label="páginas do feed">
+					<button disabled={curPage === 0} onClick={() => setPage(curPage - 1)} aria-label="página anterior">
+						‹
+					</button>
+					{Array.from({ length: pages }, (_, i) => (
+						<button
+							key={i}
+							className={i === curPage ? "on" : ""}
+							aria-current={i === curPage ? "page" : undefined}
+							onClick={() => setPage(i)}
+						>
+							{i + 1}
+						</button>
+					))}
+					<button disabled={curPage === pages - 1} onClick={() => setPage(curPage + 1)} aria-label="próxima página">
+						›
+					</button>
+					<span className="dim">
+						{curPage * PAGE + 1}–{Math.min((curPage + 1) * PAGE, rest.length)} de {rest.length}
+					</span>
+				</nav>
 			)}
 			<p className="osf-foot dim">
 				relatos brutos de fontes públicas, agregados pelo motor · clique para abrir o dossiê ·{" "}
