@@ -34,6 +34,25 @@ admin.get("/series", async (c) => {
 	return c.json({ since, series: results });
 });
 
+const signalsQuery = z.object({
+	hours: z.coerce.number().int().min(1).max(72).default(24),
+});
+
+/** Sinais recentes, para o Engine agrupar com estado (reaproveitar o event_id de cada história). */
+admin.get("/signals", async (c) => {
+	const q = signalsQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare(
+		`SELECT id AS signal_id, source_id, source_class, timestamp, collected_at, title, text, url, canonical_url,
+		        author, category, latitude, longitude, geo_precision, geo_confidence, state, city, reliability, hash, event_id
+		 FROM signals WHERE timestamp >= ?1 ORDER BY timestamp ASC LIMIT 5000`,
+	)
+		.bind(since)
+		.all();
+	return c.json({ since, signals: results });
+});
+
 /** Visão do painel admin: volume por fonte nas últimas 24 h e estado de saúde. */
 admin.get("/overview", async (c) => {
 	const since = new Date(Date.now() - 24 * 3600_000).toISOString();

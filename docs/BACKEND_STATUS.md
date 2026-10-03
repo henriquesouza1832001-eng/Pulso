@@ -33,7 +33,7 @@ Leitura obrigatória, nesta ordem: `AGENTS.md` → `docs/architecture/ARCHITECTU
 | Onde | Nome | Para quê |
 |---|---|---|
 | Worker (`wrangler secret put`) | `INGEST_TOKEN` | autoriza Engine em `/api/ingest` e `/api/admin/*` |
-| Worker | `GH_DISPATCH_TOKEN` | **pendente**: token fino do GitHub (Actions: escrita) para o Cron acionar a coleta |
+| Worker | `GH_DISPATCH_TOKEN` | token fino do GitHub (Actions: leitura e escrita, só o repo Pulso) para o Cron acionar a coleta. **Vence em 31/12/2026**: renovar antes disso (gerar novo, `wrangler secret put GH_DISPATCH_TOKEN`), senão a coleta automática para. |
 | GitHub Actions | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy automático |
 | GitHub Actions | `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | a coleta enviar lotes ao Worker |
 
@@ -84,7 +84,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
 1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
-2. **Clusterização sem estado**: é refeita a cada rodada a partir do que os feeds mostram; o `event_id` pode mudar quando a notícia mais antiga sai do feed (duplicatas por até 24 h). Próxima etapa: clusterização com estado (Engine lê eventos existentes).
+2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
 3. **Classificação inicial por keywords** gera falsos positivos (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
@@ -96,7 +96,7 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 | # | Item | Estado |
 |---|---|---|
 | 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | em andamento (falta o segredo) |
-| 2 | Clusterização com estado (ids estáveis) | a fazer |
+| 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
 | 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | a fazer |
 | 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
@@ -122,7 +122,7 @@ Fora de escopo por restrição de termos: extrair dados do Google Maps (o mapa d
 | N1 | Criar o token fino do GitHub e rodar `wrangler secret put GH_DISPATCH_TOKEN` (liga a coleta de 5 em 5 min) | `apps/worker/src/lib/dispatch.ts` |
 | N2 | **Revogar** o token da Cloudflare que foi exposto em chat | painel Cloudflare |
 | N3 | Revisar os termos das 5 fontes RSS e preencher `terms_url`/`reviewed_by` | `engine/config/sources.json` |
-| N4 | Clusterização com estado (ids de evento estáveis) | `pipeline.py`, `processing/clustering.py`, `events.py` |
+| N4 | ~~Clusterização com estado~~ **feito** | `pipeline.py`, `events.py` |
 | N5 | **Previsões**: migration `forecasts`, `/api/forecasts`, resolução e pontuação (Brier); NOWCAST primeiro | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
 | N6 | SSE (`/api/events/live`) e `/api/trending` | `apps/worker/src/routes` |
 | N7 | Revisar e fazer o merge dos PRs da colega | — |
@@ -147,6 +147,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 `docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
 
 ## 10. Registro de mudanças (acrescente no topo)
+- **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
 - **2026-10-03** — PR #7 mergeado e em produção (migration `0002`, Cron Trigger, rotas admin). Registro de coletores. Divisão de trabalho e onboarding (seção 8.1).
 - **2026-10-03** — Cron Trigger da Cloudflare + `/api/health` com atraso da coleta; histórico em séries, baseline e anomalia; rotas admin; eventos só das últimas 24 h; política de branches (somente 5). 
 - **2026-10-02** — Monorepo; Cloudflare (D1, Worker, front); deploy automático; coleta RSS; protocolo de coleta e previsão documentados.

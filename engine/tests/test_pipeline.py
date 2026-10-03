@@ -48,7 +48,9 @@ def test_same_story_in_three_sources_becomes_one_event():
     ev = batch["events"][0]
     assert ev["source_count"] == 3 and ev["signal_count"] == 3
     assert ev["category"] == "WEATHER" and ev["state"] == "MG" and ev["status"] == "CONFIRMED"
-    assert all(s["event_id"] == ev["event_id"] for s in batch["signals"])
+    in_event = [s for s in batch["signals"] if s["event_id"]]
+    assert len(in_event) == 3 and all(s["event_id"] == ev["event_id"] for s in in_event)
+    assert [s["event_id"] for s in batch["signals"] if not s["event_id"]] != []  # a receita é gravada, sem evento
     assert batch["pulses"][0]["scope"] == "BR" and batch["pulses"][0]["score"] > 0
 
 

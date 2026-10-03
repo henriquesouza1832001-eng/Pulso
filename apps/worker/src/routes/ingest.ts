@@ -168,6 +168,12 @@ ingest.post("/", async (c) => {
 				)
 				.bind(json(signals)),
 		);
+		// Retenção: sinais ficam 90 dias (docs/COLLECTION_PROTOCOL.md §7).
+		stmts.push(
+			db
+				.prepare("DELETE FROM signals WHERE timestamp < ?1")
+				.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
+		);
 		// Fontes por evento, recalculadas a partir dos sinais gravados.
 		stmts.push(
 			db

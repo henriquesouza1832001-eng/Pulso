@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -53,6 +54,37 @@ def build_pulses(events: list[dict], now: datetime) -> list[dict]:
     return pulses
 
 
+STATE_WINDOW = timedelta(hours=24)  # quanto histórico entra no agrupamento
+
+
+def signal_from_row(r: dict) -> Signal | None:
+    """Reconstrói um Signal a partir de uma linha gravada (rota /api/admin/signals)."""
+    try:
+        def ts(v: str) -> datetime:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+
+        return Signal(
+            signal_id=r["signal_id"], source_id=r["source_id"], source_class=r["source_class"],
+            timestamp=ts(r["timestamp"]), collected_at=ts(r["collected_at"]), title=r["title"],
+            category=r.get("category") or "OTHER", text=r.get("text"), url=r.get("url"),
+            latitude=r.get("latitude"), longitude=r.get("longitude"), geo_precision=r.get("geo_precision"),
+            geo_confidence=r.get("geo_confidence"), reliability=r.get("reliability") or 50,
+            event_id=r.get("event_id"), hash=r["hash"], canonical_url=r.get("canonical_url"),
+            author=r.get("author"), state=r.get("state"), city=r.get("city"),
+        )
+    except (KeyError, ValueError, TypeError):
+        return None  # linha corrompida nunca derruba o ciclo
+
+
+def choose_event_id(cluster, prior_ids: dict[str, str]) -> str | None:
+    """Reaproveita o id de evento mais frequente entre os membros já gravados (empate: o menor id)."""
+    counts = Counter(prior_ids[s.hash] for s in cluster.signals if s.hash in prior_ids)
+    if not counts:
+        return None
+    best = max(counts.values())
+    return min(i for i, n in counts.items() if n == best)
+
+
 def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now: datetime) -> float:
     """Anomalia do tema no escopo do evento: atividade da última hora vs. baseline histórico."""
     sigs = cluster.signals
@@ -74,10 +106,11 @@ def run_once(
     now: datetime | None = None,
     keywords: KeywordEngine | None = None,
     history: list[dict] | None = None,
+    stored: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
-    signals: dict[str, Signal] = {}
+    signals: dict[str, Signal] = {}  # sinais coletados NESTA rodada
     health: list[dict] = []
     for src in sources:
         try:
@@ -91,18 +124,45 @@ def run_once(
         health.append({"source_id": src["id"], "status": status,
                        "last_success": iso(now) if got else None, "detail": detail})
 
-    clusters = [c for c in cluster_signals(list(signals.values())) if is_publishable(c)]
+    # Estado: sinais já gravados entram no agrupamento, então a história continua a mesma
+    # (mesmo event_id) mesmo depois que a notícia mais antiga sai do feed.
+    prior_ids: dict[str, str] = {}
+    known_ids: dict[str, str | None] = {}  # hash -> event_id já gravado (None = gravado sem evento)
+    all_signals: dict[str, Signal] = {}
+    for row in stored or []:
+        old = signal_from_row(row)
+        if old is None:
+            continue
+        known_ids[old.hash] = old.event_id  # mesmo fora da janela: já está no banco, não reenviar
+        if (now - old.timestamp) > STATE_WINDOW:
+            continue
+        if old.event_id:
+            prior_ids[old.hash] = old.event_id
+        all_signals[old.hash] = old
+    all_signals.update(signals)  # o dado fresco prevalece sobre o gravado
+
     history = history or []
-    events = [build_event(c, now, cluster_anomaly(c, list(signals.values()), history, now)) for c in clusters]
-    event_signals = [s for c in clusters for s in c.signals]
+    events: list[dict] = []
+    for cluster in cluster_signals(list(all_signals.values())):
+        if not is_publishable(cluster):
+            for s in cluster.signals:
+                object.__setattr__(s, "event_id", None)
+            continue
+        events.append(build_event(
+            cluster, now, cluster_anomaly(cluster, list(all_signals.values()), history, now),
+            event_id=choose_event_id(cluster, prior_ids),
+        ))
+
+    # Só enviamos o que é novo ou mudou de evento; o resto já está gravado.
+    to_send = [s for h, s in all_signals.items() if h not in known_ids or known_ids[h] != s.event_id]
     return {
         "batch_id": uuid.uuid4().hex,
         "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")} for s in sources],
         "events": events,
-        "signals": [signal_dict(s) for s in event_signals],
+        "signals": [signal_dict(s) for s in to_send],
         "pulses": build_pulses(events, now),
         "source_health": health,
-        "series": build_series(list(signals.values()), now),
+        "series": build_series(list(all_signals.values()), now),
     }
 
 
@@ -133,6 +193,10 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
         cur_e.append(e)
         cur_s.extend(es[:max_signals])
     parts.append({"events": cur_e, "signals": cur_s})
+    # Sinais sem evento (ex.: matéria isolada de tema irrelevante): gravados para o estado, em lotes próprios.
+    orphans = sigs_by_event.get(None, [])
+    for i in range(0, len(orphans), max_signals):
+        parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
         {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"],
          "events": p["events"], "signals": p["signals"],
@@ -152,9 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
-    from .client import fetch_history
-    history = fetch_history() if args.push else []  # baseline só com histórico real
-    batch = run_once(sources, history=history)
+    from .client import fetch_history, fetch_signals
+    # Histórico (baseline) e sinais gravados (agrupamento com estado): só com dado real do Worker.
+    history = fetch_history() if args.push else []
+    stored = fetch_signals() if args.push else []
+    batch = run_once(sources, history=history, stored=stored)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
