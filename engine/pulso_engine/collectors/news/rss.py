@@ -56,6 +56,7 @@ def _ensure_utf8(data: bytes) -> bytes:
 
 
 _XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
+_MARKUP = {"<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;"}
 _NAMED_ENTITY = re.compile(rb"&([A-Za-z][A-Za-z0-9]*);")
 _BARE_AMP = re.compile(rb"&(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#[xX][0-9a-fA-F]+;)")
 
@@ -70,7 +71,10 @@ def _sanitize_xml(data: bytes) -> bytes:
         if name in _XML_ENTITIES:
             return m.group(0)
         char = html.unescape(m.group(0).decode())
-        return m.group(0) if char == m.group(0).decode() else char.encode("utf-8")  # desconhecida: deixa
+        if char == m.group(0).decode():
+            return m.group(0)  # entidade desconhecida: deixa (o parser recusa o feed)
+        # `&LT;`/`&AMP;` em maiúsculas viram caracteres de marcação: reescapa, nunca injeta markup no XML.
+        return "".join(_MARKUP.get(c, c) for c in char).encode("utf-8")
 
     data = _NAMED_ENTITY.sub(named, data)
     return _BARE_AMP.sub(b"&amp;", data)

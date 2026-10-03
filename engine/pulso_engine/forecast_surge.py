@@ -15,6 +15,7 @@ import math
 from datetime import datetime, timedelta, timezone
 
 from .baseline import ewma_baseline, hourly_counts
+from .drivers import leading_indicators
 from .forecast import HORIZON_MIN, VOID_AFTER_MIN, _iso, _scope_slug, _ts, brier, prob_at_least
 from .series import BUCKET_MIN, bucket_start
 
@@ -104,6 +105,7 @@ def make_surge_forecasts(rows: list[dict], now: datetime) -> list[dict]:
                 "evidence": {
                     "current_hour_signals": current, "baseline_mean": round(base.mean, 2), "baseline_std": round(base.std, 2),
                     "history_hours": base.hours, "pairs": len(deltas), "hits": k,
+                    "leading_indicators": leading_indicators(rows, category, scope, now),  # contexto; não altera p
                     "note": "variações hora a hora observadas no próprio histórico de sinais deste tema e escopo",
                 },
                 "status": "open", "outcome": None, "observed_value": None, "resolved_at": None, "brier": None,

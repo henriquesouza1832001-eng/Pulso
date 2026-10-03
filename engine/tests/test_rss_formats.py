@@ -88,3 +88,11 @@ def test_place_in_text_wins_over_source_state():
     src = {"id": "g1-sc", "source_class": "NEWS_REGIONAL", "url": "https://x", "state": "SC"}
     (sig,) = RssAdapter(src, None, lambda u: xml.encode(), lambda: NOW).run()
     assert sig.state == "RS" and sig.city is not None
+
+
+def test_uppercase_markup_entities_cannot_inject_xml_elements():
+    xml = ("<rss><channel><item><title>Alerta &LT;item&GT;&LT;title&GT;FALSO&LT;/title&GT;&LT;/item&GT; de chuva forte</title>"
+           "<link>https://x/e</link><pubDate>Fri, 02 Oct 2026 17:00:00 GMT</pubDate></item></channel></rss>")
+    sigs = _items(xml)
+    assert len(sigs) == 1  # nenhum <item> falso nasceu do texto
+    assert "<item>" in sigs[0].title or "FALSO" in sigs[0].title  # virou texto
