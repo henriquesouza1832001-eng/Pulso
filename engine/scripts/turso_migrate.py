@@ -48,7 +48,9 @@ def scalar(sql):
 # 1) esquema: as mesmas migrations do D1, uma vez cada
 call([{"type": "execute", "stmt": {"sql": "CREATE TABLE IF NOT EXISTS _pulso_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"}}])
 applied = {row[0]["value"] for row in call([{"type": "execute", "stmt": {"sql": "SELECT name FROM _pulso_migrations"}}])[0]["response"]["result"]["rows"]}
-for f in sorted((ROOT / "database/migrations").glob("*.sql")):
+# `database/pending/` guarda migrations já válidas para o Turso mas ainda fora do deploy do D1 (ver database/pending/README.md)
+files = sorted([*(ROOT / "database/migrations").glob("*.sql"), *(ROOT / "database/pending").glob("*.sql")], key=lambda f: f.name)
+for f in files:
     if f.name in applied:
         print("migration já aplicada:", f.name)
         continue

@@ -175,6 +175,19 @@ export interface IngestBatch {
 	source_health: SourceHealth[];
 	series?: SeriesPoint[];
 	forecasts?: Forecast[];
+	/** Histórico agregado por HORA (docs/research/SPEC_01_HISTORY.md): só contagens, só horas fechadas. */
+	observations?: ObservationPoint[];
+}
+
+/** Contagem de sinais por hora × escopo × categoria × classe de fonte. O Worker só sobe valores (MAX), nunca diminui. */
+export interface ObservationPoint {
+	scope: string; // "BR" | "UF:MG"
+	category: Category;
+	source_class: SourceClass;
+	hour: string; // início da hora, ISO-8601 UTC (HH:00:00Z)
+	signals: number; // sinais distintos (já deduplicados por hash)
+	sources: number; // fontes distintas
+	duplicates: number; // cópias descartadas na deduplicação
 }
 
 /** Prévia ao vivo de uma câmera, servida pelo PRÓPRIO provedor (o PULSO não copia nem retransmite o vídeo). */

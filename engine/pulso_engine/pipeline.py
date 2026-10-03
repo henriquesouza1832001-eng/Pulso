@@ -24,6 +24,7 @@ from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
 from .processing.geo import locate
+from .research.history import build_observations
 from .series import build_series
 from .processing.keyword_engine import KeywordEngine
 
@@ -208,6 +209,7 @@ def run_once(
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
     signals: dict[str, Signal] = {}  # sinais coletados NESTA rodada
+    duplicates: dict[str, int] = {}  # hash -> cópias descartadas na deduplicação (base do duplicate_ratio do histórico)
     health: list[dict] = []
     def collect(src: dict) -> tuple[list[Signal], str, str | None]:
         try:
@@ -230,7 +232,10 @@ def run_once(
         collected = list(pool.map(collect, sources))
     for src, (got, status, detail) in zip(sources, collected):
         for s in got:
-            signals.setdefault(s.hash, s)  # dedup por URL canônica/título
+            if s.hash in signals:  # dedup por URL canônica/título; a cópia descartada é contada, não some em silêncio
+                duplicates[s.hash] = duplicates.get(s.hash, 0) + 1
+            else:
+                signals[s.hash] = s
         health.append({"source_id": src["id"], "status": status,
                        "last_success": iso(now) if status == "ONLINE" else None, "detail": detail})
 
@@ -295,6 +300,7 @@ def run_once(
     ]
     events_to_send = changed_events(events, known_events)
     series_to_send = changed_series(series_now, history)
+    observations = select_observations(build_observations(list(all_signals.values()), duplicates, now), now)
     return {
         "batch_id": uuid.uuid4().hex,
         # Com `catalog`, envia TODAS as fontes ativas (mesmo as fora da janela de interval_s) e o Worker
@@ -309,6 +315,7 @@ def run_once(
         "source_health": health,
         "series": series_to_send,
         "forecasts": forecasts,
+        "observations": observations,
     }
 
 
@@ -338,6 +345,23 @@ def changed_events(events: list[dict], known: list[dict] | None) -> list[dict]:
                 or abs(k["pulse"] - e["pulse"]) >= PULSE_RESEND_DELTA):
             out.append(e)
     return out
+
+
+OBS_SLOT_MIN = 30  # o histórico por hora é reenviado só em 2 janelas por hora (minutos 0-4 e 30-34), não a cada ciclo
+OBS_LATE_HOURS = 2  # chegada tardia de feed lento pode corrigir as 2 últimas horas fechadas, não mais que isso
+OBS_MAX = 2000  # teto por lote do Worker (zod)
+
+
+def select_observations(obs: list[dict], now: datetime) -> list[dict]:
+    """Histórico agregado a enviar neste ciclo. O Worker só sobe contagens (MAX) e não regrava linha igual, então reenviar
+    é seguro; limitar a janela e a frequência poupa payload e leitura. Nacional primeiro: o governador, em modo economia,
+    aceita só `BR`."""
+    if now.minute % OBS_SLOT_MIN >= 5:
+        return []
+    cutoff = iso(now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=OBS_LATE_HOURS))
+    rows = [o for o in obs if o["hour"] >= cutoff]
+    rows.sort(key=lambda o: (o["scope"] != "BR", o["hour"], o["scope"], o["category"], o["source_class"]))
+    return rows[:OBS_MAX]
 
 
 def changed_series(series_now: list[dict], stored: list[dict] | None) -> list[dict]:
@@ -417,7 +441,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
          "series": batch["series"] if i == len(parts) - 1 else [],
-         "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else []}
+         "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else [],
+         "observations": batch.get("observations", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
