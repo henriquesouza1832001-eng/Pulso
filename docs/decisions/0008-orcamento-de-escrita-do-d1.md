@@ -47,3 +47,12 @@ Primeiro envio: 4.505 linhas (carga inicial). Segundo envio, logo depois: **143 
 - A contagem depende de `meta.rows_written` do D1; se a tabela `write_budget` falhar, o ingest segue em modo normal (nunca derruba a coleta).
 - O dia do orçamento é UTC, igual ao reset da cota.
 - Se mesmo assim o uso real encostar no limite: ligar Turso para `signals`/`series` (nova ADR) ou, no seu critério, Workers Paid.
+
+## Addendum (2026-10-03, 14:20Z): migração para o Turso
+O D1 estourou antes de o governador entrar em produção. A saída imediata foi mover o Worker inteiro para o Turso, validada assim:
+1. Protocolo Hrana testado no servidor real (GitHub Actions, sem expor segredos): `SELECT`, escrita, upsert, `json_each`, parâmetros `?1` e `batch` com rollback.
+2. Camada `TursoDatabase` com a mesma API do D1 + middleware por `DB_BACKEND`; 9 testes novos (mock Hrana com SQLite real).
+3. Cópia D1 → Turso (dump do D1 por `wrangler d1 export`, `INSERT OR REPLACE` em lotes) e conferência por tabela.
+4. Verificação dos segredos do Worker em produção (`turso-ping`), depois a virada por PR.
+Resultado: coleta de volta às 14:15Z, rotas de leitura em ~130 ms.
+Aprendizados: (a) `meta.rows_written` do Turso conta só linhas da tabela (não as de índice), então o governador fica mais folgado no Turso; (b) a latência por consulta é maior que a do D1, mas as rotas públicas têm cache; (c) separar os bancos continua possível: basta escolher, por tabela, qual `TursoDatabase`/D1 usar.

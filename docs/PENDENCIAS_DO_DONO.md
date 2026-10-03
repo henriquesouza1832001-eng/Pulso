@@ -37,3 +37,8 @@ Atenção especial: INPE, Defesa Civil (IDAP), InfoDengue, Banco Central e USGS 
 - O plano gratuito do D1 aceita 100 mil linhas escritas por dia (zera às 00:00 UTC = 21:00 em Brasília). Passamos disso (113.655) e a coleta parou de gravar a partir de 08:40Z.
 - O Engine foi ajustado para escrever bem menos, mas **domingo (eleição) o volume de notícias sobe**. Recomendação: assinar o Workers Paid (US$ 5/mês), que inclui 50 milhões de linhas escritas por mês no D1. É decisão de custo sua: https://dash.cloudflare.com (Workers & Pages > Plans).
 - Conferir o consumo: `npx wrangler d1 info pulso` (campo `rows_written_24h`) e `npx wrangler d1 insights pulso --timePeriod 1d --sort-type sum --sort-by writes`.
+
+## Atualização (2026-10-03, 14:20Z): coleta recuperada no Turso
+- O Worker agora usa o Turso (grátis, sem cartão). A assinatura do Workers Paid deixa de ser urgente; segue como seguro opcional.
+- **Segurança:** o token do Turso foi gerado e guardado como segredo no GitHub e no Wrangler. Não cole tokens em chats ou arquivos. Se algum dia vazar, gere outro (`turso db tokens create pulso`) e atualize os dois lugares.
+- Conferir consumo do Turso: painel turso.tech (plano grátis: 10 milhões de linhas escritas/mês, 500 milhões de leituras, 5 GB).
