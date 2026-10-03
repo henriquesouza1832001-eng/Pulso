@@ -27,10 +27,11 @@ admin.get("/series", async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT scope, category, bucket, signals, sources FROM series
 		 WHERE bucket >= ?1 AND (?2 IS NULL OR scope = ?2)
-		 ORDER BY bucket ASC LIMIT 20000`,
+		 ORDER BY bucket DESC LIMIT 20000`,
 	)
 		.bind(since, q.data.scope ?? null)
 		.all();
+	// MAIS NOVAS primeiro: se passar do limite, perde as janelas antigas (o baseline suporta histórico curto), nunca as recentes.
 	return c.json({ since, series: results });
 });
 
