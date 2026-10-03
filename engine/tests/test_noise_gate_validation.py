@@ -3,7 +3,7 @@
 aqui ficam as invariantes que não podem regredir, a 10 e 1000 itens.
 
 - O gate NÃO pode resolver falso positivo criando falso negativo: todo positivo que passa desligado passa ligado.
-- `xfail(strict=True)`: achados reais, abertos, fora do escopo do gate (QA-008, QA-009). Quando o dono corrigir, o
+- `xfail(strict=True)`: achados reais, abertos, fora do escopo do gate (QA-010, QA-011, QA-012). Quando o dono corrigir, o
   strict quebra a suíte e o marcador sai.
 """
 import pytest
@@ -13,7 +13,7 @@ from pulso_engine.validation import noise_gate_corpus as C
 BY_NAME = {s.name: s for s in C.scenarios()}
 HARD = [f"{n}@{v}" for n in C.HARD_NEGATIVES for v in (10, 1000)]
 POSITIVE = [s.name for s in BY_NAME.values() if s.group == "POSITIVE"]
-QA008 = "SPORT_EVENT_SECURITY_INCIDENT@4"  # false split + categoria divergente: 4 relatos viram 3 eventos de N1
+QA010 = "SPORT_EVENT_SECURITY_INCIDENT@4"  # false split + categoria divergente: 4 relatos viram 3 eventos de N1
 
 
 @pytest.mark.parametrize("name", HARD)
@@ -24,8 +24,8 @@ def test_gate_on_hard_negatives_never_reach_n2(name):
 
 
 @pytest.mark.parametrize("name", [
-    pytest.param(n, marks=pytest.mark.xfail(strict=True, reason="QA-008: briga de torcida com feridos, 4 paráfrases -> 3 eventos N1"))
-    if n == QA008 else n for n in POSITIVE])
+    pytest.param(n, marks=pytest.mark.xfail(strict=True, reason="QA-010: briga de torcida com feridos, 4 paráfrases -> 3 eventos N1"))
+    if n == QA010 else n for n in POSITIVE])
 def test_gate_on_positive_controls_reach_n2(name):
     assert C.measure(BY_NAME[name], gate=True)["n2"] >= 1
 
@@ -39,10 +39,13 @@ def test_gate_never_loses_a_positive_that_worked_without_it(name):
 
 
 def test_gate_recovers_incident_hidden_by_show_vocabulary():
-    # "pane nos trens após show": papel de agenda (PR #89) escondia o evento inteiro; com o gate, o termo operacional publica.
-    s = BY_NAME["CONCERT_TRANSPORT_FAILURE@4"]
-    assert C.measure(s, gate=False)["events"] == 0
-    assert C.measure(s, gate=True)["n2"] >= 1
+    # "pane nos trens após show": com o gate, o termo operacional vence o papel de agenda e o evento é publicado.
+    assert C.measure(BY_NAME["CONCERT_TRANSPORT_FAILURE@4"], gate=True)["n2"] >= 1
+
+
+@pytest.mark.xfail(strict=True, reason="QA-012: em produção, o papel de agenda (PR #89) descarta 'pane nos trens após show' inteiro (0 eventos)")
+def test_production_publishes_incident_in_show_vocabulary():
+    assert C.measure(BY_NAME["CONCERT_TRANSPORT_FAILURE@4"], gate=False)["events"] >= 1
 
 
 @pytest.mark.parametrize("name", ["CASCADE_1_5_50", "CASCADE_1_5_50_1000"])
@@ -54,7 +57,7 @@ def test_cascade_provenance_counts(name):
     assert on["max_sources"] <= on["publisher_count"]
 
 
-@pytest.mark.xfail(strict=True, reason="QA-009: independência conta publisher, não origem (56 fontes para 1 fato); CONFIDENCE_V2 não está ligado")
+@pytest.mark.xfail(strict=True, reason="QA-011: independência conta publisher, não origem (56 fontes para 1 fato); CONFIDENCE_V2 não está ligado")
 def test_cascade_event_independence_is_bounded_by_origins():
     on = C.measure(BY_NAME["CASCADE_1_5_50_1000"], gate=True)
     assert on["max_sources"] <= on["independent_origin_count"]

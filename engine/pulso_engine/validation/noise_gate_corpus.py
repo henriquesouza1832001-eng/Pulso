@@ -424,11 +424,31 @@ def _fmt(m: dict) -> str:
             f" · inv {m['investigations']}")
 
 
+# Risco de regressão AO LIGAR o gate, por grupo (e exceções por cenário): o que pode dar errado em dado real.
+GROUP_RISK = {
+    "HARD_NEGATIVE": "baixo: o teto só vale se TODOS os relatos são agenda/rotina; um termo de impacto anula",
+    "POSITIVE": "baixo: o gate só sobe severidade/publica com termo operacional; nunca rebaixa impacto",
+    "PROVENANCE": "médio: relato social curto e parecido com a manchete deixa de somar (quase-cópia)",
+    "INTEGRITY": "nenhum: o gate não toca o agrupamento",
+    "CONTRADICTION": "nenhum para o gate; EVENT_CONTRADICTION depende de regex de negação (médio)",
+}
+SCENARIO_RISK = {
+    "NORMAL_RAIN": "médio: 'chuva fraca'/'garoa' viram rotina; chuva perigosa precisa de 'chuva forte'/'temporal' no texto",
+    "RUSH_HOUR": "médio: 'lentidão' vira rotina; lentidão por incidente precisa de 'acidente'/'congestionamento'/'bloqueio'",
+    "CONCERT_TRANSPORT_FAILURE": "médio: 'ficam presos'/'trens param' podem publicar pauta de agenda ambígua",
+    "SOCIAL_REPOST_STORM": "baixo: viral social já é teto 3 e DETECTED; o gate só tira volume da independência",
+}
+
+
+def risk(s: Scenario) -> str:
+    return SCENARIO_RISK.get(s.name.split("@")[0], GROUP_RISK[s.group])
+
+
 def markdown(rows: list[tuple[Scenario, dict, dict]]) -> str:
-    out = ["| Cenário | Grupo | OFF | ON | Esperado | OFF | ON |", "|---|---|---|---|---|---|---|"]
+    out = ["| Cenário | OFF | ON | Esperado | OFF | ON | Risco de regressão |", "|---|---|---|---|---|---|---|"]
     for s, off, on in rows:
-        out.append(f"| `{s.name}` | {s.group} | {_fmt(off)} | {_fmt(on)} | {s.expected} | "
-                   f"{'PASS' if s.passes(off) else 'FAIL'} | {'PASS' if s.passes(on) else 'FAIL'} |")
+        out.append(f"| `{s.name}` | {_fmt(off)} | {_fmt(on)} | {s.expected} | "
+                   f"{'PASS' if s.passes(off) else 'FAIL'} | {'PASS' if s.passes(on) else 'FAIL'} | {risk(s)} |")
     return "\n".join(out)
 
 
