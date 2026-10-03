@@ -197,7 +197,7 @@ export function App() {
 							uf={filters.uf}
 							onUfChange={setFeedUf}
 						/>
-						{/* coluna ao lado do feed: briefings no topo e câmeras logo abaixo (mercados só quando há modelo) */}
+						{/* coluna ao lado do feed: briefings (mercados só quando há modelo) */}
 						<aside id="mercados" className="feedside">
 							{DEMO && <Markets items={DEMO_FORECASTS} />}
 							<div id="briefings" className="side-block">
@@ -206,19 +206,6 @@ export function App() {
 									<span className="dim">ANÁLISE · EVENTOS MAIS QUENTES</span>
 								</div>
 								<Briefings events={events} onSelect={onSelect} />
-							</div>
-							<div id="cameras" className="side-block">
-								<div className="mkt-head">
-									<span className="mkt-title">CÂMERAS</span>
-									<span className="dim">SÓ VIAS E PRAÇAS · NUNCA PESSOAS</span>
-								</div>
-								<Cameras
-									cameras={DEMO ? DEMO_CAMERAS : []}
-									feeds={camsPoll.data?.cameras ?? []}
-									focusUf={filters.uf}
-									query={filters.query}
-									pageSize={4}
-								/>
 							</div>
 						</aside>
 					</div>
@@ -243,6 +230,21 @@ export function App() {
 							<EventDetail event={selected} />
 						</div>
 					)}
+				</Section>
+
+				<Section
+					id="cameras"
+					kicker="ao vivo"
+					title="câmeras"
+					desc="só vias e praças · nunca pessoas · a prévia vem do player do próprio provedor"
+				>
+					<Cameras
+						cameras={DEMO ? DEMO_CAMERAS : []}
+						feeds={camsPoll.data?.cameras ?? []}
+						focusUf={filters.uf}
+						query={filters.query}
+						pageSize={8}
+					/>
 				</Section>
 
 				<Section
