@@ -11,7 +11,7 @@ RT-002 (200 mascara conteúdo estagnado), RT-005 (storage sem ensaio de falha), 
 ## 3. Reproduzidos
 - RT-002 (parte plataforma): reproduzido localmente. Com a base local sem Pulso novo há 251 min, `/api/health` seguia "ONLINE" sem veredito de prontidão.
 - RT-007: confirmado por leitura (sem limite de corpo; sem id de requisição; admin usa o token do ingest).
-- RT-005: ainda não reproduzido (ver FALTA_FAZER).
+- RT-005: reproduzido por falha induzida (`storage-chaos.test.ts`). Achado: reenvio idêntico regravava `events`, `series`, `forecasts` e `pulse_history` (idempotência fraca + custo de orçamento).
 
 ## 4. Causas-raiz
 Saúde era medida só por transporte (o banco responde), nunca por prontidão/frescor; erros eram montados rota a rota, sem envelope; nenhum teto de entrada na borda.
@@ -24,8 +24,11 @@ Saúde era medida só por transporte (o banco responde), nunca por prontidão/fr
 | Liveness (`/api/health/live`, sem banco) separado de readiness (`/api/health/ready`: `ready` / `degraded` / `not_ready` 503) | `apps/worker/src/routes/health.ts` |
 | Veredito para o operador no `engine-status` (`verdict.status` + `verdict.reasons`): banco, latência, idade da coleta, orçamento, enxurrada de investigações | `apps/worker/src/lib/status.ts`, `routes/admin.ts` |
 
+| Upserts condicionais em `events`, `series`, `forecasts`, `pulse_history`: reenvio idêntico não grava (só o batimento de `source_health`, intencional) | `apps/worker/src/routes/ingest.ts` |
+| Handler de erro único (`errorHandler`) reutilizado pelo Worker e pelos testes | `apps/worker/src/lib/http.ts` |
+
 ## 6. Testes adicionados
-`apps/worker/tests/hardening.test.ts` (12): envelope (request_id igual ao cabeçalho, sucesso intocado, id hostil descartado, corpo não-objeto intacto, sem vazamento de stack), limite de corpo (200 dentro, 413 fora), veredito (ok, banco fora = not_ready, coleta atrasada ou inexistente = degraded e não ok, economia/crítico, degradação não rebaixa not_ready, enxurrada). Verificação no Worker local: live 200, ready 200 `degraded` com o motivo, 401 e 400 com `request_id`, 9 MB = 413.
+`apps/worker/tests/hardening.test.ts` (12): envelope (request_id igual ao cabeçalho, sucesso intocado, id hostil descartado, corpo não-objeto intacto, sem vazamento de stack), limite de corpo (200 dentro, 413 fora), veredito (ok, banco fora = not_ready, coleta atrasada ou inexistente = degraded e não ok, economia/crítico, degradação não rebaixa not_ready, enxurrada). `apps/worker/tests/storage-chaos.test.ts` (6, mais helper `tests/helpers/hrana.ts` com injeção de falha): lote limpo; rede cai antes; HTTP 500; resposta perdida depois do commit; limitação do orçamento (visível); falha no meio do lote. Verificação no Worker local: live 200, ready 200 `degraded` com o motivo, 401 e 400 com `request_id`, 9 MB = 413.
 
 ## 7. Garantias temporais
 Inalteradas nesta rodada (núcleo é do Claude A/Codex). A idade da coleta usa o Pulso nacional mais recente, nunca o relógio da coleta.
@@ -34,7 +37,7 @@ Inalteradas nesta rodada (núcleo é do Claude A/Codex). A idade da coleta usa o
 Sem mudança nesta rodada (engine).
 
 ## 10. Storage
-Sem mudança de escrita. Autoridade e recuperação continuam **UNVERIFIED** até o ensaio de falha (RT-005).
+Upserts condicionais (ver §5) e ensaio de falha (ver `STORAGE_AUTHORITY.md`). Autoridade: **PARCIALMENTE verificada** — a lógica do Worker e do adaptador foi ensaiada sob falha; o servidor Turso remoto e o binding D1 real não.
 
 ## 11. API
 Envelope + `request_id`, teto de 8 MB, `live`/`ready`. Sem mudança de campo existente (aditivo).

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
-import { INGEST_MAX_BYTES, requestContext } from "./lib/http";
+import { errorHandler, INGEST_MAX_BYTES, requestContext } from "./lib/http";
 import { health } from "./routes/health";
 import { pulse } from "./routes/pulse";
 import { events } from "./routes/events";
@@ -51,10 +51,7 @@ app.route("/api/ingest", ingest);
 app.route("/api/admin", admin);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
-app.onError((err, c) => {
-	console.error("unhandled", c.get("requestId"), err); // o detalhe fica no log, ligado ao request_id; a resposta nunca vaza stack
-	return c.json({ error: "internal_error" }, 500);
-});
+app.onError(errorHandler);
 
 export default {
 	fetch: app.fetch,
