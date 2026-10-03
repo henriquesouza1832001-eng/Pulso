@@ -38,16 +38,19 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 | `GET /api/forecasts/:id` | Uma previsão com evidências e, se resolvida, resultado e Brier | 15 s |
 | `GET /api/forecasts/track-record` | Histórico de acertos por método e calibração | 60 s |
 
+A métrica (`metric`) de uma previsão diz o que ela prevê: `pulse` (Pulso do Brasil) ou `signals_<categoria>` (volume de sinais de um tema, em minúsculas: `signals_weather`, `signals_traffic`, `signals_politics`...), com escopo `BR` ou `UF:xx`. As previsões de volume trazem em `evidence` o volume atual, o baseline, o histórico usado e `leading_indicators` (categorias que costumam subir antes e estão acima do normal agora; são **contexto**, não alteram a probabilidade). Nenhuma mudança de contrato: `metric` já era texto livre `[a-z_]{1,40}`.
+
 O front deve exibir sempre o rótulo **PREVISÃO**, a probabilidade com seu intervalo e o selo EXPERIMENTAL quando `experimental` for verdadeiro.
 
 ## Rotas internas (Engine e painel admin)
-Exigem `Authorization: Bearer <INGEST_TOKEN>` (fail-closed) e nunca são cacheadas. Não fazem parte da API pública.
+Exigem `Authorization: Bearer <INGEST_TOKEN>` (fail-closed) e nunca são cacheadas. Não fazem parte da API pública. Limites do lote de `POST /api/ingest`: até 500 fontes, 200 eventos, 500 sinais, 200 pulsos, 200 linhas de saúde, 3000 linhas de série e 200 previsões.
 
 | Endpoint | Função |
 |---|---|
 | `POST /api/ingest` | Lote do Engine. Campo opcional `catalog_complete` (padrão `false`): quando `true`, `sources` é o catálogo completo de fontes ativas e o Worker marca `enabled = 0` nas que não vierem (somem de `/api/health` e do painel "Fontes ativas"); fonte que volta a vir é reativada. Aceita `series` (`SeriesPoint[]`): contagem por escopo×categoria×janela de 5 min, gravada com o MAIOR valor já visto e retida por 90 dias. |
 | `GET /api/admin/series?hours=48&scope=BR` | Histórico de contagens para o baseline do Engine. |
-| `GET /api/admin/signals?hours=24` | Sinais recentes gravados (até 5000), para o Engine agrupar com estado e reaproveitar `event_id`. |
+| `GET /api/admin/signals?hours=24` | Sinais recentes gravados (até 10 000, **os mais novos primeiro**), para o Engine agrupar com estado e reaproveitar `event_id`. |
+| `GET /api/admin/events-digest?hours=24` | Resumo dos eventos gravados (`event_id`, `pulse`, `alert_level`, `status`, `signal_count`, `source_count`). O Engine só reenvia o que é novo ou mudou (limite de escrita do D1; ver ADR 0006). |
 | `GET /api/admin/pulse-history?scope=BR&hours=72` | Série do Pulso: matéria-prima dos previsores e da resolução. |
 | `GET /api/admin/forecasts/open` | Previsões abertas, para o Engine resolver as vencidas. |
 | `GET /api/admin/overview` | Painel: eventos ativos, sinais nas últimas 24 h, último Pulso, e por fonte: estado, último sucesso e volume. |
