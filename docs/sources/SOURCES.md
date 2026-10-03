@@ -210,6 +210,20 @@ Exibição pública permitida: headline_link, com atribuição ao ONS.
 Papel: sinal oficial de INFRASTRUCTURE (bandeira tarifária, risco de racionamento), antes da imprensa.
 ```
 
+## Ficha: Google Trends Brasil, em alta (`google-trends-br`)
+```
+Fonte / URL: https://trends.google.com/trending/rss?geo=BR (RSS público das buscas em alta no Brasil)
+Tipo de acesso: feed público, sem chave e sem login. Termos: https://policies.google.com/terms (PENDENTE de revisão do dono).
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Uma requisição de ~20 KB a cada 15 min (o feed atualiza a cada poucos minutos, ~10 termos).
+Dados coletados e retenção: termo em alta, volume aproximado (`approx_traffic`) e título/URL das notícias que o Google associa; sem dado de usuário. 30 dias.
+Frequência: 900 s.
+Fallback se cair: fica OFFLINE; as demais seguem. Sem termo importante = sem sinal (quiet_ok).
+Observação: validado ao vivo em 2026-10-03 (10 termos; filtro de importância deixa passar eleição, segurança, clima e derruba celebridade/entretenimento). A geolocalização usa só termo + manchete principal.
+Exibição pública permitida: headline_link (link da notícia original), com atribuição ao Google Trends.
+Papel: termômetro de ATENÇÃO (estilo pizza index). Classe SOCIAL (confiabilidade baixa): detecta, nunca confirma; só pesa quando casa com imprensa/oficial.
+```
+
 ## Fontes de alerta (`alert_source`)
 As fontes marcadas com `"alert_source": true` (`inmet-avisos`, `defesa-civil-idap`) são canais oficiais de alerta de desastre: um alerta delas classificado como EMERGENCY (risco extremo) dá ao evento um piso de nível PULSO 3 (ver `docs/SCORING.md`). Não marque como `alert_source` uma fonte de comunicados ou notícias.
 

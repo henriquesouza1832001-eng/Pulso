@@ -29,6 +29,18 @@ NOISE = (
     "bbb", "novela", "reality", "tretou", "treta", "lacrou", "influencer", "ex-jogador", "gol de",
 )
 
+# Agenda de campanha e rotina eleitoral: eventos AGENDADOS e esperados, que não mudam a vida de ninguém por si sós.
+ROUTINE = (
+    "comicio", "carreata", "motociata", "caminhada", "ato de campanha", "evento de campanha", "agenda de campanha",
+    "cumpre agenda", "palanque", "sabatina", "horario eleitoral", "propaganda eleitoral", "santinho", "debate",
+    "reuniao com apoiadores", "pesquisa eleitoral", "datafolha", "quaest", "ipec", "discursa", "visita a",
+)
+# Se vier junto, o evento deixa de ser rotina: comício que termina em tumulto, ataque ou vítimas é notícia de impacto.
+DISRUPTION = (
+    "tumulto", "confusao", "briga", "agressao", "agredido", "agredida", "ataque", "atirador", "tiros", "bomba",
+    "ferido", "feridos", "explosao", "atentado", "invasao", "ameaca", "pancadaria", "depredacao",
+)
+
 BASE = {"A": 60, "B": 45, "C": 25}
 EXTRA_PER_HIT = 8
 NOISE_PENALTY = 30
@@ -40,6 +52,7 @@ class Importance:
     score: int
     high_impact: tuple[str, ...]
     noise: tuple[str, ...]
+    routine: bool = False  # agenda de campanha/rotina eleitoral SEM sinal de violência: pesa pouco
 
     def is_important(self, threshold: int = DEFAULT_THRESHOLD) -> bool:
         return self.score >= threshold
@@ -75,19 +88,23 @@ def _compile(terms: tuple[str, ...]) -> list[tuple[str, re.Pattern[str]]]:
 
 _TIERS = {"A": _compile(TIER_A), "B": _compile(TIER_B), "C": _compile(TIER_C)}
 _NOISE = _compile(NOISE)
+_ROUTINE = _compile(ROUTINE)
+_DISRUPTION = _compile(DISRUPTION)
 
 
 def assess(text: str) -> Importance:
     folded = _fold(text)
     hits: dict[str, list[str]] = {t: [term for term, pat in pats if pat.search(folded)] for t, pats in _TIERS.items()}
     noise = tuple(term for term, pat in _NOISE if pat.search(folded))
+    routine = (any(pat.search(folded) for _, pat in _ROUTINE) and not any(hits.values())
+               and not any(pat.search(folded) for _, pat in _DISRUPTION))
     matched = [term for tier in ("A", "B", "C") for term in hits[tier]]
     if not matched:
-        return Importance(0, (), noise)
+        return Importance(0, (), noise, routine)
     top = next(t for t in ("A", "B", "C") if hits[t])
     score = BASE[top] + EXTRA_PER_HIT * (len(matched) - 1)
     if noise:
         # Com 2+ sinais do nível mais alto ("atentado" + "mortos") a palavra de entretenimento é ruído do texto, não do
         # fato: "Atentado em casamento deixa 20 mortos" é notícia. Com 1 só ("morreu" + "famosos no casamento"), é fofoca.
         score -= NOISE_PENALTY // 3 if len(hits["A"]) >= 2 else NOISE_PENALTY
-    return Importance(max(0, min(100, score)), tuple(matched), noise)
+    return Importance(max(0, min(100, score)), tuple(matched), noise, False)
