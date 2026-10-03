@@ -63,7 +63,7 @@ def test_failing_source_does_not_stop_the_cycle():
     def fetch(u: str) -> bytes:
         if "bad" in u:
             raise TimeoutError("boom")
-        return rss(("Protesto bloqueia avenida em São Paulo", "https://ok.com/1", 3))
+        return rss(("Enchente deixa mortos e desabrigados em São Paulo", "https://ok.com/1", 3))
     batch = run_once([src("bad"), src("ok")], fetch, NOW)
     health = {h["source_id"]: h["status"] for h in batch["source_health"]}
     assert health == {"bad": "OFFLINE", "ok": "ONLINE"}

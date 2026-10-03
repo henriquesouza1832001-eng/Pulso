@@ -5,6 +5,7 @@ import json
 import sys
 import uuid
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from .processing.geo import locate
 from .series import build_series
 from .processing.keyword_engine import KeywordEngine
 
+MAX_PARALLEL_SOURCES = 8  # coletas simultâneas; limite conservador para não sobrecarregar as fontes
 DEFAULT_SOURCES = Path(__file__).resolve().parent.parent / "config" / "sources.json"
 
 
@@ -139,17 +141,23 @@ def run_once(
     keywords = keywords or KeywordEngine()
     signals: dict[str, Signal] = {}  # sinais coletados NESTA rodada
     health: list[dict] = []
-    for src in sources:
+    def collect(src: dict) -> tuple[list[Signal], str, str | None]:
         try:
             # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
             got = build_adapter(src, keywords, fetcher if src["adapter"] in ("rss", "inmet") else None, lambda: now).run()
-            status, detail = ("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos")
-            for s in got:
-                signals.setdefault(s.hash, s)  # dedup por URL canônica/título
+            return got, *(("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos"))
         except Exception as exc:  # uma fonte caída nunca derruba o ciclo
-            status = getattr(exc, "health_status", "OFFLINE")  # RATE_LIMITED/AUTH_ERROR das APIs
-            got, detail = [], f"{type(exc).__name__}: {exc}"[:300]
+            detail = f"{type(exc).__name__}: {exc}"[:300]
             print(f"[warn] {src['id']}: {detail}", file=sys.stderr)
+            return [], getattr(exc, "health_status", "OFFLINE"), detail  # RATE_LIMITED/AUTH_ERROR das APIs
+
+    # Em paralelo (cada fonte é independente e espera rede): dezenas de fontes não estouram o tempo do ciclo.
+    # `map` preserva a ordem das fontes, então o resultado continua determinístico.
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_SOURCES) as pool:
+        collected = list(pool.map(collect, sources))
+    for src, (got, status, detail) in zip(sources, collected):
+        for s in got:
+            signals.setdefault(s.hash, s)  # dedup por URL canônica/título
         health.append({"source_id": src["id"], "status": status,
                        "last_success": iso(now) if got else None, "detail": detail})
 

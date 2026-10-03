@@ -7,6 +7,7 @@ from datetime import datetime
 
 from .models import EventStats, Signal, SOCIAL_CLASSES
 from .processing.clustering import Cluster
+from .processing.importance import assess
 from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
@@ -64,10 +65,45 @@ def status_for(stats: EventStats) -> str:
     return "DETECTED"
 
 
+# Categorias em que UMA fonte, sozinha, já pode virar evento (se o texto for de impacto).
+SINGLE_SOURCE_CATEGORIES = frozenset({"EMERGENCY", "WEATHER", "INFRASTRUCTURE", "HEALTH", "SECURITY", "TRAFFIC"})
+
+
 def is_publishable(cluster: Cluster) -> bool:
-    """Evita inundar o mapa: só vira evento o que tem categoria relevante ou mais de uma fonte."""
+    """Evita inundar o mapa. Vira evento: o que tem 2+ fontes independentes; o que vem de fonte OFICIAL com
+    categoria; ou notícia isolada de categoria de impacto cujo TEXTO é de impacto (mortes, desabamento...).
+    Uma matéria isolada de política/economia/internacional espera uma segunda fonte."""
     sigs = cluster.signals
-    return dominant_category(sigs) != "OTHER" or len({s.source_id for s in sigs}) >= 2
+    category = dominant_category(sigs)
+    if len({s.source_id for s in sigs}) >= 2:
+        return True
+    if category == "OTHER":
+        return False
+    if any(s.source_class == "OFFICIAL" for s in sigs):
+        return True
+    return category in SINGLE_SOURCE_CATEGORIES and any(
+        assess(f"{s.title}. {s.text or ''}").is_important() for s in sigs)
+
+
+def event_place(sigs: list[Signal]) -> Signal | None:
+    """Sinal que representa o lugar do evento: o estado MAIORITÁRIO (ponderado pela confiança da geo).
+    Se os sinais se espalham por vários estados (pauta nacional), o evento fica sem lugar, e não em um
+    estado arbitrário."""
+    located = [s for s in sigs if s.state]
+    if not located:
+        return next((s for s in sigs if s.latitude is not None), None)
+    weight: Counter[str] = Counter()
+    for s in located:
+        weight[s.state] += s.geo_confidence or 30  # type: ignore[index]
+    top, w = weight.most_common(1)[0]
+    if len(weight) >= 4 or w / sum(weight.values()) < 0.6:
+        return None
+    # Um estado herdado da fonte regional (confiança baixa) em meio a muitos sinais sem lugar não define o evento.
+    confident = any((s.geo_confidence or 0) >= 60 for s in located if s.state == top)
+    if not confident and len(located) / len(sigs) < 0.5:
+        return None
+    candidates = [s for s in located if s.state == top]
+    return max(candidates, key=lambda s: (s.latitude is not None, s.geo_confidence or 0))
 
 
 def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None) -> dict:
@@ -76,7 +112,7 @@ def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id:
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
     level = alert_level(score, conf, stats)
-    located = next((s for s in sigs if s.latitude is not None), None)
+    located = event_place(sigs)
     first = sigs[0]
     # Id estável: reaproveita o de um evento já gravado; só gera novo se for uma história nova.
     event_id = event_id or "ev-" + hashlib.sha1(first.hash.encode()).hexdigest()[:12]
