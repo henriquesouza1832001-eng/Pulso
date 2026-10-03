@@ -218,10 +218,17 @@ def test_paraphrased_coverage_of_one_story_is_one_event():
     assert len(b["events"]) == 1 and b["events"][0]["source_count"] == 4
 
 
-@pytest.mark.xfail(strict=True, reason="QA-006: resposta vazia com transporte ok vira OFFLINE (conta como falha de rede)")
-def test_empty_body_is_content_problem_not_transport_failure():
-    h = run({"s0": b""})["source_health"][0]
+# QA-006 (corrigido): corpo vazio ou XML quebrado com transporte ok é problema de DADO (DEGRADED), não de rede (OFFLINE).
+@pytest.mark.parametrize("body", [b"", b"   \n", b"<rss><channel><item><title>x</title>", b"\x00\x01lixo"])
+def test_empty_body_is_content_problem_not_transport_failure(body):
+    h = run({"s0": body})["source_health"][0]
     assert h["status"] == "DEGRADED"
+
+
+def test_network_failure_is_still_offline():
+    def down(_url):
+        raise TimeoutError("timed out")
+    assert run_once([src("s0")], down, NOW)["source_health"][0]["status"] == "OFFLINE"
 
 
 # ---------------------------------------------------------------- correção em SHADOW: flag NOISE_GATE (padrão desligada)

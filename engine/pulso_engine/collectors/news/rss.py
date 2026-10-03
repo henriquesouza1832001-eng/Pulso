@@ -60,6 +60,10 @@ def _read_bounded(resp, deadline_s: float | None = None) -> bytes:
         # read1: devolve o que chegou numa leitura (read(n) esperaria n bytes, e o prazo nunca seria checado num servidor que goteja)
         chunk = getattr(resp, "read1", resp.read)(min(65536, MAX_BYTES + 1 - total))
         if not chunk:
+            # read1 devolve b"" quando a conexão fecha antes do Content-Length prometido (não levanta IncompleteRead):
+            # é falha de TRANSPORTE, não um XML quebrado (QA-006 separa as duas).
+            if getattr(resp, "length", None):
+                raise ConnectionError(f"conexão encerrada com {resp.length} bytes faltando (Content-Length)")
             break
         chunks.append(chunk)
         total += len(chunk)
@@ -149,6 +153,12 @@ def _parse_date(value: str | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+class FeedContentError(ValueError):
+    """O transporte funcionou (a resposta chegou), mas o corpo não é um feed legível: vazio ou XML quebrado.
+    É problema de DADO, não de rede (QA-006): a saúde fica DEGRADED e o circuit breaker não abre."""
+    health_status = "DEGRADED"
+
+
 class RssAdapter:
     adapter = "rss"
 
@@ -171,7 +181,12 @@ class RssAdapter:
         # stdlib não protege contra entidades XML maliciosas: recusamos DTDs com ENTITY.
         if b"<!ENTITY" in data:
             raise ValueError("feed com declaração ENTITY recusado")
-        root = ET.fromstring(_sanitize_xml(data))
+        if not data.strip():
+            raise FeedContentError("resposta vazia (transporte ok, sem conteúdo)")
+        try:
+            root = ET.fromstring(_sanitize_xml(data))
+        except ET.ParseError as exc:
+            raise FeedContentError(f"XML ilegível: {exc}") from exc
         items: list[dict[str, Any]] = []
         for it in root.iter("item"):
             items.append({
