@@ -68,6 +68,13 @@ def test_failing_source_does_not_stop_the_cycle():
     assert len(batch["events"]) == 1
 
 
+def test_unregistered_adapter_is_reported_not_silently_skipped():
+    s = {**src("novo"), "adapter": "inexistente"}
+    batch = run_once([s], lambda u: b"", NOW)
+    h = batch["source_health"][0]
+    assert h["status"] == "OFFLINE" and "não registrado" in h["detail"]
+
+
 def test_latin1_feed_without_declaration_is_decoded():
     raw = "<rss><channel><item><title>Incêndio em Manaus</title><link>https://l.com/1</link></item></channel></rss>".encode("latin-1")
     sigs = RssAdapter(src("l"), fetcher=lambda u: raw, now=lambda: NOW).run()
