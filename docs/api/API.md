@@ -52,6 +52,7 @@ Exigem `Authorization: Bearer <INGEST_TOKEN>` (fail-closed) e nunca são cachead
 | `GET /api/admin/series?hours=48&scope=BR` | Histórico de contagens para o baseline do Engine. |
 | `GET /api/admin/observations?hours=336&scope=&category=` | Histórico agregado por hora (mais novas primeiro, até 20 000 por padrão): base do baseline sazonal e das tendências. |
 | `GET /api/admin/investigations?status=active\|all&limit=200` | Investigações do Sentinela (`active` = não encerradas), mais recentes primeiro. `reasons` é um JSON com os motivos. O Engine reconstrói o estado a partir daqui. |
+| `GET /api/admin/engine-status` | Painel do motor numa chamada: banco realmente em uso, orçamento de escrita do dia e modo do governador, investigações ativas, previsões abertas/resolvidas, linhas do registro de previsões, `shadow_results` (o que o portão de promoção conta; mínimo 200), drivers ativos e a última hora do histórico agregado. |
 | `GET /api/admin/shadow-results?method=&scope=&limit=` | V1 × V2 × desfecho (mais novas primeiro): entrada do portão de promoção. |
 | `GET /api/admin/drivers?state=ACTIVE` | Registro de drivers antecedentes e seu estado. |
 | `GET /api/admin/forecast-registry?hours=72` / `?forecast_id=fc-...` | Ids já registrados (o Engine envia só o que falta) / entrada completa para reproduzir uma previsão. |

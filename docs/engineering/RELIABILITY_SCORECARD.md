@@ -9,7 +9,7 @@ Data de corte: 2026-10-03. Os status abaixo não são uma nota única; `VALIDATE
 | Geo reliability | WEAK | corpus editorial de 14 manchetes: V1 city accuracy 25%, V2 100%; false precision 0% nos 8 negativos inequívocos | amostra pequena e editorial; GEO_V2 continua OFF |
 | Source reliability | WEAK | 282 fontes ativas com metadados básicos | 279 revisões de termos pendentes |
 | Storage reliability | UNVERIFIED | batch, idempotência e trilhas em código | backend ativo/migrations/failover não ensaiados |
-| Forecast reliability | UNVERIFIED | métricas e gate isolados disponíveis | sem amostra histórica/shadow live suficiente |
+| Forecast reliability | UNVERIFIED | métricas/gate isolados e snapshot imutável com `data_cutoff` UTC | sem amostra histórica/shadow live suficiente |
 | Security reliability | MODERATE | Bearer fail-closed, Zod, parâmetros SQL, CORS configurável | sem rate limit/WAF, token admin compartilhado, configuração remota não auditada |
 | Operational reliability | WEAK | healthcheck e cron em código | HTTP 200 com dados estagnados não gera STALE por fonte |
 

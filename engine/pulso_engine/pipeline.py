@@ -395,6 +395,7 @@ def run_once(
         "observations": observations,
         "investigations": investigations,
         "forecast_registry": forecast_registry,
+        "shadow_results": shadow_results,
         "geo_v2_shadow": geo_shadow,  # só para o log do ciclo; o Worker ignora (chunks não o repassa)
     }
 
@@ -531,7 +532,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else [],
          "observations": batch.get("observations", []) if i == len(parts) - 1 else [],
          "investigations": batch.get("investigations", []) if i == len(parts) - 1 else [],
-         "forecast_registry": batch.get("forecast_registry", []) if i == len(parts) - 1 else []}
+         "forecast_registry": batch.get("forecast_registry", []) if i == len(parts) - 1 else [],
+         "shadow_results": batch.get("shadow_results", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
