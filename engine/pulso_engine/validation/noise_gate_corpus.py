@@ -109,7 +109,7 @@ def execute(items: list[Item], dead: frozenset[str] = frozenset()) -> dict:
 def origins(signals: list[dict]) -> list[list[dict]]:
     """Mesma regra do validador do Sentinela (research/validator.py `_origins`): título quase idêntico = 1 origem."""
     from ..processing.clustering import tokens
-    from ..research.validator import COPY_JACCARD
+    COPY_JACCARD = 0.8
     groups: list[tuple[frozenset[str], list[dict]]] = []
     for s in sorted(signals, key=lambda x: x["timestamp"]):
         toks = tokens(s["title"])
