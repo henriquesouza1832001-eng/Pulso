@@ -22,7 +22,7 @@ Ver [STORAGE_AUTHORITY.md](STORAGE_AUTHORITY.md). Migrations V2 estão em `datab
 
 ## Geo, fontes e frontend
 
-Geo V2 está OFF por flag. O ataque de falsa precisão reproduziu aeroporto, rio, bairro e homônimo como cidades; a correção pertence à plataforma e está em andamento. O novo corpus editorial contém positivos, negativos e categorias adversariais, mas não é métrica histórica.
+Geo V2 está OFF por flag. O ataque de falsa precisão reproduziu aeroporto, rio, bairro e homônimo como cidades; PR #69 fechou os quatro casos com regressões. No corpus editorial de 14 manchetes, V1 acertou 1/4 cidades explícitas e V2 4/4; ambos tiveram 0/8 falsas precisões nos negativos inequívocos. A amostra é pequena, o caso Rio Branco permanece `DISPUTED` e isto não é métrica histórica nem autoriza a flag.
 
 Há 282 fontes ativas: todas têm `access`, retenção e display; somente 9 têm termos não pendentes e somente 3 têm `reviewed_by/reviewed_at` concluídos. Isso impede classificar a confiabilidade de fonte como validada. O front exibe sinais/fontes e confiança do evento; não foi auditada uma interface pública de previsão com calibração, incerteza e proveniência completa.
 
