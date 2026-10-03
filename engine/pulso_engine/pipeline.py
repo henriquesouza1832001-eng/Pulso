@@ -154,7 +154,9 @@ def run_once(
         except Exception as exc:  # uma fonte caída nunca derruba o ciclo
             detail = f"{type(exc).__name__}: {exc}"[:300]
             print(f"[warn] {src['id']}: {detail}", file=sys.stderr)
-            return [], getattr(exc, "health_status", "OFFLINE"), detail  # RATE_LIMITED/AUTH_ERROR das APIs
+            # RATE_LIMITED/AUTH_ERROR das APIs sociais; HTTP 429 de qualquer fonte também é limite de taxa (não insistir).
+            status = getattr(exc, "health_status", None) or ("RATE_LIMITED" if getattr(exc, "code", None) == 429 else "OFFLINE")
+            return [], status, detail
 
     # Em paralelo (cada fonte é independente e espera rede): dezenas de fontes não estouram o tempo do ciclo.
     # `map` preserva a ordem das fontes, então o resultado continua determinístico.

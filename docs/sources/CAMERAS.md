@@ -34,6 +34,11 @@ Objetivo: exibir imagem/vídeo ao vivo de câmeras públicas na plataforma, para
 - Câmera fictícia nunca em produção (`FRONTEND_DATA_MAP.md`).
 - Cada fonte entra com ficha em `SOURCES.md`, `enabled: false` e revisão antes de ligar.
 
+## O que foi verificado do Windy (2026-10-03)
+- O endpoint de lista existe: `GET https://api.windy.com/webcams/api/v3/webcams`; sem chave responde `403 Missing Header 'x-windy-api-key' with API key`. Ou seja, o nome do cabeçalho está confirmado.
+- **Não verificado**: o formato JSON da resposta (campos, `include`, filtros por país/região). A documentação é uma página Swagger interativa e o esquema só fica visível com uma chave. Por isso o backend **não foi escrito às cegas**: escrever um mapeador contra um esquema adivinhado daria a falsa impressão de que funciona.
+- Passo seguinte, com a chave em mãos: chamar o endpoint uma vez, salvar a resposta real, e só então escrever o mapeador e os testes em cima dela.
+
 ## Para construir (quando houver a chave do Windy)
 1. Contrato de `/api/cameras`: `id`, `label`, `city`, `state`, `lat`, `lon`, `provider`, `attribution`, `page_url`, `embed` (tipo e URL). Atualizar `contracts.ts`, `models.py` e `API.md` no mesmo PR, com a label `contract`.
 2. Worker: rota que consulta a API do Windy com a chave em secret e devolve só os campos acima (a chave nunca vai ao navegador); cache curto respeitando a expiração de 10 min.
