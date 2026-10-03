@@ -6,7 +6,9 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 |---|---|---|---|
 | (modelo) Agência Brasil | NEWS_HIGH | RSS | ⏳ `collector/news-rss` |
 | (modelo) PRF | OFFICIAL | API | ⏳ verificar termos |
-| Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ autorização/retenção pendentes |
+| Agência Senado | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
+| Agência Câmara de Notícias | OFFICIAL | RSS | ⏳ proposta (`enabled: false`), aguarda revisão |
+| Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
 | Trânsito, câmeras públicas | — | — | Fase 2/3 |
 
@@ -23,7 +25,42 @@ Termos relevantes (link):
 Exibição pública permitida:
 ```
 
+## Agência Senado — PROPOSTA
+```
+Fonte / URL: https://www12.senado.leg.br/noticias/feed/todasnoticias/RSS
+Tipo de acesso: RSS público (robots.txt: "User-agent: * Disallow:" — sem bloqueio)
+Autenticação e secrets: nenhum
+Limites e custo: gratuito; sem limite publicado; cadência 300 s
+Dados coletados: título, resumo ≤ 500 caracteres, link, data, autor (jornalista, exigido no crédito); retenção 90 dias
+Frequência: 300 s
+Fallback: Agência Câmara + G1/Folha/UOL (cobertura política); futuro: API de Dados Abertos do Senado
+Termos: https://www12.senado.leg.br/noticias/politica-de-uso — "A reprodução de matérias e fotografias é livre,
+  desde que não haja descaracterização de conteúdo e mediante a citação da Agência Senado e do autor."
+Exibição pública: sim, título + link com crédito "Agência Senado" (headline_link). Não cobre explicitamente
+  uso automatizado/agregação; exibimos só título e link, sem alterar o texto.
+Classe OFFICIAL: canal da própria instituição sobre os próprios atos (votações, agenda, sessões). Em temas
+  externos ao Legislativo, tratar como cobertura, não como confirmação (revisar se gerar falso CONFIRMED).
+```
+Piloto em 2026-10-03: 15 itens/rodada, ONLINE, quase todos POLITICS (eleições, plenário, PECs).
+
+## Agência Câmara de Notícias — PROPOSTA
+```
+Fonte / URL: https://www.camara.leg.br/noticias/rss/ultimas-noticias
+Tipo de acesso: RSS público (robots.txt bloqueia só bots de IA/treino e áreas administrativas; o RSS não)
+Autenticação e secrets: nenhum
+Limites e custo: gratuito; sem limite publicado; cadência 300 s
+Dados coletados: título, resumo ≤ 500 caracteres, link, data; retenção 90 dias
+Frequência: 300 s
+Fallback: Agência Senado + imprensa; futuro: API de Dados Abertos da Câmara (dadosabertos.camara.leg.br)
+Termos: guia para jornalistas (terms_url): reprodução livre de notícias com a assinatura "Agência Câmara Notícias".
+  O feed declara "Copyright(C) Câmara dos Deputados". Confirmar na revisão que exibir título + link é coberto.
+Exibição pública: título + link com crédito "Agência Câmara Notícias" (headline_link)
+Classe OFFICIAL: mesma justificativa da Agência Senado.
+```
+Para ativar: uma pessoa lê os dois termos, preenche `reviewed_by`/`reviewed_at` e muda `enabled` para `true`. Piloto: `py -m pulso_engine.pipeline --source agencia-senado --source agencia-camara`.
+
 ## Piloto Reddit — NÃO ATIVO
+**Situação (verificada em 2026-10-03):** pela [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy), *todo* acesso à Data API exige pedido e aprovação explícita (inclusive não comercial); uso comercial exige aprovação escrita. O RSS público (`/r/<sub>/.rss`) **não** é alternativa: o `robots.txt` do Reddit é `Disallow: /` e a [Public Content Policy](https://support.reddithelp.com/hc/en-us/articles/26410290525844-Public-Content-Policy) restringe o uso. Caminho: abrir o pedido de acesso descrevendo o caso de uso (título + link de posts de r/brasil sobre política, contagem agregada, sem dados de usuários, sem treino de IA) e aguardar.
 - API oficial: OAuth client credentials `POST https://www.reddit.com/api/v1/access_token`; leitura `GET https://oauth.reddit.com/r/{subreddit}/search?q=…&restrict_sr=on&sort=new&t=day` (ou `/new` sem `query`) ([referência](https://www.reddit.com/dev/api/)). Sem scraping. Escopo piloto: `r/brasil` com busca por termos institucionais/eleitorais em português (`query` em `sources.json`); só ficam posts classificados em `categories` (POLITICS, PROTEST, SECURITY, INTERNATIONAL). Comunidades aceitam `a+b`; incluir outras só após revisão humana (evitar comunidades de viés declarado).
 - Credenciais: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` e `REDDIT_USER_AGENT` (formato exigido pelo Reddit: `<plataforma>:<app>:<versão> (by /u/<conta>)`), somente no Engine, em secrets do Actions; app/acesso sujeitos à aprovação do Reddit. Sem credenciais neste repositório.
 - Limites/custo: dependem do acesso aprovado e do acordo; confirmar por escrito a cota atribuída antes de ligar. No máximo 25 resultados por consulta, 1 consulta a cada 15 min no piloto; revalidar cadência contra cota. 429 não será contornado.
