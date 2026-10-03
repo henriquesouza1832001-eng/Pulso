@@ -74,6 +74,32 @@ forecasts.get("/", async (c) => {
 	return c.json({ notice: NOTICE, forecasts: results.map((r) => toForecast(r, resolved)) });
 });
 
+/** Corte da previsão como "alarme" para precision/recall/FPR (a calibração em si é medida pelo Brier e pelas faixas). */
+export const CUTOFF = 0.5;
+
+const ratio = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 10000) / 10000 : null);
+
+/** Precision, recall e taxa de falso positivo no corte de 0,5. Denominador zero devolve null (nunca 0 fingindo acerto). */
+export function classificationMetrics(c: { tp: number; fp: number; fn: number; tn: number }) {
+	return {
+		cutoff: CUTOFF,
+		precision: ratio(c.tp, c.tp + c.fp),
+		recall: ratio(c.tp, c.tp + c.fn),
+		false_positive_rate: ratio(c.fp, c.fp + c.tn),
+	};
+}
+
+/** Erro de calibração esperado (ECE): média, ponderada pelo tamanho da faixa, de |frequência observada − probabilidade prevista|. */
+export function calibrationError(bins: Record<string, number | string | null>[]): number | null {
+	const total = bins.reduce((acc, b) => acc + Number(b.n ?? 0), 0);
+	if (total === 0) return null;
+	const ece = bins.reduce(
+		(acc, b) => acc + (Number(b.n ?? 0) / total) * Math.abs(Number(b.observed_rate ?? 0) - Number(b.mean_probability ?? 0)),
+		0,
+	);
+	return Math.round(ece * 10000) / 10000;
+}
+
 /** Histórico de acertos: o que dá credibilidade (ou não) a cada método. */
 forecasts.get("/track-record", async (c) => {
 	const [methods, bins] = await Promise.all([
@@ -82,7 +108,11 @@ forecasts.get("/track-record", async (c) => {
 			        SUM(status='resolved') AS n_resolved, SUM(status='open') AS n_open, SUM(status='void') AS n_void,
 			        AVG(CASE WHEN status='resolved' THEN brier END) AS mean_brier,
 			        AVG(CASE WHEN status='resolved' THEN probability END) AS mean_probability,
-			        AVG(CASE WHEN status='resolved' THEN outcome END) AS observed_rate
+			        AVG(CASE WHEN status='resolved' THEN outcome END) AS observed_rate,
+			        SUM(status='resolved' AND probability >= ${CUTOFF} AND outcome = 1) AS tp,
+			        SUM(status='resolved' AND probability >= ${CUTOFF} AND outcome = 0) AS fp,
+			        SUM(status='resolved' AND probability < ${CUTOFF} AND outcome = 1) AS fn,
+			        SUM(status='resolved' AND probability < ${CUTOFF} AND outcome = 0) AS tn
 			 FROM forecasts GROUP BY method, method_version ORDER BY method`,
 		).all<Record<string, number | string | null>>(),
 		c.env.DB.prepare(
@@ -101,11 +131,14 @@ forecasts.get("/track-record", async (c) => {
 			const brier = m.mean_brier === null ? null : Number(m.mean_brier);
 			// Referência ingênua: sempre prever a taxa média observada. Skill > 0 = melhor que a referência.
 			const reference = rate === null ? null : rate * (1 - rate);
+			const { tp, fp, fn, tn, ...rest } = m;
 			return {
-				...m,
+				...rest,
 				experimental: n < MIN_RESOLVED,
 				brier_reference: reference,
 				skill: brier !== null && reference ? 1 - brier / reference : null,
+				...classificationMetrics({ tp: Number(tp ?? 0), fp: Number(fp ?? 0), fn: Number(fn ?? 0), tn: Number(tn ?? 0) }),
+				calibration_error: calibrationError(bins.results.filter((b) => b.method === m.method && b.method_version === m.method_version)),
 			};
 		}),
 		calibration: bins.results, // faixas de 20%: probabilidade média prevista x frequência observada

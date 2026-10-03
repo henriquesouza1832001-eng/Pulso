@@ -37,7 +37,7 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 |---|---|---|
 | `GET /api/forecasts?status=&scope=&limit=` | Previsões (probabilidades, nunca fatos), com `experimental` | 15 s |
 | `GET /api/forecasts/:id` | Uma previsão com evidências e, se resolvida, resultado e Brier | 15 s |
-| `GET /api/forecasts/track-record` | Histórico de acertos por método e calibração | 60 s |
+| `GET /api/forecasts/track-record` | Histórico de acertos por método e calibração (Brier, skill, faixas, e por método: `precision`, `recall`, `false_positive_rate` no corte `cutoff` = 0,5 e `calibration_error` (ECE); `null` quando não há amostra) | 60 s |
 
 A métrica (`metric`) de uma previsão diz o que ela prevê: `pulse` (Pulso do Brasil) ou `signals_<categoria>` (volume de sinais de um tema, em minúsculas: `signals_weather`, `signals_traffic`, `signals_politics`...), com escopo `BR` ou `UF:xx`. As previsões de volume trazem em `evidence` o volume atual, o baseline, o histórico usado e `leading_indicators` (categorias que costumam subir antes e estão acima do normal agora; são **contexto**, não alteram a probabilidade). Nenhuma mudança de contrato: `metric` já era texto livre `[a-z_]{1,40}`.
 
