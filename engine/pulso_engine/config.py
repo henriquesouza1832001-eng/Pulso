@@ -7,9 +7,15 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
+from typing import get_args
+
+from .models import Category
 
 SOURCE_CLASSES = {"OFFICIAL", "NEWS_HIGH", "NEWS_REGIONAL", "TRAFFIC_PROVIDER", "SOCIAL_VERIFIED", "SOCIAL", "UNKNOWN"}
 ACCESS = {"official_api", "open_data", "public_feed", "sitemap", "public_page", "authorized_scrape"}
+CATEGORIES = set(get_args(Category))
+UFS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR",
+       "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
 DISPLAY = {"headline_link", "metrics_only", "full"}
 REQUIRED = ("id", "name", "adapter", "source_class", "url", "access", "terms_url", "interval_s",
             "retention_days", "display", "reviewed_by", "reviewed_at")
@@ -53,6 +59,21 @@ def validate_source(src: dict) -> None:
         raise SourceConfigError(f"{sid}: authorized_scrape exige authorization_ref (autorização escrita)")
     if not (1 <= int(src["retention_days"]) <= 3650):
         raise SourceConfigError(f"{sid}: retention_days fora de 1–3650")
+    if src["adapter"] in ("reddit", "x"):
+        if src["access"] != "official_api" or src["source_class"] != "SOCIAL":
+            raise SourceConfigError(f"{sid}: sensor social exige official_api e SOCIAL")
+        needed = "subreddit" if src["adapter"] == "reddit" else "query"
+        if not src.get(needed):
+            raise SourceConfigError(f"{sid}: adapter {src['adapter']} exige '{needed}'")
+        if (regional := src.get("subreddit_states")) is not None:
+            subs = {s.lower() for s in str(src.get("subreddit", "")).split("+")}
+            if not isinstance(regional, dict) or not all(
+                    k.lower() in subs and v in UFS for k, v in regional.items()):
+                raise SourceConfigError(f"{sid}: subreddit_states deve mapear comunidades de 'subreddit' para UFs")
+        if (cats := src.get("categories")) is not None and (not cats or not set(cats) <= CATEGORIES):
+            raise SourceConfigError(f"{sid}: categories inválidas")
+        if src.get("enabled") and (pending_items(src) or not src.get("authorization_ref")):
+            raise SourceConfigError(f"{sid}: autorização e revisão obrigatórias antes de ativar")
 
 
 def load_sources(path: Path, only_enabled: bool = True) -> list[dict]:

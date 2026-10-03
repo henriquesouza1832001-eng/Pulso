@@ -1,0 +1,7 @@
+# 0005 — Filtro de importância e fontes abertas (GDELT, Mastodon, USGS)
+
+**Contexto.** O X e o INMET já foram integrados pela branch `art` (ADR 0003 e 0004): API oficial, filtro por categoria, um sinal por UF e erros mapeados na saúde da fonte. Faltavam (1) um critério para separar fato de impacto (desastre, vítimas, emergência) de ruído (fofoca de celebridade) e de notícia de outro país nas redes sociais, e (2) mais fontes abertas e gratuitas, já que o X só tem leitura paga e o orçamento é limitado.
+
+**Decisão.** (1) `processing/importance.py` pontua o texto: desastre e vítimas > evento físico > contexto fraco, penaliza ruído de entretenimento (limiar `min_importance`, padrão 45) e descarta o que cita país estrangeiro sem lugar nem menção ao Brasil. Fica de fora quem não passa. (2) Entram como fontes propostas, `enabled: false` até a revisão do protocolo: GDELT (cobertura de notícias, 1 requisição por rodada), Mastodon (hashtags públicas, sem guardar autor) e USGS (terremotos significativos). Nenhuma delas exige credencial.
+
+**Consequências.** O filtro é uma heurística de palavras e pode perder notícia importante sem esses termos; deve ser calibrado com dados reais em `--source <id>` (piloto). O dicionário geográfico não cobre todas as cidades, por isso o filtro de país só descarta o que cita explicitamente outro país. A raspagem de redes sociais com login por navegador não foi implementada.

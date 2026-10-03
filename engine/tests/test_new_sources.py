@@ -11,25 +11,6 @@ def run(adapter, body, **extra):
     return build_adapter(src, None, lambda url: json.dumps(body).encode(), lambda: NOW).run()
 
 
-def test_inmet_keeps_danger_alerts_and_geolocates_single_state():
-    ring = [[-43.0, -20.0], [-42.0, -20.0], [-42.0, -19.0], [-43.0, -19.0], [-43.0, -20.0]]
-    body = {"hoje": [
-        {"id_aviso": 1, "descricao": "Tempestade", "severidade": "Perigo", "estados": "Minas Gerais", "inicio": "2026-10-02 09:00",
-         "municipios": "Ouro Preto - MG (3146107),Mariana - MG (3140001)", "poligono": json.dumps({"type": "Polygon", "coordinates": [ring]}),
-         "riscos": ["Chuva intensa.", "Risco de alagamento."], "encerrado": False},
-        {"id_aviso": 2, "descricao": "Baixa Umidade", "severidade": "Perigo Potencial", "estados": "Bahia", "inicio": "2026-10-02 09:00", "municipios": "X - BA (1)"},
-        {"id_aviso": 3, "descricao": "Onda de Calor", "severidade": "Grande Perigo", "estados": "SP,MG", "inicio": "2026-10-02 09:00",
-         "municipios": "A - SP (1),B - MG (2)", "riscos": []},
-    ], "futuro": [{"id_aviso": 9, "severidade": "Grande Perigo"}]}
-    sigs = {s.url.rsplit("/", 1)[1]: s for s in run("inmet", body)}
-    assert set(sigs) == {"1", "3"}  # potencial e "futuro" ficam de fora
-    one = sigs["1"]
-    assert one.category == "WEATHER" and one.state == "MG" and one.geo_precision == "STATE"
-    assert abs(one.latitude + 19.5) < 0.2 and "alagamento" in one.text
-    assert sigs["3"].state is None and sigs["3"].latitude is None  # vários estados: não inventa ponto
-    assert one.timestamp <= NOW
-
-
 def test_usgs_only_places_points_inside_brazil():
     def quake(title, lon, lat):
         return {"properties": {"title": title, "url": "https://usgs/" + title, "time": 1790990000000},

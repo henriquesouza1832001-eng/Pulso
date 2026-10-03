@@ -15,17 +15,17 @@ from .news.gdelt import GdeltAdapter
 from .official.inmet import InmetAdapter
 from .official.usgs import UsgsAdapter
 from .social.mastodon import MastodonAdapter
-from .social.x_api import XAdapter
+from .social.reddit import RedditAdapter
+from .social.x import XAdapter
 
 ADAPTERS: dict[str, Callable] = {
     "rss": RssAdapter,
+    "reddit": RedditAdapter,
     "x": XAdapter,
     "inmet": InmetAdapter,
     "gdelt": GdeltAdapter,
     "mastodon": MastodonAdapter,
     "usgs": UsgsAdapter,
-    # "oficial-inmet": InmetAdapter,
-    # "reddit": RedditAdapter,
 }
 
 
