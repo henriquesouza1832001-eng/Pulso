@@ -12,6 +12,10 @@ export interface Facts {
 	collectionAgeSeconds: number | null; // idade do último Pulso nacional; null = nunca houve
 	budgetMode: "normal" | "economy" | "critical";
 	investigationsActive: number;
+	/** Opcionais: ausentes = "não medido" (ex.: tabela ainda não existe), nunca "zero". */
+	breakersOpen?: number;
+	staleOrUnknownRatio?: number | null; // fração das fontes que reportam e estão STALE ou UNKNOWN
+	engineCycleAgeSeconds?: number | null; // idade do último resumo de ciclo do Engine
 }
 
 export interface Assessment {
@@ -22,6 +26,8 @@ export interface Assessment {
 export const STALE_AFTER_SECONDS = 900; // 3 ciclos de 5 min
 export const VERY_STALE_AFTER_SECONDS = 3600;
 export const SLOW_DB_MS = 2000;
+export const ENGINE_CYCLE_STALE_SECONDS = 900; // 3 ciclos de 5 min sem o Engine relatar
+export const STALE_SOURCES_RATIO = 0.5; // hipótese inicial (a medir): metade das fontes paradas já é visão degradada
 export const INVESTIGATION_FLOOD = 25; // muitas investigações abertas ao mesmo tempo sugere gatilho barulhento (ver Sentinela)
 
 export function assess(f: Facts): Assessment {
@@ -39,5 +45,10 @@ export function assess(f: Facts): Assessment {
 	if (f.budgetMode === "critical") raise("degraded", "orçamento de escrita crítico: só o essencial é gravado");
 	else if (f.budgetMode === "economy") raise("degraded", "orçamento de escrita em economia: shadow/diagnóstico suspensos");
 	if (f.investigationsActive >= INVESTIGATION_FLOOD) raise("degraded", `${f.investigationsActive} investigações abertas (gatilho possivelmente barulhento)`);
+	if (f.engineCycleAgeSeconds != null && f.engineCycleAgeSeconds > ENGINE_CYCLE_STALE_SECONDS)
+		raise("degraded", `Engine sem relatar ciclo há ${Math.round(f.engineCycleAgeSeconds / 60)} min`);
+	if (f.breakersOpen && f.breakersOpen > 0) raise("degraded", `${f.breakersOpen} fonte(s) com circuit breaker aberto`);
+	if (f.staleOrUnknownRatio != null && f.staleOrUnknownRatio > STALE_SOURCES_RATIO)
+		raise("degraded", `${Math.round(f.staleOrUnknownRatio * 100)}% das fontes com frescor STALE/UNKNOWN`);
 	return { status, reasons };
 }

@@ -37,6 +37,8 @@ export interface BatchLike {
 	shadow_results: unknown[];
 	driver_registry: unknown[];
 	calibrators: unknown[];
+	source_runtime: unknown[];
+	engine_cycle: unknown | null;
 }
 
 /**
@@ -64,7 +66,10 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 	const driver_registry: unknown[] = [];
 	// calibradores são raros e minúsculos (versões novas): continuam em economia; em modo crítico nada
 	const calibrators = mode === "critical" ? [] : b.calibrators;
-	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry, calibrators };
+	// estado por fonte e resumo do ciclo são minúsculos e operacionais (breaker, frescor): continuam em economia; em crítico nada
+	const source_runtime = mode === "critical" ? [] : b.source_runtime;
+	const engine_cycle = mode === "critical" ? null : b.engine_cycle;
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry, calibrators, source_runtime, engine_cycle };
 	const shed = {
 		events: b.events.length - events.length,
 		signals: b.signals.length - signals.length,
@@ -79,6 +84,8 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 		shadow_results: b.shadow_results.length,
 		driver_registry: b.driver_registry.length,
 		calibrators: b.calibrators.length - calibrators.length,
+		source_runtime: b.source_runtime.length - source_runtime.length,
+		engine_cycle: b.engine_cycle && !engine_cycle ? 1 : 0,
 	};
 	return { batch, shed };
 }

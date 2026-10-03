@@ -20,6 +20,8 @@ const batch = (): BatchLike => ({
 	shadow_results: [{ id: "s1" }],
 	driver_registry: [{ id: "d1" }],
 	calibrators: [{ id: "c1" }],
+	source_runtime: [{ source_id: "a" }],
+	engine_cycle: { cycle_at: "2026-10-03T12:00:00Z" },
 });
 
 describe("governador do orçamento de escrita", () => {
@@ -54,6 +56,8 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.shadow_results).toEqual([]); // comparação e drivers esperam a cota folgar
 		expect(out.driver_registry).toEqual([]);
 		expect(out.calibrators).toHaveLength(1); // versões de calibrador são raras e minúsculas: continuam em economia
+		expect(out.source_runtime).toHaveLength(1); // estado por fonte e resumo do ciclo são operacionais e minúsculos: continuam em economia
+		expect(out.engine_cycle).not.toBeNull();
 		expect(shed.events).toBe(1);
 	});
 
@@ -68,5 +72,7 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.investigations).toEqual([]);
 		expect(out.forecast_registry).toEqual([]);
 		expect(out.calibrators).toEqual([]);
+		expect(out.source_runtime).toEqual([]);
+		expect(out.engine_cycle).toBeNull();
 	});
 });

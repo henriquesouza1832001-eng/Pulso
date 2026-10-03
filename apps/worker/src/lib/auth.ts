@@ -16,7 +16,7 @@ export function engineAuthorized(authHeader: string | undefined, token: string |
 }
 
 /** Rotas internas que o ENGINE lê para operar (o Engine só tem o INGEST_TOKEN). As demais são de OPERADOR. */
-export const ENGINE_READ_ROUTES = new Set(["/series", "/signals", "/observations", "/investigations", "/events-digest", "/pulse-history", "/forecasts/open"]);
+export const ENGINE_READ_ROUTES = new Set(["/series", "/signals", "/observations", "/investigations", "/events-digest", "/pulse-history", "/forecasts/open", "/source-runtime"]);
 
 /**
  * Menor privilégio nas rotas `/api/admin/*`.
