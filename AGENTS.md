@@ -11,7 +11,8 @@ Vários agentes (Claude, Codex, humanos) podem editar este repositório **ao mes
 3. Reserve o que vai editar: `py scripts/agentbus.py claim <nome> <arquivo-ou-pasta>`. Se der CONFLITO, fale com o dono da reserva (`send`) em vez de editar.
 4. **Só quem tem o turno de commit faz `git add/commit/push`**: `py scripts/agentbus.py lock acquire <nome> --note "o que vai subir"`; ao terminar, `lock release <nome>`. `git add` **sempre por nome de arquivo**, nunca `-A` ou `.` (a pasta é compartilhada e o arquivo ainda não commitado de outro entraria junto). Faça `git pull` antes. Um PR da `hen` aberto por vez.
 5. Fale com os outros por `py scripts/agentbus.py send <para|all> "primeira linha autoexplicativa..." --from <nome>`.
-6. Mudou arquivo compartilhado (pipeline, contratos, Worker, migrations, workflows, `BACKEND_STATUS.md`)? Avise com `send all`.
+6. Papéis: `codex` = red team/confiabilidade, `claude-motor` = engine/Sentinela, `claude-hen` = plataforma (Worker, banco, pipeline). Nada é promovido sem o Reliability Gate (shadow → canary → prod); ver `docs/agents/COORDENACAO.md`.
+7. Mudou arquivo compartilhado (pipeline, contratos, Worker, migrations, workflows, `BACKEND_STATUS.md`)? Avise com `send all`.
 
 ## Sempre
 1. `git status` e `git branch --show-current` antes de começar; `git pull` na branch.

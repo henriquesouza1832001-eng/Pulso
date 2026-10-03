@@ -11,11 +11,23 @@ from datetime import datetime
 EPS = 1e-9
 
 
+def _validated_pairs(pairs: list[tuple[float, int]]) -> list[tuple[float, int]]:
+    """Valida a fronteira estatística: não mascara probabilidades ou desfechos inválidos."""
+    for probability, outcome in pairs:
+        if not math.isfinite(probability) or not 0 <= probability <= 1:
+            raise ValueError("probabilidade deve ser finita e estar entre 0 e 1")
+        if outcome not in (0, 1):
+            raise ValueError("desfecho deve ser 0 ou 1")
+    return pairs
+
+
 def brier(pairs: list[tuple[float, int]]) -> float | None:
+    _validated_pairs(pairs)
     return round(sum((p - o) ** 2 for p, o in pairs) / len(pairs), 6) if pairs else None
 
 
 def log_loss(pairs: list[tuple[float, int]]) -> float | None:
+    _validated_pairs(pairs)
     if not pairs:
         return None
     total = sum(-(o * math.log(min(max(p, EPS), 1 - EPS)) + (1 - o) * math.log(min(max(1 - p, EPS), 1 - EPS))) for p, o in pairs)
@@ -24,6 +36,9 @@ def log_loss(pairs: list[tuple[float, int]]) -> float | None:
 
 def calibration_error(pairs: list[tuple[float, int]], bins: int = 5) -> float | None:
     """ECE: média ponderada de |frequência observada - probabilidade média prevista| por faixa."""
+    _validated_pairs(pairs)
+    if bins <= 0:
+        raise ValueError("bins deve ser positivo")
     if not pairs:
         return None
     err = 0.0
@@ -36,6 +51,9 @@ def calibration_error(pairs: list[tuple[float, int]], bins: int = 5) -> float | 
 
 
 def confusion(pairs: list[tuple[float, int]], cutoff: float = 0.5) -> dict[str, int]:
+    _validated_pairs(pairs)
+    if not math.isfinite(cutoff) or not 0 <= cutoff <= 1:
+        raise ValueError("cutoff deve ser finito e estar entre 0 e 1")
     tp = sum(1 for p, o in pairs if p >= cutoff and o == 1)
     fp = sum(1 for p, o in pairs if p >= cutoff and o == 0)
     fn = sum(1 for p, o in pairs if p < cutoff and o == 1)
@@ -49,7 +67,7 @@ def _ratio(a: int, b: int) -> float | None:
 def classification(pairs: list[tuple[float, int]], cutoff: float = 0.5) -> dict[str, float | None]:
     c = confusion(pairs, cutoff)
     precision, recall = _ratio(c["tp"], c["tp"] + c["fp"]), _ratio(c["tp"], c["tp"] + c["fn"])
-    f1 = round(2 * precision * recall / (precision + recall), 4) if precision and recall else None
+    f1 = round(2 * precision * recall / (precision + recall), 4) if precision is not None and recall is not None and precision + recall else 0.0 if precision is not None and recall is not None else None
     return {"precision": precision, "recall": recall, "f1": f1, "fpr": _ratio(c["fp"], c["fp"] + c["tn"])}
 
 
