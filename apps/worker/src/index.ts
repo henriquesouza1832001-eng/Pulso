@@ -16,7 +16,7 @@ import type { AppEnv, Bindings } from "./env";
 import { TursoDatabase } from "./lib/turso";
 import { dispatchCollection, dispatchHealthcheck, isHealthcheckSlot } from "./lib/dispatch";
 
-const app = new Hono<AppEnv>();
+export const app = new Hono<AppEnv>(); // exportado para os testes exercitarem a composição REAL (middlewares, CORS, limite de corpo, erro)
 
 app.use("*", requestContext);
 
