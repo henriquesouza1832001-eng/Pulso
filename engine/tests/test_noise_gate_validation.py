@@ -24,8 +24,8 @@ def test_gate_on_hard_negatives_never_reach_n2(name):
 
 
 @pytest.mark.parametrize("name", [
-    pytest.param(n, marks=pytest.mark.xfail(strict=True, reason="QA-010: briga de torcida com feridos, 4 paráfrases -> 3 eventos N1"))
-    if n == QA010 else n for n in POSITIVE])
+    n
+    for n in POSITIVE])
 def test_gate_on_positive_controls_reach_n2(name):
     assert C.measure(BY_NAME[name], gate=True)["n2"] >= 1
 
