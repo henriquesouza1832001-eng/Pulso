@@ -87,5 +87,7 @@ def assess(text: str) -> Importance:
     top = next(t for t in ("A", "B", "C") if hits[t])
     score = BASE[top] + EXTRA_PER_HIT * (len(matched) - 1)
     if noise:
-        score -= NOISE_PENALTY
+        # Com 2+ sinais do nível mais alto ("atentado" + "mortos") a palavra de entretenimento é ruído do texto, não do
+        # fato: "Atentado em casamento deixa 20 mortos" é notícia. Com 1 só ("morreu" + "famosos no casamento"), é fofoca.
+        score -= NOISE_PENALTY // 3 if len(hits["A"]) >= 2 else NOISE_PENALTY
     return Importance(max(0, min(100, score)), tuple(matched), noise)

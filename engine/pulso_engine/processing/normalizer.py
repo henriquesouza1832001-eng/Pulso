@@ -48,7 +48,8 @@ def content_hash(canonical: str | None, title: str) -> str:
 # Programação de telejornal (não é notícia): "Assista ao JRO2 desta sexta", "Jornal X 2ª Edição de sexta-feira", "VÍDEO: AB2 de sexta".
 _WEEKDAY = r"(segunda|ter[cç]a|quarta|quinta|sexta|s[áa]bado|domingo)"
 _BROADCAST_LISTING = re.compile(
-    rf"(edi[cç][aã]o de {_WEEKDAY}|assista ao [a-z]{{1,4}}\d? desta|^v[ií]deos?:\s*[a-z]{{1,4}}\d? de {_WEEKDAY})",
+    # A sigla do telejornal é MAIÚSCULA (JRO2, JPB1, AB2): "Assista ao jogo desta noite" é um convite, não uma grade.
+    rf"(edi[cç][aã]o de {_WEEKDAY}|assista ao (?-i:[A-Z]{{2,4}}\d?) desta|^v[ií]deos?:\s*(?-i:[A-Z]{{1,4}}\d?) de {_WEEKDAY})",
     re.IGNORECASE,
 )
 
