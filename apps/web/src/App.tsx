@@ -205,7 +205,7 @@ export function App() {
 									<span className="mkt-title">BRIEFINGS</span>
 									<span className="dim">ANÁLISE · EVENTOS MAIS QUENTES</span>
 								</div>
-								<Briefings events={events} onSelect={onSelect} />
+								<Briefings events={events} onSelect={onSelect} pageSize={5} minLevel={2} />
 							</div>
 						</aside>
 					</div>

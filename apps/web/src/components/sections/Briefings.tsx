@@ -1,30 +1,69 @@
+import { useMemo, useState } from "react";
 import type { PulsoEvent } from "@pulso/shared";
 import { ago, CATEGORY_PT } from "../../lib/format";
 import { LevelTag } from "../ui/LevelTag";
 
-/** Briefings: análise curta editorial, sempre ligada às fontes e ao evento. */
-export function Briefings({ events, onSelect }: { events: PulsoEvent[]; onSelect: (id: string) => void }) {
-	const top = [...events].sort((a, b) => b.pulse - a.pulse).slice(0, 3);
+/**
+ * Briefings: análise curta editorial, sempre ligada às fontes e ao evento.
+ * Só eventos a partir de `minLevel`, do mais quente ao mais frio, `pageSize` por página.
+ */
+export function Briefings({
+	events,
+	onSelect,
+	pageSize = 3,
+	minLevel = 1,
+}: {
+	events: PulsoEvent[];
+	onSelect: (id: string) => void;
+	pageSize?: number;
+	minLevel?: number;
+}) {
+	const list = useMemo(
+		() => events.filter((e) => e.alert_level >= minLevel).sort((a, b) => b.pulse - a.pulse),
+		[events, minLevel],
+	);
+	const [page, setPage] = useState(0);
+	const pages = Math.max(1, Math.ceil(list.length / pageSize));
+	const cur = Math.min(page, pages - 1); // a lista encolheu na recarga: fica na última página válida
+	const top = list.slice(cur * pageSize, (cur + 1) * pageSize);
 	if (top.length === 0)
-		return <p className="state">SEM BRIEFINGS · AGUARDANDO EVENTOS CONFIRMADOS</p>;
+		return <p className="state">SEM BRIEFINGS · AGUARDANDO EVENTOS{minLevel > 1 ? ` DE NÍVEL ${minLevel}+` : " CONFIRMADOS"}</p>;
 
 	return (
-		<div className="briefs">
-			{top.map((e) => (
-				<article key={e.event_id} className="brief" onClick={() => onSelect(e.event_id)} role="button" tabIndex={0}>
-					<span className="brief-kicker">
-						{CATEGORY_PT[e.category]} · {[e.city, e.state].filter(Boolean).join("/").toUpperCase() || "LOCALIZANDO"} ·{" "}
-						{ago(e.updated_at).toUpperCase()}
+		<>
+			<div className="briefs">
+				{top.map((e) => (
+					<article key={e.event_id} className="brief" onClick={() => onSelect(e.event_id)} role="button" tabIndex={0}>
+						<span className="brief-kicker">
+							{CATEGORY_PT[e.category]} · {[e.city, e.state].filter(Boolean).join("/").toUpperCase() || "LOCALIZANDO"} ·{" "}
+							{ago(e.updated_at).toUpperCase()}
+						</span>
+						<h3>{e.title}</h3>
+						<p>{e.summary ?? `${e.signal_count} sinais convergindo de ${e.source_count} fonte(s) independente(s).`}</p>
+						<div className="brief-foot">
+							<LevelTag level={e.alert_level} />
+							<span className="dim">conf {e.confidence}% · sev {e.severity}</span>
+							<span className="brief-cta">LER ANÁLISE →</span>
+						</div>
+					</article>
+				))}
+			</div>
+			{pages > 1 && (
+				<nav className="osf-pages" aria-label="páginas dos briefings">
+					<button disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="página anterior">
+						‹
+					</button>
+					<span className="osf-pgn">
+						{cur + 1}/{pages}
 					</span>
-					<h3>{e.title}</h3>
-					<p>{e.summary ?? `${e.signal_count} sinais convergindo de ${e.source_count} fonte(s) independente(s).`}</p>
-					<div className="brief-foot">
-						<LevelTag level={e.alert_level} />
-						<span className="dim">conf {e.confidence}% · sev {e.severity}</span>
-						<span className="brief-cta">LER ANÁLISE →</span>
-					</div>
-				</article>
-			))}
-		</div>
+					<button disabled={cur === pages - 1} onClick={() => setPage(cur + 1)} aria-label="próxima página">
+						›
+					</button>
+					<span className="dim">
+						{cur * pageSize + 1}–{Math.min((cur + 1) * pageSize, list.length)} de {list.length}
+					</span>
+				</nav>
+			)}
+		</>
 	);
 }

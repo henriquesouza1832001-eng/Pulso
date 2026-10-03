@@ -58,8 +58,11 @@ function sortFeeds(feeds: CameraFeed[]): CameraFeed[] {
 	);
 }
 
-/** Cidade como chave de filtro: o catálogo traz grafias diferentes da mesma cidade ("Rio De Janeiro" / "Rio de Janeiro"). */
-const cityKey = (c: CameraFeed) => fold(c.city).trim();
+/**
+ * Cidade como chave de filtro: UF + nome sem acento/caixa. O catálogo traz grafias diferentes da mesma cidade
+ * ("Rio De Janeiro" / "Rio de Janeiro"), e a UF separa homônimas de estados diferentes.
+ */
+const cityKey = (c: CameraFeed) => `${c.state}|${fold(c.city).trim()}`;
 
 /** Conta por chave e guarda o primeiro rótulo visto de cada uma. Ordem alfabética do rótulo. */
 function countBy(items: CameraFeed[], key: (c: CameraFeed) => string, label: (c: CameraFeed) => string) {
@@ -110,7 +113,11 @@ export function CameraFeeds({
 		return list.sort((x, y) => Number(x.key === "BR") - Number(y.key === "BR") || x.label.localeCompare(y.label));
 	}, [all, uf]);
 	const inUf = useMemo(() => (uf ? all.filter((c) => c.state === uf) : all), [all, uf]);
-	const cities = useMemo(() => (uf ? countBy(inUf, cityKey, (c) => c.city) : []), [inUf, uf]);
+	// sem estado escolhido, a lista de cidades traz todas (com a UF); escolher uma já fixa o estado dela
+	const cities = useMemo(
+		() => countBy(inUf, cityKey, (c) => (uf ? c.city : `${c.city} (${ufLabel(c.state)})`)),
+		[inUf, uf],
+	);
 	const filtered = useMemo(() => (city ? inUf.filter((c) => cityKey(c) === city) : inUf), [inUf, city]);
 	const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
 	const cur = Math.min(page, pages - 1); // a lista encolheu: fica na última página válida
@@ -122,6 +129,7 @@ export function CameraFeeds({
 		setPage(0);
 	};
 	const setCity = (v: string) => {
+		if (v && !uf) setUfRaw(v.slice(0, v.indexOf("|")));
 		setCityRaw(v);
 		setPage(0);
 	};
@@ -159,11 +167,11 @@ export function CameraFeeds({
 					<span className="dim">CIDADE</span>
 					<select
 						value={city}
-						disabled={!uf || cities.length === 0}
+						disabled={cities.length === 0}
 						onChange={(e) => setCity(e.target.value)}
 						aria-label="filtrar câmeras por cidade"
 					>
-						<option value="">{uf ? `TODAS · ${inUf.length}` : "escolha um estado"}</option>
+						<option value="">TODAS · {inUf.length}</option>
 						{cities.map((o) => (
 							<option key={o.key} value={o.key}>
 								{o.label.toUpperCase()} · {o.n}
