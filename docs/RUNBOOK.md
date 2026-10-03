@@ -6,7 +6,7 @@ Como saber se o sistema está bem, o que fazer quando não está e como verifica
 ```
 py -m pulso_engine.healthcheck            # lê https://pulso-api.henriquesouza.workers.dev/api/health
 ```
-Imprime "saudável" ou os PROBLEMAS e sai com código 1. O GitHub roda isso a cada 30 min (`.github/workflows/healthcheck.yml`): se o workflow falhar, o dono do repositório é avisado. Regras: API e banco ONLINE; último pulso há menos de 30 min; menos da metade das fontes OFFLINE; ao menos 40% ONLINE entre as que já reportaram; nenhum `AUTH_ERROR`.
+Imprime "saudável" ou os PROBLEMAS e sai com código 1. O Cron da Cloudflare aciona isso nos minutos 15 e 45 de cada hora (e o `schedule` do GitHub fica como reserva) (`.github/workflows/healthcheck.yml`): se o workflow falhar, o dono do repositório é avisado. Regras: API e banco ONLINE; último pulso há menos de 30 min; menos da metade das fontes OFFLINE; ao menos 40% ONLINE entre as que já reportaram; nenhum `AUTH_ERROR`.
 
 Outras leituras públicas: `GET /api/stats` (eventos ativos, sinais em 2 h e 24 h, fontes online), `GET /api/health` (cada fonte e o atraso da coleta), `GET /api/forecasts/track-record` (acerto das previsões).
 
