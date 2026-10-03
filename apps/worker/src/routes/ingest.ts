@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
 	CATEGORIES,
 	EVENT_STATUSES,
+	CALIBRATOR_STATUSES,
 	DRIVER_STATES,
 	FORECAST_KINDS,
 	GEO_PRECISIONS,
@@ -234,6 +235,36 @@ const batchSchema = z.object({
 		)
 		.max(200)
 		.default([]),
+	/** Artefatos de calibração versionados (docs/engineering/FORECAST_V2_BRIEF.md §30). Raros: no máximo 20 por lote. */
+	calibrators: z
+		.array(
+			z.object({
+				id: z.string().regex(/^cal-[a-z0-9_.-]{3,80}$/),
+				method: z.string().regex(/^[a-z0-9_]{1,40}$/),
+				version: z.string().min(1).max(40),
+				fit_start: iso,
+				fit_end: iso,
+				sample_count: z.number().int().min(0).max(100_000_000),
+				artifact: z
+					.string()
+					.max(20_000)
+					.refine(
+						(a) => {
+							try {
+								JSON.parse(a);
+								return true;
+							} catch {
+								return false;
+							}
+						},
+						{ message: "artifact precisa ser JSON válido" },
+					),
+				status: z.enum(CALIBRATOR_STATUSES).default("candidate"),
+				created_at: iso,
+			}),
+		)
+		.max(20)
+		.default([]),
 });
 
 const SERIES_RETENTION_DAYS = 90;
@@ -262,7 +293,7 @@ ingest.post("/", async (c) => {
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
 	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations, investigations } = plan;
-	const { forecast_registry, shadow_results, driver_registry } = plan;
+	const { forecast_registry, shadow_results, driver_registry, calibrators } = plan;
 
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
@@ -469,6 +500,19 @@ ingest.post("/", async (c) => {
 				.bind(json(driver_registry), new Date().toISOString()),
 		);
 	}
+	if (calibrators.length) {
+		// O ARTEFATO é imutável (uma linha por versão); só o status evolui, e `retired` é terminal (uma versão aposentada nunca volta).
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO calibrators (id,method,version,fit_start,fit_end,sample_count,artifact,status,created_at)
+			 SELECT ${f("id")},${f("method")},${f("version")},${f("fit_start")},${f("fit_end")},${f("sample_count")},${f("artifact")},${f("status")},${f("created_at")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(id) DO UPDATE SET status=excluded.status
+			 WHERE calibrators.status != 'retired' AND calibrators.status IS NOT excluded.status`,
+				)
+				.bind(json(calibrators)),
+		);
+	}
 	// Investigação encerrada há mais de 30 dias sai (uma vez por dia, 03:10-03:20 UTC; o índice (status, last_update) cobre a busca).
 	{
 		const at = new Date();
@@ -524,6 +568,7 @@ ingest.post("/", async (c) => {
 		forecast_registry: forecast_registry.length,
 		shadow_results: shadow_results.length,
 		driver_registry: driver_registry.length,
+		calibrators: calibrators.length,
 		budget: { mode, used_before: used, written, shed },
 	});
 });

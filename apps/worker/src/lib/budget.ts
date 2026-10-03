@@ -36,6 +36,7 @@ export interface BatchLike {
 	forecast_registry: unknown[];
 	shadow_results: unknown[];
 	driver_registry: unknown[];
+	calibrators: unknown[];
 }
 
 /**
@@ -61,7 +62,9 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 	const forecast_registry = mode === "critical" ? [] : b.forecast_registry;
 	const shadow_results: unknown[] = [];
 	const driver_registry: unknown[] = [];
-	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry };
+	// calibradores são raros e minúsculos (versões novas): continuam em economia; em modo crítico nada
+	const calibrators = mode === "critical" ? [] : b.calibrators;
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations, investigations, forecast_registry, shadow_results, driver_registry, calibrators };
 	const shed = {
 		events: b.events.length - events.length,
 		signals: b.signals.length - signals.length,
@@ -75,6 +78,7 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 		forecast_registry: b.forecast_registry.length - forecast_registry.length,
 		shadow_results: b.shadow_results.length,
 		driver_registry: b.driver_registry.length,
+		calibrators: b.calibrators.length - calibrators.length,
 	};
 	return { batch, shed };
 }

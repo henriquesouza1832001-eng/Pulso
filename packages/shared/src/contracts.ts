@@ -185,6 +185,23 @@ export interface IngestBatch {
 	shadow_results?: ShadowResultRow[];
 	/** Registro de drivers antecedentes validados. */
 	driver_registry?: DriverRegistryRow[];
+	/** Artefatos de calibração versionados (artefato imutável; só o status evolui). */
+	calibrators?: CalibratorArtifact[];
+}
+
+export const CALIBRATOR_STATUSES = ["candidate", "active", "retired"] as const;
+export type CalibratorStatus = (typeof CALIBRATOR_STATUSES)[number];
+
+export interface CalibratorArtifact {
+	id: string; // cal-<método>-<versão>
+	method: string; // platt, isotonic, identity...
+	version: string;
+	fit_start: string; // janela de ajuste: nunca inclui dado de teste/futuro
+	fit_end: string;
+	sample_count: number;
+	artifact: string; // JSON com os parâmetros (até 20 KB)
+	status: CalibratorStatus; // candidate -> active -> retired (terminal)
+	created_at: string;
 }
 
 export interface ForecastRegistryEntry {

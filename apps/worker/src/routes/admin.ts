@@ -133,6 +133,58 @@ admin.get("/drivers", async (c) => {
 	return c.json({ drivers: results });
 });
 
+const calibratorsQuery = z.object({
+	status: z.enum(["candidate", "active", "retired"]).optional(),
+	limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/** Calibradores versionados (artefato + status). O Engine usa só o `active`; o histórico fica para auditoria. */
+admin.get("/calibrators", async (c) => {
+	const q = calibratorsQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, method, version, fit_start, fit_end, sample_count, artifact, status, created_at FROM calibrators
+		 WHERE (?1 IS NULL OR status = ?1) ORDER BY created_at DESC LIMIT ?2`,
+	)
+		.bind(q.data.status ?? null, q.data.limit)
+		.all();
+	return c.json({ calibrators: results });
+});
+
+const trajectoryQuery = z.object({
+	scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+	metric: z.string().regex(/^[a-z_]{1,40}$/),
+	hours: z.coerce.number().int().min(1).max(24 * 30).default(48),
+});
+
+/**
+ * TRAJETÓRIA das previsões de um escopo e métrica ao longo do tempo (12:00 18%, 12:15 27%, ... evento): como a previsão evoluiu e
+ * como terminou. A tabela `forecasts` é imutável, então cada ponto é uma previsão distinta e nenhuma foi reescrita. Se a
+ * previsão tiver `evidence.shadow_v2`, a probabilidade do V2 em sombra vem junto para comparar as duas trajetórias.
+ */
+admin.get("/forecast-trajectory", async (c) => {
+	const q = trajectoryQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare(
+		`SELECT id, threshold, probability, interval_low, interval_high, method, method_version, created_at, resolves_at, status, outcome, observed_value, evidence
+		 FROM forecasts WHERE scope = ?1 AND metric = ?2 AND created_at >= ?3 ORDER BY created_at ASC LIMIT 2000`,
+	)
+		.bind(q.data.scope, q.data.metric, since)
+		.all<Record<string, unknown>>();
+	const points = results.map(({ evidence, ...rest }) => {
+		let v2: number | null = null;
+		try {
+			const ev = typeof evidence === "string" ? JSON.parse(evidence) : null;
+			v2 = typeof ev?.shadow_v2?.probability === "number" ? ev.shadow_v2.probability : null;
+		} catch {
+			v2 = null;
+		}
+		return { ...rest, p_v2_shadow: v2 };
+	});
+	return c.json({ scope: q.data.scope, metric: q.data.metric, since, points });
+});
+
 const registryQuery = z.object({
 	hours: z.coerce.number().int().min(1).max(24 * 180).default(72),
 	forecast_id: z.string().regex(/^fc-[a-z0-9-]{1,100}$/).optional(),
@@ -245,6 +297,8 @@ admin.get("/engine-status", async (c) => {
 			   (SELECT COUNT(*) FROM shadow_results) AS shadow_results,
 			   (SELECT COUNT(*) FROM driver_registry WHERE state = 'ACTIVE') AS drivers_active,
 			   (SELECT COUNT(*) FROM driver_registry) AS drivers_total,
+			   (SELECT COUNT(*) FROM calibrators WHERE status = 'active') AS calibrators_active,
+			   (SELECT COUNT(*) FROM calibrators) AS calibrators_total,
 			   (SELECT MAX(hour) FROM signal_observations) AS observations_last_hour,
 			   (SELECT COUNT(*) FROM (SELECT 1 FROM signal_observations LIMIT 200000)) AS observations_rows`,
 		).first<Record<string, number | string | null>>();
