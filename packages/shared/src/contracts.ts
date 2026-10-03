@@ -129,6 +129,40 @@ export interface SeriesPoint {
 	sources: number; // fontes distintas na janela
 }
 
+export const FORECAST_KINDS = ["NOWCAST", "EVENT", "QUANTITY", "OPEN"] as const;
+export type ForecastKind = (typeof FORECAST_KINDS)[number];
+export type ForecastStatus = "open" | "resolved" | "void";
+
+/**
+ * Previsão: uma PROBABILIDADE calibrada, nunca um fato. Imutável depois de criada;
+ * só os campos de resolução mudam. Sempre exibir com o rótulo "PREVISÃO".
+ */
+export interface Forecast {
+	forecast_id: string;
+	kind: ForecastKind;
+	question: string;
+	scope: string; // BR | UF:MG
+	metric: string; // ex.: "pulse"
+	comparator: "gte" | "lte";
+	threshold: number;
+	method: string;
+	method_version: string;
+	probability: number; // (0,1) exclusivo
+	interval_low: number;
+	interval_high: number;
+	horizon_minutes: number;
+	created_at: string;
+	resolves_at: string;
+	evidence: Record<string, unknown>;
+	status: ForecastStatus;
+	outcome: 0 | 1 | null;
+	observed_value: number | null;
+	resolved_at: string | null;
+	brier: number | null;
+	/** Calculado pela API: true até o método ter resolvido previsões suficientes. */
+	experimental?: boolean;
+}
+
 /** Payload que o Python Engine envia ao Worker (POST /api/ingest). Idempotente por event_id/scope+timestamp. */
 export interface IngestBatch {
 	batch_id: string;
@@ -138,6 +172,7 @@ export interface IngestBatch {
 	pulses: PulseSnapshot[];
 	source_health: SourceHealth[];
 	series?: SeriesPoint[];
+	forecasts?: Forecast[];
 }
 
 export interface ApiError {

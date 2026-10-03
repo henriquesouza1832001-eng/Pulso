@@ -48,7 +48,9 @@ def test_same_story_in_three_sources_becomes_one_event():
     ev = batch["events"][0]
     assert ev["source_count"] == 3 and ev["signal_count"] == 3
     assert ev["category"] == "WEATHER" and ev["state"] == "MG" and ev["status"] == "CONFIRMED"
-    assert all(s["event_id"] == ev["event_id"] for s in batch["signals"])
+    in_event = [s for s in batch["signals"] if s["event_id"]]
+    assert len(in_event) == 3 and all(s["event_id"] == ev["event_id"] for s in in_event)
+    assert [s["event_id"] for s in batch["signals"] if not s["event_id"]] != []  # a receita é gravada, sem evento
     assert batch["pulses"][0]["scope"] == "BR" and batch["pulses"][0]["score"] > 0
 
 
@@ -93,3 +95,20 @@ def test_future_dates_are_clamped_and_chunks_respect_limits():
     assert batch["signals"][0]["timestamp"] == "2026-10-02T20:00:00Z"
     parts = chunks(batch, max_events=1)
     assert parts[-1]["pulses"] and all(len(p["events"]) <= 1 for p in parts)
+
+
+def test_common_words_are_not_mistaken_for_states_or_cities():
+    # "para" (preposição) NÃO é o Pará — bug que colocava 1/3 das notícias no PA
+    assert locate("Governo vai pagar bônus para professores") is None
+    assert locate("Desastre foi para a Globo, diz Lula") is None
+    assert locate("Dívida de 1 acre de terra") is None  # acre = unidade de área
+    assert locate("A missa do Espírito Santo na igreja") is None  # religioso, sem contexto geográfico
+    assert locate("Natal em Belém da Cisjordânia") is None  # Belém de Israel
+
+
+def test_real_states_are_still_found_with_context():
+    assert locate("Operação no Pará deixa feridos").uf == "PA"
+    assert locate("Lula vai ao Acre inaugurar obra").uf == "AC"
+    assert locate("Chuva forte no Espírito Santo deixa desabrigados").uf == "ES"
+    belem = locate("Prefeitura de Belém anuncia obra")
+    assert belem.uf == "PA" and belem.city == "Belém"

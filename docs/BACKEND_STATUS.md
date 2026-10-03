@@ -33,7 +33,7 @@ Leitura obrigatória, nesta ordem: `AGENTS.md` → `docs/architecture/ARCHITECTU
 | Onde | Nome | Para quê |
 |---|---|---|
 | Worker (`wrangler secret put`) | `INGEST_TOKEN` | autoriza Engine em `/api/ingest` e `/api/admin/*` |
-| Worker | `GH_DISPATCH_TOKEN` | **pendente**: token fino do GitHub (Actions: escrita) para o Cron acionar a coleta |
+| Worker | `GH_DISPATCH_TOKEN` | token fino do GitHub (Actions: leitura e escrita, só o repo Pulso) para o Cron acionar a coleta. **Vence em 31/12/2026**: renovar antes disso (gerar novo, `wrangler secret put GH_DISPATCH_TOKEN`), senão a coleta automática para. |
 | GitHub Actions | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy automático |
 | GitHub Actions | `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | a coleta enviar lotes ao Worker |
 | GitHub Actions | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `X_BEARER_TOKEN` | **ainda não criados**: sensores sociais (só depois da aprovação; ver `docs/sources/SOURCES.md`) |
@@ -89,21 +89,21 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 - [ ] Confirmar cadência do Cron pelos logs de produção: `/api/health` mostra a presença do token, não sucesso do dispatch
 
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
-1. **Coleta contínua não está garantida.** O Cron Trigger da Cloudflare aciona `workflow_dispatch`, mas `/api/health` só confirma presença do segredo; validar pelos logs que cada rodada foi aceita e terminou. Sem coleta contínua não há histórico para baseline/previsão.
-2. **Clusterização sem estado**: é refeita a cada rodada a partir do que os feeds mostram; o `event_id` pode mudar quando a notícia mais antiga sai do feed (duplicatas por até 24 h). Próxima etapa: clusterização com estado (Engine lê eventos existentes).
-3. **Classificação inicial por keywords** gera falsos positivos (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
+1. **Coleta contínua**: Cron Trigger da Cloudflare confirmado em produção em 2026-10-03 (coleta a cada 5 min). `/api/health` só mostra a presença do segredo: acompanhar pelos logs que cada rodada foi aceita e terminou. `GH_DISPATCH_TOKEN` vence em 31/12/2026. Sem coleta contínua não há histórico para baseline/previsão.
+2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
+3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
 6. **Token exposto**: um token da Cloudflare foi colado em chat; deve ser **revogado**. O token em uso no GitHub é outro, criado depois.
-7. **Previsões não existem ainda** (é o coração do produto).
+7. **Previsões: só a v1 NOWCAST** (Pulso do Brasil, 60 min), EXPERIMENTAL e sem histórico de acertos ainda. Só começa a prever com ~3,5 h de histórico contínuo do Pulso; precisa de 100 previsões resolvidas para deixar de ser experimental.
 8. **Sem rate limiting** nem WAF; sem staging separado; sem painel admin protegido por Cloudflare Access (as rotas `/api/admin/*` usam o mesmo token do Engine).
 
 ## 8. Roadmap do backend (ordem sugerida)
 | # | Item | Estado |
 |---|---|---|
-| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | confirmar execuções e sucesso nos logs; `scheduler_configured` indica apenas presença do segredo |
-| 2 | Clusterização com estado (ids estáveis) | a fazer |
-| 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | a fazer |
+| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | **feito** (confirmado em 2026-10-03); acompanhar logs; renovar token até 31/12/2026 |
+| 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
+| 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | **v1 feita** (experimental). Faltam EVENT/QUANTITY/OPEN e modelos melhores |
 | 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
@@ -128,8 +128,8 @@ Fora de escopo por restrição de termos: extrair dados do Google Maps (o mapa d
 | N1 | Criar o token fino do GitHub e rodar `wrangler secret put GH_DISPATCH_TOKEN` (liga a coleta de 5 em 5 min) | `apps/worker/src/lib/dispatch.ts` |
 | N2 | **Revogar** o token da Cloudflare que foi exposto em chat | painel Cloudflare |
 | N3 | Revisar os termos das 5 fontes RSS e preencher `terms_url`/`reviewed_by` | `engine/config/sources.json` |
-| N4 | Clusterização com estado (ids de evento estáveis) | `pipeline.py`, `processing/clustering.py`, `events.py` |
-| N5 | **Previsões**: migration `forecasts`, `/api/forecasts`, resolução e pontuação (Brier); NOWCAST primeiro | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
+| N4 | ~~Clusterização com estado~~ **feito** | `pipeline.py`, `events.py` |
+| N5 | **Previsões**: v1 NOWCAST feita; seguir com EVENT, QUANTITY, OPEN e calibração | `database/migrations`, `engine/pulso_engine/forecast*`, `routes/forecasts.ts` |
 | N6 | SSE (`/api/events/live`) e `/api/trending` | `apps/worker/src/routes` |
 | N7 | Revisar e fazer o merge dos PRs da colega | — |
 
@@ -155,6 +155,9 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 ## 10. Registro de mudanças (acrescente no topo)
 - **2026-10-03** — RSS da Agência Senado e da Agência Câmara propostos como fontes `OFFICIAL` de política (fichas em `SOURCES.md`). Reddit: confirmado que todo acesso à API exige aprovação prévia; RSS do Reddit descartado (robots.txt).
 - **2026-10-03** — Coletores Reddit e X (desativados) focados em política BR: busca temática, filtro `categories`, geo, título sem links/@menções, 429/401/403 mapeados na saúde, `interval_s` respeitado (`is_due`), `start_time` no X, modo piloto `--source`, secrets no `collect.yml`, novas keywords de política/protesto. ADR 0003. Piloto automático no `collect.yml` (`--respect-interval`; log só com contagens).
+- **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
+- **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
+- **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.
 - **2026-10-03** — PR #7 mergeado e em produção (migration `0002`, Cron Trigger, rotas admin). Registro de coletores. Divisão de trabalho e onboarding (seção 8.1).
 - **2026-10-03** — Cron Trigger da Cloudflare + `/api/health` com atraso da coleta; histórico em séries, baseline e anomalia; rotas admin; eventos só das últimas 24 h; política de branches (somente 5). 
 - **2026-10-02** — Monorepo; Cloudflare (D1, Worker, front); deploy automático; coleta RSS; protocolo de coleta e previsão documentados.
