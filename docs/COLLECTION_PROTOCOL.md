@@ -67,7 +67,7 @@ Chaves de API só em secrets (GitHub Actions / `wrangler secret`), nomeados por 
 ## 12. Estado das integrações pedidas
 | Fonte | Via permitida | Situação |
 |---|---|---|
-| Sites de notícias | RSS/Atom, sitemaps | ✅ 5 feeds ativos |
+| Sites de notícias | RSS/Atom, sitemaps | ✅ ~100 feeds ativos (ver `docs/sources/CATALOGO_FONTES.md`); revisão de termos pendente |
 | Órgãos oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, BC…) | APIs e dados abertos | ⏳ próximo; verificar termos de cada um |
 | Reddit | API oficial; exige registro do app e respeito aos termos (uso comercial pode exigir acordo) | ⏳ revisar termos antes |
 | X (Twitter) | API oficial paga, por plano | ⏳ decisão de custo; perfis pequenos com peso baixo; nunca confirma sozinho |

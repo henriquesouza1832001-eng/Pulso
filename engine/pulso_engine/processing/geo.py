@@ -78,8 +78,12 @@ def locate(text: str) -> Place | None:
     """Primeira menção geográfica (cidade tem prioridade sobre estado). Conservadora: prefere não localizar."""
     folded = fold(text)
     for pat, place, on_original in _PATTERNS:
-        if not pat.search(text if on_original else folded):
+        found = pat.search(text if on_original else folded)
+        if not found:
             continue
+        if not place.uf:  # padrão de sigla: a UF é o próprio texto casado
+            uf = found.group(1)
+            return state_place(uf, confidence=place.confidence)
         exclude = _CITY_EXCLUDE.get(place.city or "")
         if exclude and exclude.search(folded):
             continue
@@ -123,3 +127,49 @@ _UF_BY_STATE_NAME = {fold(state): uf for uf, state, *_ in _STATES}
 def uf_from_state_name(name: str) -> str | None:
     """'Ceará' / 'ceara' -> 'CE' (nome oficial completo do estado, como vem de APIs oficiais)."""
     return _UF_BY_STATE_NAME.get(fold(name.strip()))
+
+
+# Principais cidades do interior -> UF. Precisão honesta: STATE (o ponto no mapa é a capital), com o nome
+# da cidade em `city`. Nomes que também são palavra comum, sobrenome, clube ou empresa exigem contexto.
+_INTERIOR = {
+    "SP": "Campinas Guarulhos Osasco Sorocaba Ribeirão_Preto São_José_dos_Campos São_Bernardo_do_Campo Santo_André "
+          "Mauá Diadema Carapicuíba Mogi_das_Cruzes São_José_do_Rio_Preto Jundiaí Piracicaba Bauru Praia_Grande "
+          "Guarujá Taubaté Limeira Barueri Presidente_Prudente Araraquara Marília *Santos *Franca *Suzano",
+    "RJ": "Niterói Duque_de_Caxias Nova_Iguaçu São_Gonçalo Belford_Roxo Campos_dos_Goytacazes Petrópolis "
+          "Volta_Redonda Macaé Angra_dos_Reis Cabo_Frio Teresópolis Nova_Friburgo",
+    "MG": "Uberlândia Juiz_de_Fora Betim Montes_Claros Ribeirão_das_Neves Uberaba Governador_Valadares Ipatinga "
+          "Sete_Lagoas Divinópolis Poços_de_Caldas Teófilo_Otoni *Contagem",
+    "PR": "Londrina Maringá Ponta_Grossa Foz_do_Iguaçu São_José_dos_Pinhais Apucarana Guarapuava Paranaguá Toledo_(PR) *Cascavel",
+    "SC": "Joinville Blumenau Chapecó Itajaí Criciúma Balneário_Camboriú Jaraguá_do_Sul *Lages",
+    "RS": "Caxias_do_Sul Santa_Maria Gravataí Novo_Hamburgo Passo_Fundo São_Leopoldo *Canoas *Pelotas",
+    "BA": "Feira_de_Santana Vitória_da_Conquista Camaçari Itabuna Ilhéus Lauro_de_Freitas Juazeiro_(BA) Barreiras Porto_Seguro",
+    "CE": "Juazeiro_do_Norte Caucaia Maracanaú Crato *Sobral",
+    "PE": "Jaboatão_dos_Guararapes Olinda Caruaru Petrolina Garanhuns Cabo_de_Santo_Agostinho",
+    "PB": "Campina_Grande Patos Santa_Rita_(PB)", "RN": "Mossoró Parnamirim Caicó", "AL": "Arapiraca",
+    "SE": "Nossa_Senhora_do_Socorro Lagarto_(SE)", "PI": "Parnaíba Picos", "MA": "Caxias_(MA) Timon *Imperatriz",
+    "PA": "Ananindeua Santarém Marabá Parauapebas Castanhal Altamira", "AM": "Parintins Itacoatiara",
+    "RO": "Ariquemes Ji-Paraná Vilhena Cacoal", "AC": "Cruzeiro_do_Sul_(AC)", "TO": "Araguaína Gurupi",
+    "GO": "Aparecida_de_Goiânia Anápolis Rio_Verde Luziânia Águas_Lindas_de_Goiás", "MT": "Várzea_Grande Rondonópolis Sinop",
+    "MS": "Três_Lagoas Corumbá *Dourados", "ES": "Vila_Velha Cariacica Cachoeiro_de_Itapemirim Guarapari *Linhares",
+    "DF": "Taguatinga Ceilândia Samambaia Planaltina_(DF)",
+}
+_CITY_CONTEXT = r"(?:em|cidade de|prefeitura de|prefeito de|prefeita de|município de|municipio de)\s+"
+for _uf, _names in _INTERIOR.items():
+    _capital, _lat, _lon = _COORDS[_uf]
+    for _raw in _names.split():
+        _needs_context = _raw.startswith("*")
+        _name = _raw.lstrip("*").replace("_", " ")
+        _rx = re.escape(fold(_name.split(" (")[0]))  # "Toledo (PR)": só com a UF no texto (sufixo abaixo)
+        if " (" in _name:
+            _rx += rf"\s*(?:,|-|\()\s*{_uf.lower()}\b"
+        if _needs_context:
+            _rx = _CITY_CONTEXT + _rx
+        _PATTERNS.append((re.compile(rf"\b{_rx}\b"), Place(_uf, _name.split(" (")[0], _lat, _lon, "STATE", 55), False))
+
+
+# Sigla da UF com contexto (depois das cidades: "Ariquemes, RO" guarda o nome da cidade), no texto ORIGINAL e em maiúsculas: "Ariquemes, RO", "morta em SP", "(MG)", "Natal - RN".
+_UF_CODES = "|".join(_COORDS)
+_PATTERNS.append((
+    re.compile(rf"(?:,\s*|\(|\s[-–]\s|\b(?:em|no|na|do|da|de)\s+)({_UF_CODES})\b(?![-/])"),
+    Place("", None, 0.0, 0.0, "STATE", 55), True,  # UF real resolvida em locate() pelo grupo casado
+))

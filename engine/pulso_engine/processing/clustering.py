@@ -5,6 +5,7 @@ Quando o Engine guardar sinais, a mesma função passa a receber o histórico.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import timedelta
 
@@ -20,6 +21,8 @@ _STOP = frozenset(
 WINDOW = timedelta(hours=12)
 JACCARD_MIN = 0.34
 MIN_SHARED = 3
+MIN_HIT_RATIO = 0.25  # fração dos membros com que a matéria nova deve se parecer (evita ligação em cadeia)
+CONFIDENT_GEO = 60
 
 
 def tokens(title: str) -> frozenset[str]:
@@ -49,7 +52,14 @@ class Cluster:
         # descreve eventos distintos: juntar apagaria estados do mapa.
         if s.state and any(m.source_id == s.source_id and m.state and m.state != s.state for m in self.signals):
             return False
-        return any(similar(toks, m) for m in self.member_tokens)
+        # Estados diferentes, ambos bem localizados (lugar explícito no texto): são acontecimentos distintos.
+        if s.state and (s.geo_confidence or 0) >= CONFIDENT_GEO and any(
+                m.state and m.state != s.state and (m.geo_confidence or 0) >= CONFIDENT_GEO for m in self.signals):
+            return False
+        # Semelhança com ALGUNS membros, não com qualquer um: senão pautas amplas (ex.: eleições) encadeiam
+        # centenas de matérias diferentes em um só "evento".
+        hits = sum(1 for m in self.member_tokens if similar(toks, m))
+        return hits >= max(1, math.ceil(MIN_HIT_RATIO * len(self.member_tokens)))
 
 
 def cluster_signals(signals: list[Signal]) -> list[Cluster]:

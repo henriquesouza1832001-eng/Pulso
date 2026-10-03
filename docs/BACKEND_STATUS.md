@@ -76,7 +76,12 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 - [x] Rotas internas: `/api/ingest`, `/api/admin/series`, `/api/admin/overview`
 - [x] Histórico em séries (5 min), baseline (EWMA) e anomalia (inválida com < 12 h de dados)
 - [x] Protocolo de coleta validado em código; `/api/health` mostra o atraso da coleta
-- [x] Testes: 89 Python, 4 do Worker
+- [x] Testes: 127 Python, 7 do Worker (2026-10-03)
+- [x] **Catálogo de ~110 fontes (103 ativas)** com leitor RSS tolerante e coleta paralela; ver `docs/sources/CATALOGO_FONTES.md` (gerado) e ADR 0006. Rodada real medida: ~45 s para 81 fontes
+- [x] **Frescor por categoria** no Pulso (o impactante de agora vale mais que o de 12 h atrás) e **qualidade de eventos** (agrupamento sem encadeamento, estado por maioria, publicação criteriosa): de 1793 para 466 eventos na mesma coleta
+- [x] **Previsão de volume por categoria** (`signals_<tema>`) + backtest walk-forward; só prevê com histórico (ADR 0006)
+- [x] **Orçamento do D1** (ADR 0006): o motor escreve só o que mudou (~40 linhas/ciclo em regime estável, antes ~850) e o Worker aceita 500 fontes por lote (o limite 100 derrubaria a ingestão com 110 fontes)
+- [x] Verificação ponta a ponta local (2026-10-03): Worker local + migrações + rodada real do motor com `--push` + `GET /api/health`, `/api/stats`, `/api/events`, `/api/forecasts`, `/api/pulse/states` respondendo corretamente
 
 **Em andamento / aguardando**
 - [x] **PR #7** mergeado e publicado em 2026-10-03: séries, baseline, anomalia, rotas admin, Cron Trigger (`*/5 * * * *` registrado), migration `0002` aplicada
@@ -93,10 +98,16 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 1. **Coleta contínua**: Cron Trigger da Cloudflare confirmado em produção em 2026-10-03 (coleta a cada 5 min). `/api/health` só mostra a presença do segredo: acompanhar pelos logs que cada rodada foi aceita e terminou. `GH_DISPATCH_TOKEN` vence em 31/12/2026. Sem coleta contínua não há histórico para baseline/previsão.
 2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
 3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
-4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
+4. **Conformidade pendente em ~95 fontes** (o catálogo foi ativado por decisão do dono, ADR 0006). Item original: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
 5. **Baseline simples**: ainda sem sazonalidade (hora do dia × dia da semana); precisa de semanas de dados.
 6. **Token exposto**: um token da Cloudflare foi colado em chat; deve ser **revogado**. O token em uso no GitHub é outro, criado depois.
-7. **Previsões: só a v1 NOWCAST** (Pulso do Brasil, 60 min), EXPERIMENTAL e sem histórico de acertos ainda. Só começa a prever com ~3,5 h de histórico contínuo do Pulso; precisa de 100 previsões resolvidas para deixar de ser experimental.
+7. **Previsões: v1 NOWCAST do Pulso do Brasil (60 min) e de volume por categoria**, EXPERIMENTAL e sem histórico de acertos ainda. Só começa a prever com ~3,5 h de histórico contínuo do Pulso; precisa de 100 previsões resolvidas para deixar de ser experimental.
+13. **Limite do D1 gratuito**: 100 mil escritas e 5 milhões de leituras por dia. Hoje ~12 mil escritas/dia estimadas e ~3–4 milhões de leituras/dia (a leitura é o que mais aperta; ver ADR 0006). Se o plano for gratuito, acompanhar o consumo no painel da Cloudflare nos primeiros dias; a saída é espaçar o ciclo (10 min) ou migrar para o plano pago.
+14. **Deploy**: o Worker novo (limite de 500 fontes, `/api/admin/events-digest`) precisa estar publicado antes do primeiro envio do catálogo completo; nos ciclos comuns o motor já manda < 100 fontes, então a janela de risco é só o horário de revisão (minutos 0–4 e 30–34).
+9. **Lacunas de cobertura regional**: sem RSS utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018; o do governo de SP está atrás de desafio anti-robô e não será contornado).
+10. **GDELT não validado** (429 persistente, consulta vazia) e **X nunca chamado ao vivo** (sem token). Reddit aguarda aprovação. Raspagem de redes sociais e captcha: não implementados.
+11. **Limiares heurísticos** (frescor, 25% de semelhança, importância) validados em 1 coleta real e em testes; precisam de recalibração com semanas de dados. O backtest da previsão é **sintético**: prova a mecânica, não a acurácia.
+12. **Aviso oficial vigente esfria** (datado pelo início): renovar o frescor enquanto estiver em vigor é próximo passo.
 8. **Sem rate limiting** nem WAF; sem staging separado; sem painel admin protegido por Cloudflare Access (as rotas `/api/admin/*` usam o mesmo token do Engine).
 
 ## 8. Roadmap do backend (ordem sugerida)
@@ -109,6 +120,10 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
 | 7 | `/api/search`, `/api/timeline` | a fazer |
+| 9 | **Câmeras ao vivo**: contrato `/api/cameras` + Worker + front; via Windy (precisa de chave gratuita, atribuição e link) ou autorização de órgãos (`docs/sources/CAMERAS.md`) | a fazer, depende da chave |
+| 10 | **Revisão de termos** das ~95 fontes ativas (`terms_url`, `reviewed_by`) | a fazer (pessoa) |
+| 11 | **Indicadores antecedentes** entre categorias (ex.: aviso de chuva → alagamento/trânsito), adotados só se melhorarem o Brier no backtest; sazonalidade hora × dia da semana | a fazer |
+| 12 | Frescor renovado enquanto aviso oficial estiver vigente; fontes regionais para SP/RJ/MG/PE/CE | a fazer |
 | 8 | Reddit e X (APIs oficiais; nunca confirmam sozinhos) | código pronto (política e clima por UF); Reddit exige pedido de acesso (Responsible Builder Policy), X exige plano pago com teto de gasto; secrets → piloto automático |
 | 9 | Fase 3: câmeras públicas autorizadas, trânsito (Waze só por parceria), visão computacional onde permitido | futuro |
 | 10 | Robustez: Queues, KV (cache), rate limiting, staging, observabilidade | conforme a carga |
@@ -151,11 +166,19 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 - Dúvida de arquitetura → abrir um ADR curto em `docs/decisions/` antes de codar.
 
 ## 9. Decisões registradas
-`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (X pela API oficial e filtro de importância). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui.
+`docs/decisions/0001` (monorepo React + Worker + Python) · `0002` (o PULSO prevê qualquer tema, como probabilidade calibrada) · `0003` (Reddit/X como sensores sociais temáticos, nunca confirmação) · `0004` (eventos separados por UF; avisos do INMET). Decisão nova relevante? Crie `docs/decisions/NNNN-titulo.md` e cite aqui. · `0005` (filtro de importância e fontes abertas GDELT/Mastodon/USGS) · `0006` (fontes em escala, frescor por categoria e qualidade de eventos).
 
 ## 10. Registro de mudanças (acrescente no topo)
-- **2026-10-03** — PR #11 em produção (previsões v1, correção do "para"=Pará, endpoints do front). Migration `0004`: pico por evento (`peak_alert_level/peak_pulse/peak_at`); `GET /api/history`. Em desenvolvimento por outra pessoa (não commitado): coletor do X (`collectors/social/x_api.py`), desligado por padrão.
-- **2026-10-02** — Coletor do X pela API oficial (`collectors/social/x_api.py`, desligado em `sources.json` até haver `X_BEARER_TOKEN`) e filtro de importância (`processing/importance.py`): só desastre/vítimas/emergência entram, fofoca é descartada. Reddit e Bluesky ainda pendentes. Ver ADR 0003.
+- **2026-10-03** — Verificação geral e expansão. ~110 fontes (103 ativas) com leitor RSS tolerante (gzip, RDF, XML sujo) e coleta paralela; frescor por categoria no Pulso; agrupamento sem encadeamento, estado do evento por maioria e publicação criteriosa (1793 → 466 eventos); título decide a categoria; vocabulário ampliado (saúde, economia, infraestrutura, trânsito, segurança, clima, internacional, tecnologia, eventos) com régua de regressão de manchetes; previsão de volume por categoria e backtest; catálogo gerado; lista de câmeras (`CAMERAS.md`). ADR 0006. GDELT não validado; raspagem/captcha não implementados.
+- **2026-10-02** — Filtro de importância (`processing/importance.py`: só desastre/vítimas/emergência; descarta fofoca e notícia de outro país) e coletores GDELT, Mastodon (hashtags) e USGS, todos desligados em `sources.json` até a revisão do protocolo. X e INMET já vinham da `art` (ADR 0003/0004) e foram mantidos; meu coletor duplicado foi removido. Ver ADR 0005.
+- **2026-10-03** — Estados mais coesos. Geo: siglas de UF com contexto ("Ariquemes, RO", "em SP", "(MG)") e ~150 cidades do interior (precisão `STATE`, nome em `city`; nomes ambíguos como Santos/Contagem/Suzano só com contexto). Coleta real: eventos sem UF 104→92, UFs com notícia 22→24; o restante é nacional/internacional de fato. Front: filtro de estado no feed (clicar numa UF no mapa/lista recorta o feed; opção "nacional/sem UF"), rótulo "nacional"/"internacional" no lugar de "localizando…". Pendência conhecida: evento órfão duplicado após fusão de clusters (ex.: dois "TSE revoga liminar de Garotinho").
+- **2026-10-03** — Front (Feed OSINT): paginação numerada (10 por página) no lugar da rolagem infinita; ordem sempre por nível (N5→N1) e depois recência/Pulso; N2+ destacado pela cor do nível; alertas N3+ fixos no topo em todas as páginas; evento clicado no mapa leva ao feed e abre a página onde ele está. Verificado no navegador (Playwright) com dados de produção.
+- **2026-10-03** — PR #14 mergeado e em produção: `/api/health` com 8 fontes ONLINE (Agência Senado, Agência Câmara e INMET novos); painel "Fontes ativas" do front sincronizado com `config/sources.json` via `catalog_complete`. PR #12 (Reddit/X, INMET, geo por UF, ADRs 0003/0004) também em produção.
+- **2026-10-03** — Ativadas Agência Senado, Agência Câmara e INMET (8 fontes). Ingestão com `catalog_complete` (contrato aditivo): a coleta normal manda o catálogo de fontes ativas e o Worker desativa as ausentes, então `/api/health` e o painel do front acompanham o `config/sources.json`. Verificado com Worker local + D1 (remover, lote parcial, reativar).
+- **2026-10-03** — Clima e política por estado: coletor `inmet` (avisos oficiais, só Perigo/Grande Perigo, um sinal por UF), `reddit-clima`/`x-clima`, comunidades regionais do Reddit com UF, geo com gentílicos/assembleias/TRE-UF, clusterização não junta UFs diferentes da mesma fonte, piloto das fontes oficiais no `collect.yml`. ADR 0004.
+- **2026-10-03** — RSS da Agência Senado e da Agência Câmara propostos como fontes `OFFICIAL` de política (fichas em `SOURCES.md`). Reddit: confirmado que todo acesso à API exige aprovação prévia; RSS do Reddit descartado (robots.txt).
+- **2026-10-03** — Coletores Reddit e X (desativados) focados em política BR: busca temática, filtro `categories`, geo, título sem links/@menções, 429/401/403 mapeados na saúde, `interval_s` respeitado (`is_due`), `start_time` no X, modo piloto `--source`, secrets no `collect.yml`, novas keywords de política/protesto. ADR 0003. Piloto automático no `collect.yml` (`--respect-interval`; log só com contagens).
+- **2026-10-03** — PR #11 em produção (previsões v1, correção do "para"=Pará, endpoints do front). Migration `0004`: pico por evento (`peak_alert_level/peak_pulse/peak_at`); `GET /api/history`.
 - **2026-10-03** — Revisão do front: `docs/FRONTEND_DATA_MAP.md`. **Bug de geolocalização corrigido** (a preposição "para" virava o estado do Pará; também Acre, Espírito Santo e Belém de Israel) e sinais gravados são regeolocalizados a cada rodada. `delta_2h` só com ponto real. Novos endpoints públicos `/api/pulse/history`, `/api/pulse/states`, `/api/stats`.
 - **2026-10-03** — Previsões v1: tabela `forecasts` (migration 0003), `/api/forecasts*`, previsor NOWCAST `pulse_empirical_delta`, resolução automática e Brier, previsão imutável. Rotas internas `/api/admin/pulse-history` e `/api/admin/forecasts/open`.
 - **2026-10-03** — Agrupamento com estado (ids de evento estáveis, rodada estável reenvia 0 sinais); `GET /api/admin/signals`; sinais isolados também são gravados; retenção de 90 dias para sinais. Cron da Cloudflare confirmado em produção (coleta a cada 5 min). Token `GH_DISPATCH_TOKEN` vence em 31/12/2026.

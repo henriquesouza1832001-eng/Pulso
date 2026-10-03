@@ -62,3 +62,26 @@ def test_level5_requires_official_and_multiple_sources():
 def test_social_only_never_exceeds_level3():
     s = stats(independent_sources=50, source_classes=frozenset({"SOCIAL"}), official_confirmation=True)
     assert alert_level(100, 100, s) <= 3
+
+
+def test_impactful_now_beats_equally_impactful_12h_ago():
+    from pulso_engine.scoring.pulse import freshness
+    kw = dict(severity=90, independent_sources=4, source_classes=frozenset({"OFFICIAL", "NEWS_HIGH"}),
+              official_confirmation=True, velocity_per_hour=20, persistence_min=120)
+    now_score, _ = pulse_score(stats(newest_age_min=5, **kw))
+    old_score, _ = pulse_score(stats(newest_age_min=12 * 60, **kw))
+    assert now_score - old_score >= 25  # a diferença é grande, não cosmética
+    assert freshness(stats(newest_age_min=5)) > 0.95 and freshness(stats(newest_age_min=10_000)) >= 0.25
+
+
+def test_traffic_goes_stale_faster_than_health():
+    from pulso_engine.scoring.pulse import HALF_LIFE_BY_CATEGORY, freshness
+    age = 6 * 60
+    traffic = freshness(stats(newest_age_min=age, half_life_min=HALF_LIFE_BY_CATEGORY["TRAFFIC"]))
+    health = freshness(stats(newest_age_min=age, half_life_min=HALF_LIFE_BY_CATEGORY["HEALTH"]))
+    assert traffic < health
+
+
+def test_breakdown_still_sums_with_freshness():
+    score, breakdown = pulse_score(stats(newest_age_min=300, independent_sources=5, anomaly=0.8))
+    assert score == sum(b["points"] for b in breakdown)
