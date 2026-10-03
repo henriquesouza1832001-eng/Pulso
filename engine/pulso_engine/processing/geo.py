@@ -56,6 +56,7 @@ _SPECIAL_STATES: dict[str, tuple[str, int]] = {
 # Cidade cujo nome homônimo existe fora do Brasil: ignorada se o texto indicar o outro contexto.
 _CITY_EXCLUDE: dict[str, re.Pattern[str]] = {
     "Belém": re.compile(r"cisjord|israel|palestin|gaza|jesus|presepio|natividade"),
+    "Marília": re.compile(r"mendonca"),  # "Marília Mendonça" é a cantora, não a cidade
 }
 
 # (padrão, lugar, aplica ao texto original?)
@@ -134,7 +135,7 @@ def uf_from_state_name(name: str) -> str | None:
 _INTERIOR = {
     "SP": "Campinas Guarulhos Osasco Sorocaba Ribeirão_Preto São_José_dos_Campos São_Bernardo_do_Campo Santo_André "
           "Mauá Diadema Carapicuíba Mogi_das_Cruzes São_José_do_Rio_Preto Jundiaí Piracicaba Bauru Praia_Grande "
-          "Guarujá Taubaté Limeira Barueri Presidente_Prudente Araraquara Marília *Santos *Franca *Suzano",
+          "Guarujá Taubaté Limeira Barueri Presidente_Prudente Araraquara *Marília *Santos *Franca *Suzano",
     "RJ": "Niterói Duque_de_Caxias Nova_Iguaçu São_Gonçalo Belford_Roxo Campos_dos_Goytacazes Petrópolis "
           "Volta_Redonda Macaé Angra_dos_Reis Cabo_Frio Teresópolis Nova_Friburgo",
     "MG": "Uberlândia Juiz_de_Fora Betim Montes_Claros Ribeirão_das_Neves Uberaba Governador_Valadares Ipatinga "
@@ -144,9 +145,9 @@ _INTERIOR = {
     "RS": "Caxias_do_Sul Santa_Maria Gravataí Novo_Hamburgo Passo_Fundo São_Leopoldo *Canoas *Pelotas",
     "BA": "Feira_de_Santana Vitória_da_Conquista Camaçari Itabuna Ilhéus Lauro_de_Freitas Juazeiro_(BA) Barreiras Porto_Seguro",
     "CE": "Juazeiro_do_Norte Caucaia Maracanaú Crato *Sobral",
-    "PE": "Jaboatão_dos_Guararapes Olinda Caruaru Petrolina Garanhuns Cabo_de_Santo_Agostinho",
-    "PB": "Campina_Grande Patos Santa_Rita_(PB)", "RN": "Mossoró Parnamirim Caicó", "AL": "Arapiraca",
-    "SE": "Nossa_Senhora_do_Socorro Lagarto_(SE)", "PI": "Parnaíba Picos", "MA": "Caxias_(MA) Timon *Imperatriz",
+    "PE": "Jaboatão_dos_Guararapes *Olinda Caruaru Petrolina Garanhuns Cabo_de_Santo_Agostinho",
+    "PB": "Campina_Grande *Patos Santa_Rita_(PB)", "RN": "Mossoró Parnamirim Caicó", "AL": "Arapiraca",
+    "SE": "Nossa_Senhora_do_Socorro Lagarto_(SE)", "PI": "Parnaíba *Picos", "MA": "Caxias_(MA) *Timon *Imperatriz",
     "PA": "Ananindeua Santarém Marabá Parauapebas Castanhal Altamira", "AM": "Parintins Itacoatiara",
     "RO": "Ariquemes Ji-Paraná Vilhena Cacoal", "AC": "Cruzeiro_do_Sul_(AC)", "TO": "Araguaína Gurupi",
     "GO": "Aparecida_de_Goiânia Anápolis Rio_Verde Luziânia Águas_Lindas_de_Goiás", "MT": "Várzea_Grande Rondonópolis Sinop",

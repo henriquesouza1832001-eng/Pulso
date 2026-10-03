@@ -59,6 +59,6 @@ Os limiares são ponto de partida: calibrar com dados reais (ADR a cada mudança
 ## Anomalia e baseline (implementado)
 `engine/pulso_engine/baseline.py` e `anomaly.py`. O histórico vem de `series` (contagens de 5 min). O baseline é a média e o desvio exponencialmente ponderados (EWMA) das contagens **por hora** do mesmo escopo e categoria, excluindo a hora corrente. Anomalia = `z / 4` limitada a 0–1, com `z` em desvios acima do normal.
 
-Regra de honestidade: com menos de **12 horas** de histórico o baseline é **inválido** e a anomalia vale 0. O sistema nunca afirma que algo é anormal sem saber o que é normal. A anomalia entra no Pulso com peso 15 e aparece no "POR QUE N?".
+Regra de honestidade: com menos de **12 horas** de histórico o baseline é **inválido** e a anomalia vale 0. Também é inválido quando o histórico é **esparso**: é preciso haver sinal em ao menos 6 horas e em 1/3 das horas, porque a hora sem linha vira 0 e um 0 pode ser calmaria **ou** lacuna de coleta (o sistema não distingue). Um "normal" feito quase só de zeros faria 4 sinais parecerem uma anomalia enorme. O sistema nunca afirma que algo é anormal sem saber o que é normal. A anomalia entra no Pulso com peso 15 e aparece no "POR QUE N?".
 
 Limitações conhecidas: o baseline ainda não separa hora do dia e dia da semana (precisa de semanas de dados); e a clusterização é recalculada a cada rodada, então o `event_id` de uma história pode mudar quando a notícia mais antiga sai dos feeds (a solução é clusterização com estado, a próxima etapa).

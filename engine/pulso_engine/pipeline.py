@@ -97,9 +97,12 @@ def regeolocate(s: Signal, source_geo: frozenset[str] = frozenset()) -> Signal:
     Se o texto não cita lugar e a localização do sinal veio da FONTE (estado de um feed regional, coordenadas do INPE, da
     Defesa Civil, do USGS...), ela é mantida: apagá-la faria o lugar do evento mudar de um ciclo para o outro. Para as demais
     fontes, sem lugar no texto a localização antiga (possivelmente errada) é limpa."""
-    place = locate(f"{s.title}. {s.text or ''}")
-    if place is None and s.source_id in source_geo:
+    if s.source_id in source_geo:
+        # A geografia veio da FONTE (dado estruturado: INPE, Defesa Civil, USGS, InfoDengue; ou o estado de um feed
+        # regional) e já foi decidida na coleta. Reaplicar o texto só a trocaria por um centroide e faria o lugar do
+        # evento mudar de um ciclo para o outro (sinal fresco vs. gravado).
         return s
+    place = locate(f"{s.title}. {s.text or ''}")
     return replace(
         s,
         latitude=place.lat if place else None, longitude=place.lon if place else None,
@@ -116,6 +119,30 @@ def choose_event_id(cluster, prior_ids: dict[str, str]) -> str | None:
         return None
     best = max(counts.values())
     return min(i for i, n in counts.items() if n == best)
+
+
+def assign_event_ids(clusters: list, prior_ids: dict[str, str]) -> list[str | None]:
+    """Um id de evento por grupo, SEM repetição no ciclo. Quando um evento gravado se divide (ex.: a trava de estados
+    separa alertas que antes estavam juntos), vários grupos herdariam o mesmo id: viraria o mesmo evento duas vezes no
+    lote e o Pulso contaria em dobro. O id fica com o grupo que mais tem membros dele (empate: o de sinal mais antigo);
+    os demais ganham id novo (None: o `build_event` gera a partir do primeiro sinal)."""
+    preferred = [choose_event_id(c, prior_ids) for c in clusters]
+    out: list[str | None] = list(preferred)
+    by_id: dict[str, list[int]] = {}
+    for i, eid in enumerate(preferred):
+        if eid is not None:
+            by_id.setdefault(eid, []).append(i)
+    for eid, idxs in by_id.items():
+        if len(idxs) < 2:
+            continue
+        def key(i: int) -> tuple[int, float]:
+            members = sum(1 for s in clusters[i].signals if prior_ids.get(s.hash) == eid)
+            return (-members, min(s.timestamp for s in clusters[i].signals).timestamp())
+        keeper = min(idxs, key=key)
+        for i in idxs:
+            if i != keeper:
+                out[i] = None
+    return out
 
 
 def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now: datetime) -> float:
@@ -139,7 +166,10 @@ def is_due(src: dict, now: datetime, tick_s: int = 300) -> bool:
     Sem estado: a janela é derivada do relógio (ex.: 900 s → rodadas de :00, :15, :30, :45).
     """
     every = max(1, int(src.get("interval_s", tick_s)) // tick_s)
-    return int(now.timestamp()) // tick_s % every == 0
+    # Fonte muito lenta (>= 1 h): janela de DUAS rodadas. O agendador do GitHub atrasa e, se a única rodada da janela
+    # escorregasse para a seguinte, uma fonte de 6 h ficaria 6 h sem rodar. Rodar duas vezes é inofensivo (idempotente).
+    window = 2 if every >= 12 else 1
+    return int(now.timestamp()) // tick_s % every < window
 
 
 def run_once(
@@ -210,14 +240,17 @@ def run_once(
 
     history = history or []
     events: list[dict] = []
+    publishable = []
     for cluster in cluster_signals(list(all_signals.values())):
         if not is_publishable(cluster):
             for s in cluster.signals:
                 object.__setattr__(s, "event_id", None)
             continue
+        publishable.append(cluster)
+    for cluster, event_id in zip(publishable, assign_event_ids(publishable, prior_ids)):
         events.append(build_event(
             cluster, now, cluster_anomaly(cluster, list(all_signals.values()), history, now),
-            event_id=choose_event_id(cluster, prior_ids), alert_sources=alert_sources,
+            event_id=event_id, alert_sources=alert_sources,
         ))
 
     # Só enviamos o que é novo ou mudou de evento; o resto já está gravado.

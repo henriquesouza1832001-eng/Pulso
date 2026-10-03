@@ -49,9 +49,11 @@ BR_HINTS = re.compile(r"(?<![a-z0-9])(?:brasil|brasileir[oa]s?|pais inteiro|todo
 # Países e regiões que, citados sem nenhum lugar do Brasil, indicam notícia de fora do escopo.
 FOREIGN = (
     "india", "nepal", "paquistao", "bangladesh", "china", "japao", "filipinas", "indonesia", "eua",
-    "estados unidos", "mexico", "argentina", "chile", "peru", "colombia", "venezuela", "portugal", "angola",
-    "mocambique", "europa", "italia", "espanha", "franca", "alemanha", "russia", "ucrania", "israel", "gaza",
-    "ira", "turquia", "africa", "australia", "canada",
+    "estados unidos", "mexico", "argentina", "chile", "colombia", "venezuela", "portugal", "angola",
+    "mocambique", "europa", "italia", "espanha", "alemanha", "russia", "ucrania", "israel", "gaza",
+    "turquia", "africa", "australia", "canada",
+    # Ambíguos em português ("a ira", "o peru", "Franca/SP"): só com a preposição que indica o país.
+    "no ira", "do ira", "no peru", "peruano", "peruana", "na franca", "da franca",
 )
 _FOREIGN = re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(t) for t in FOREIGN) + r")(?![a-z0-9])")
 
