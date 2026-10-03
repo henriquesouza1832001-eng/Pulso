@@ -5,6 +5,7 @@ import { pulse } from "./routes/pulse";
 import { events } from "./routes/events";
 import { map } from "./routes/map";
 import { ingest } from "./routes/ingest";
+import { admin } from "./routes/admin";
 import type { AppEnv } from "./env";
 
 const app = new Hono<AppEnv>();
@@ -19,6 +20,7 @@ app.route("/api/pulse", pulse);
 app.route("/api/events", events);
 app.route("/api/map", map);
 app.route("/api/ingest", ingest);
+app.route("/api/admin", admin);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.onError((err, c) => {

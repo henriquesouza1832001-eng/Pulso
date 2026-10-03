@@ -19,11 +19,13 @@ events.get("/", async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT ${EVENT_COLUMNS} FROM events
 		 WHERE resolved_at IS NULL
+		   AND updated_at >= ?4
 		   AND (?1 IS NULL OR category = ?1)
 		   AND (?2 IS NULL OR state = ?2)
 		 ORDER BY pulse DESC, updated_at DESC LIMIT ?3`,
 	)
-		.bind(category ?? null, state?.toUpperCase() ?? null, limit)
+		// Evento sem atividade há mais de 24 h sai da lista ativa (o histórico continua consultável por id).
+		.bind(category ?? null, state?.toUpperCase() ?? null, limit, new Date(Date.now() - 24 * 3600_000).toISOString())
 		.all<EventRow>();
 	c.header("Cache-Control", cacheControl(5));
 	return c.json({ events: results.map(toEvent) });

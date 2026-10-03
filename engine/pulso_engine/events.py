@@ -27,7 +27,7 @@ def dominant_category(signals: list[Signal]) -> str:
     return counts.most_common(1)[0][0] if counts else "OTHER"
 
 
-def stats_for(signals: list[Signal], now: datetime) -> EventStats:
+def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> EventStats:
     category = dominant_category(signals)
     sources = {s.source_id for s in signals}
     times = [s.timestamp for s in signals]
@@ -43,7 +43,7 @@ def stats_for(signals: list[Signal], now: datetime) -> EventStats:
         newest_age_min=max(0.0, (now - max(times)).total_seconds() / 60),
         persistence_min=(max(times) - min(times)).total_seconds() / 60,
         velocity_per_hour=float(last_hour),
-        anomaly=0.0,  # baseline histórico ainda não existe: não inventamos anomalia
+        anomaly=anomaly,  # 0 enquanto o baseline não tiver histórico suficiente (não se inventa anomalia)
         geo_reach=0.0,
         official_confirmation=any(s.source_class == "OFFICIAL" for s in signals),
         geo_consistency=1.0 if len({s.state for s in signals if s.state}) <= 1 else 0.3,
@@ -66,9 +66,9 @@ def is_publishable(cluster: Cluster) -> bool:
     return dominant_category(sigs) != "OTHER" or len({s.source_id for s in sigs}) >= 2
 
 
-def build_event(cluster: Cluster, now: datetime) -> dict:
+def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
-    stats = stats_for(sigs, now)
+    stats = stats_for(sigs, now, anomaly)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
     level = alert_level(score, conf, stats)
