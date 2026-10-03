@@ -10,7 +10,10 @@
 		// Origens permitidas no CORS (separadas por vírgula). Não é segredo.
 		"ALLOWED_ORIGINS": "http://localhost:5173,https://pulso-web.henriquesouza.workers.dev",
 		// Repositório cujo workflow "collect.yml" o Cron Trigger aciona. Não é segredo.
-		"GITHUB_REPO": "henriquesouza1832001-eng/Pulso"
+		"GITHUB_REPO": "henriquesouza1832001-eng/Pulso",
+		// Banco ativo: "turso" usa o Turso (lib/turso.ts, segredos TURSO_URL/TURSO_TOKEN); qualquer outro valor usa o D1.
+		// Ligado em 2026-10-03: o D1 estourou o limite diário de escrita (ADR 0008). Para voltar ao D1, apague esta linha.
+		"DB_BACKEND": "turso"
 	},
 	// A cada 5 min a Cloudflare aciona a coleta (mais pontual que o agendador do GitHub).
 	"triggers": { "crons": ["*/5 * * * *"] },
