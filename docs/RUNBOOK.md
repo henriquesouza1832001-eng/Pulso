@@ -14,7 +14,8 @@ Outras leituras públicas: `GET /api/stats` (eventos ativos, sinais em 2 h e 24 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | "coleta parada há N min" | Cron da Cloudflare não disparou, workflow `Coleta` falhou ou o token do GitHub venceu | Abrir a aba Actions > `Coleta`; ver o último erro. Rodar `Run workflow` manualmente. `GH_DISPATCH_TOKEN` vence em 31/12/2026. |
-| `Coleta` falha com HTTP 400 `invalid_batch` | O Worker recusou o lote (limite do esquema, ex.: fontes por lote) | Ver o `detail` da resposta; o Worker e o Engine precisam estar na mesma versão (o deploy roda a cada merge na `main`). |
+| `Coleta` falha com `PushError ... HTTP 400 invalid_batch` | O Worker recusou o lote (limite do esquema, ex.: fontes por lote) | A própria mensagem do erro traz o motivo (`detail`). O Worker e o Engine precisam estar na mesma versão (o deploy roda a cada merge na `main`). |
+| `Coleta` falha uma vez com HTTP 5xx / timeout e some na rodada seguinte | O Worker estava trocando de versão (deploy) ou sobrecarregado | Normal. O Engine já repete até 2 vezes (espera de 2 s e 5 s) e a ingestão é idempotente, então a rodada seguinte se corrige sozinha. Só investigue se persistir por mais de 3 rodadas. |
 | Fonte OFFLINE | Site fora do ar, bloqueio, feed mudou de endereço | `py -m pulso_engine.audit --source <id>`; se o feed morreu, desligue em `config/sources.json` (`enabled: false`). Não contorne bloqueio. |
 | Fonte `RATE_LIMITED` / `AUTH_ERROR` | Cota estourada / credencial inválida | Não insistir. Conferir cota ou rotacionar o secret (`docs/COLLECTION_PROTOCOL.md` §5 e §11). |
 | Fontes novas aparecem `UNKNOWN` | Normal por até 30 min: a saúde das fontes ONLINE só é gravada a cada 30 min (minutos 0 a 4 e 30 a 34) | Esperar o próximo horário de revisão. |
