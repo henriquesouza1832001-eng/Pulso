@@ -22,7 +22,7 @@ function countBy(items: CameraFeed[], key: (c: CameraFeed) => string): [string, 
 }
 
 /** Câmeras reais: filtro por estado e cidade + paginação. Só os cartões da página atual existem (e ficam ativos). */
-export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
+export function CameraFeeds({ feeds, focusUf = null }: { feeds: CameraFeed[]; focusUf?: string | null }) {
 	const [uf, setUf] = useState("");
 	const [city, setCity] = useState("");
 	const [page, setPage] = useState(0);
@@ -42,6 +42,15 @@ export function CameraFeeds({ feeds }: { feeds: CameraFeed[] }) {
 	const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
 	const cur = Math.min(page, pages - 1); // a lista encolheu: fica na última página válida
 	const shown = filtered.slice(cur * PAGE, (cur + 1) * PAGE);
+
+	// Estado escolhido no topo do painel ou no mapa também recorta as câmeras (os seletores daqui refinam).
+	// Reage à troca do estado em foco e ao catálogo ficar pronto (não a cada recarga, para não apagar a escolha manual).
+	const ready = ufs.length > 0;
+	useEffect(() => {
+		setUf(focusUf && ufs.some(([u]) => u === focusUf) ? focusUf : "");
+		setCity("");
+		setPage(0);
+	}, [focusUf, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const reset = () => {
 		setUf("");

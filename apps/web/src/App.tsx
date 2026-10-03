@@ -241,7 +241,7 @@ export function App() {
 					title="câmeras autorizadas"
 					desc="somente sensores ambientais públicos de vias e praças — nunca vigilância de pessoas"
 				>
-					<Cameras cameras={DEMO ? DEMO_CAMERAS : []} feeds={camsPoll.data?.cameras ?? []} />
+					<Cameras cameras={DEMO ? DEMO_CAMERAS : []} feeds={camsPoll.data?.cameras ?? []} focusUf={filters.uf} />
 				</Section>
 
 				<Section
