@@ -175,7 +175,11 @@ export function App() {
 								onSelect(id);
 								document.getElementById("feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
 							}}
-							onClose={() => setUfPanel(null)}
+							onClose={() => {
+								// fechar o painel do estado também tira o recorte dele (volta para todos os estados)
+								if (filters.uf === ufPanel) setFeedUf(null);
+								setUfPanel(null);
+							}}
 						/>
 					)}
 

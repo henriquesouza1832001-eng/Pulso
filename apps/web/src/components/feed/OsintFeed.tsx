@@ -3,6 +3,7 @@ import type { PulsoEvent } from "@pulso/shared";
 import { ago, brTime, CATEGORY_PT, evtId } from "../../lib/format";
 import { identicon } from "../../lib/identicon";
 import { LevelTag } from "../ui/LevelTag";
+import { Pager } from "../ui/Pager";
 
 /**
  * Feed OSINT — timeline operacional densa no molde do pizzint:
@@ -255,6 +256,9 @@ export function OsintFeed({
 								{u} · {n}
 							</option>
 						))}
+						{/* estado escolhido sem evento (topo/mapa) também aparece: senão o seletor mostraria "TODOS" com o
+						    filtro ainda ativo, e escolher "TODOS" não dispararia nada (não daria para voltar) */}
+						{uf && uf !== "BR" && !ufCounts.some(([u]) => u === uf) && <option value={uf}>{uf} · 0</option>}
 						<option value="BR">NACIONAL/SEM UF · {nationalCount}</option>
 					</select>
 				</label>
@@ -284,35 +288,20 @@ export function OsintFeed({
 			)}
 
 			{shown.length === 0 && pinned.length === 0 ? (
-				<p className="state">AGUARDANDO COLETA · NENHUM RELATO COM ESSE FILTRO</p>
+				<p className="state">
+					{uf ? `NENHUM RELATO EM ${uf === "BR" ? "NACIONAL" : uf} AGORA · ` : "AGUARDANDO COLETA · NENHUM RELATO COM ESSE FILTRO"}
+					{uf && (
+						<button className="osf-ufchip" onClick={() => onUfChange(null)}>
+							VER TODOS ✕
+						</button>
+					)}
+				</p>
 			) : (
 				<div className="osf-list" ref={listRef}>
 					{shown.map(renderItem)}
 				</div>
 			)}
-			{pages > 1 && (
-				<nav className="osf-pages" aria-label="páginas do feed">
-					<button disabled={curPage === 0} onClick={() => setPage(curPage - 1)} aria-label="página anterior">
-						‹
-					</button>
-					{Array.from({ length: pages }, (_, i) => (
-						<button
-							key={i}
-							className={i === curPage ? "on" : ""}
-							aria-current={i === curPage ? "page" : undefined}
-							onClick={() => setPage(i)}
-						>
-							{i + 1}
-						</button>
-					))}
-					<button disabled={curPage === pages - 1} onClick={() => setPage(curPage + 1)} aria-label="próxima página">
-						›
-					</button>
-					<span className="dim">
-						{curPage * PAGE + 1}–{Math.min((curPage + 1) * PAGE, rest.length)} de {rest.length}
-					</span>
-				</nav>
-			)}
+			<Pager page={curPage} pages={pages} onPage={setPage} pageSize={PAGE} total={rest.length} label="páginas do feed" />
 		</div>
 	);
 }

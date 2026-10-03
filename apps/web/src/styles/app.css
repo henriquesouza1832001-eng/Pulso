@@ -452,7 +452,6 @@
 	.feedside .brief-foot { margin-top: auto; padding-top: 5px; }
 }
 .camq { margin-top: 8px; font-size: 9.5px; letter-spacing: 0.08em; }
-.osf-pgn { padding: 0 6px; font-size: 10px; color: var(--tx1); letter-spacing: 0.06em; }
 
 /* dossiê do evento selecionado */
 .evdetail-wrap { margin-top: 20px; border: 1px solid var(--ln1); background: var(--bg1); padding: 16px 20px; }
@@ -603,3 +602,4 @@
 	.osf-place { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 	.osf-time, .osf-ago { white-space: nowrap; }
 }
+.osf-gap { min-width: 18px; text-align: center; color: var(--tx2); font-size: 10px; }

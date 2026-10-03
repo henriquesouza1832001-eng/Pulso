@@ -2,6 +2,7 @@ import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from "
 import type { PulsoEvent } from "@pulso/shared";
 import { ago, CATEGORY_PT } from "../../lib/format";
 import { LevelTag } from "../ui/LevelTag";
+import { Pager } from "../ui/Pager";
 
 /**
  * Briefings: análise curta editorial, sempre ligada às fontes e ao evento.
@@ -74,22 +75,15 @@ export function Briefings({
 					</article>
 				))}
 			</div>
-			{pages > 1 && (
-				<nav className="osf-pages" aria-label="páginas dos briefings">
-					<button disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="página anterior">
-						‹
-					</button>
-					<span className="osf-pgn">
-						{cur + 1}/{pages}
-					</span>
-					<button disabled={cur === pages - 1} onClick={() => setPage(cur + 1)} aria-label="próxima página">
-						›
-					</button>
-					<span className="dim">
-						{cur * pageSize + 1}–{Math.min((cur + 1) * pageSize, list.length)} de {list.length}
-					</span>
-				</nav>
-			)}
+			<Pager
+				page={cur}
+				pages={pages}
+				onPage={setPage}
+				pageSize={pageSize}
+				total={list.length}
+				label="páginas dos briefings"
+				maxButtons={9}
+			/>
 		</>
 	);
 }

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CameraFeed } from "@pulso/shared";
 import { fold } from "../../lib/text";
+import { Pager } from "../ui/Pager";
 
 const UF_NAME: Record<string, string> = {
 	AC: "acre", AL: "alagoas", AP: "amapa", AM: "amazonas", BA: "bahia", CE: "ceara", DF: "distrito federal",
@@ -206,22 +207,7 @@ export function CameraFeeds({
 					))}
 				</div>
 			)}
-			{pages > 1 && (
-				<nav className="osf-pages" aria-label="páginas das câmeras">
-					<button disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="página anterior">
-						‹
-					</button>
-					<span className="osf-pgn">
-						{cur + 1}/{pages}
-					</span>
-					<button disabled={cur === pages - 1} onClick={() => setPage(cur + 1)} aria-label="próxima página">
-						›
-					</button>
-					<span className="dim">
-						{cur * PAGE + 1}–{Math.min((cur + 1) * PAGE, filtered.length)} de {filtered.length}
-					</span>
-				</nav>
-			)}
+			<Pager page={cur} pages={pages} onPage={setPage} pageSize={PAGE} total={filtered.length} label="páginas das câmeras" />
 		</div>
 	);
 }
