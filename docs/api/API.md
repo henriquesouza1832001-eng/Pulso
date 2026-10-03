@@ -28,6 +28,7 @@ Base: Worker `apps/worker`. Contratos de tipo: `packages/shared/src/contracts.ts
 | `GET /api/pulse/states` | Pulso mais recente de cada UF com atividade (snapshots com mais de 30 min são descartados) | 15 s |
 | `GET /api/history?min_level=3&days=30&limit=20` | Histórico de inteligência: momentos de nível alto. `entries[]` mistura `kind: "event"` (pico do evento: `level`, `peak_pulse`, `date`) e `kind: "national"` (episódio do Pulso nacional: início, fim, duração, pico). Usa o PICO guardado, não o nível atual (que decai) | 60 s |
 | `GET /api/stats` | Contadores do indicador nacional com a janela correta (`signals_2h`, `active_events`, `states_active`, `alerts`, fontes online) | 15 s |
+| `GET /api/cameras` | Catálogo de câmeras (`CameraFeed[]`): `id`, `label`, `city`, `state` (UF ou `BR`), `provider`, `attribution`, `page_url` (clique leva à origem), `preview` (`{type: "iframe"|"hls", url}` do PRÓPRIO provedor, ou `null` = só cartão com link), `lat`/`lon` (ou `null`). Estático, sem banco; o PULSO é só o placeholder e nunca retransmite o vídeo | 300 s |
 
 `delta_2h` em `/api/pulse/*` só é calculado com um ponto real a ±20 min de 2 h atrás; caso contrário vem `null`.
 

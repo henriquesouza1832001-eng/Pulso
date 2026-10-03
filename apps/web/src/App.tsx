@@ -33,6 +33,7 @@ export function App() {
 	const pulse = usePolling(api.pulseBR, 15_000);
 	const eventsPoll = usePolling(api.events, 15_000);
 	const health = usePolling(api.health, 30_000);
+	const camsPoll = usePolling(api.cameras, 600_000);
 
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [ufPanel, setUfPanel] = useState<string | null>(null);
@@ -214,7 +215,7 @@ export function App() {
 					title="câmeras autorizadas"
 					desc="somente sensores ambientais públicos de vias e praças — nunca vigilância de pessoas"
 				>
-					<Cameras cameras={DEMO ? DEMO_CAMERAS : []} />
+					<Cameras cameras={DEMO ? DEMO_CAMERAS : []} feeds={camsPoll.data?.cameras ?? []} />
 				</Section>
 
 				<Section

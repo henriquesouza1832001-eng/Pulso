@@ -73,3 +73,25 @@ class EventStats:
     duplicate_ratio: float = 0.0  # 0-1
     half_life_min: float = 90.0  # meia-vida do frescor (depende da categoria; ver scoring/pulse.py)
     extra: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CameraPreview:
+    """Espelho de `CameraPreview` em packages/shared/src/contracts.ts: prévia servida pelo PRÓPRIO provedor."""
+    type: str  # "iframe" | "hls"
+    url: str
+
+
+@dataclass(frozen=True)
+class CameraFeed:
+    """Espelho de `CameraFeed` (GET /api/cameras). `preview=None` = só cartão-placeholder com o link de origem."""
+    id: str
+    label: str
+    city: str
+    state: str  # UF, ou "BR" para painéis nacionais
+    provider: str
+    attribution: str
+    page_url: str
+    preview: CameraPreview | None = None
+    lat: float | None = None
+    lon: float | None = None

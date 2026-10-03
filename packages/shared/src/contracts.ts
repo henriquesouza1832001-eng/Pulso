@@ -177,6 +177,26 @@ export interface IngestBatch {
 	forecasts?: Forecast[];
 }
 
+/** Prévia ao vivo de uma câmera, servida pelo PRÓPRIO provedor (o PULSO não copia nem retransmite o vídeo). */
+export interface CameraPreview {
+	type: "iframe" | "hls";
+	url: string;
+}
+
+/** Câmera do catálogo (`GET /api/cameras`): prévia opcional + link obrigatório para a página de origem. */
+export interface CameraFeed {
+	id: string;
+	label: string;
+	city: string;
+	state: string; // UF, ou "BR" para painéis nacionais
+	provider: string;
+	attribution: string;
+	page_url: string; // clique leva para cá
+	preview: CameraPreview | null; // null = só o cartão-placeholder com o link
+	lat: number | null;
+	lon: number | null;
+}
+
 export interface ApiError {
 	error: string;
 	detail?: string;
