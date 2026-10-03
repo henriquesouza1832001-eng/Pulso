@@ -2,6 +2,33 @@
 
 O PULSO é desenvolvido por várias pessoas e agentes de IA **ao mesmo tempo, no mesmo diretório e na mesma branch** (`hen`). Não criamos uma branch por agente (decisão do dono). Em vez disso, combinamos **quem edita o quê** e **quem commita**, por um barramento de arquivos simples.
 
+## Organização: três frentes e um portão
+```text
+                         PULSO
+        ┌─────────────────┼─────────────────┐
+      CODEX            CLAUDE A          CLAUDE B
+   (red team)          (engine)          (platform)
+        └─────────────────┼─────────────────┘
+                          ↓
+                  RELIABILITY GATE
+                          ↓
+                  SHADOW → CANARY
+                          ↓
+                         PROD
+```
+| Frente | Nome no quadro | Papel | Donos de pasta (reservas padrão) |
+|---|---|---|---|
+| **Codex: RED TEAM** | `codex` | confiabilidade, replay, backtest, caos, métricas; tenta quebrar o que os outros fazem e prova o que funciona | `engine/pulso_engine/validation/`, `engine/tests/reliability/`, `docs/engineering/RELIABILITY_LAB.md`, `SYSTEM_RELIABILITY_AUDIT.md` |
+| **Claude A: ENGINE** | `claude-motor` | Sentinela, sensores, evidência, contexto, qualidade de dado, modelos V2 | `engine/pulso_engine/research/`, `intelligence/`, `scoring/*_v2.py`, `processing/cluster_refine.py`, `quality.py`, `simulation.py`, `docs/research/`, `docs/CURRENT_ENGINE_STATE.md` |
+| **Claude B: PLATFORM** | `claude-hen` | Worker/API, armazenamento (Turso/D1), segurança, observabilidade, integração no pipeline, fontes; front só com autorização | `apps/worker/`, `database/`, `packages/shared/`, `.github/workflows/`, `scripts/`, `pipeline.py`, `client.py`, `models.py`, `flags.py`, `docs/engineering/ENGINE_*`, `docs/api/`, README, AGENTS |
+
+**Como as três se encaixam**
+- **Claude A** constrói a inteligência (sempre em paralelo ao V1, atrás de feature flag). **Claude B** a põe no pipeline, no banco e na API com orçamento de escrita e escrita condicional. **Codex** tenta derrubá-la: replay de eventos, cenários de caos, métricas V1 × V2.
+- **Nada é promovido sem o Reliability Gate** (`validation/shadow_compare.promotion_gate` e o Reliability Lab do Codex): amostras mínimas, ganho de Brier sobre V1 e sobre o ingênuo, FPR e recall sob controle, calibração sem piora, sem regressão por escopo. O fluxo é `V1 em produção → V2 em SHADOW (só grava) → CANARY (poucos escopos) → PROD`.
+- O Codex **não muda comportamento de produção**: ele entrega achados, testes e o veredito do portão. Corrigir o que ele achar é da frente dona do arquivo.
+- **Frontend** (`apps/web`) pertence às branches/pessoas do front (`isar`, `art`, `thig`). O Claude B só mexe nele quando o dono pedir e depois de alinhar com quem tem PR aberto lá.
+- Merge na `main` é decisão humana (ou autorizada pelo dono); o Claude B confere o CI e faz o merge dos PRs da `hen` quando o dono autorizou.
+
 ## Por que arquivos
 Agentes de ferramentas diferentes não conseguem se mandar mensagem diretamente. Todos, porém, leem e escrevem a mesma pasta. O barramento `scripts/agentbus.py` guarda o estado em `.agents/` (ignorado pelo git), então funciona na hora, sem rede e sem instalar nada. Se um agente estiver em **outra máquina** (outro clone), o barramento não o alcança: nesse caso a coordenação vai por PR e pelo `docs/BACKEND_STATUS.md`, e o dono repassa o recado.
 
