@@ -197,9 +197,30 @@ export function App() {
 							uf={filters.uf}
 							onUfChange={setFeedUf}
 						/>
-						<div id="mercados">
-							<Markets items={DEMO ? DEMO_FORECASTS : []} />
-						</div>
+						{/* coluna ao lado do feed: briefings no topo e câmeras logo abaixo (mercados só quando há modelo) */}
+						<aside id="mercados" className="feedside">
+							{DEMO && <Markets items={DEMO_FORECASTS} />}
+							<div id="briefings" className="side-block">
+								<div className="mkt-head">
+									<span className="mkt-title">BRIEFINGS</span>
+									<span className="dim">ANÁLISE · EVENTOS MAIS QUENTES</span>
+								</div>
+								<Briefings events={events} onSelect={onSelect} />
+							</div>
+							<div id="cameras" className="side-block">
+								<div className="mkt-head">
+									<span className="mkt-title">CÂMERAS</span>
+									<span className="dim">SÓ VIAS E PRAÇAS · NUNCA PESSOAS</span>
+								</div>
+								<Cameras
+									cameras={DEMO ? DEMO_CAMERAS : []}
+									feeds={camsPoll.data?.cameras ?? []}
+									focusUf={filters.uf}
+									query={filters.query}
+									pageSize={4}
+								/>
+							</div>
+						</aside>
 					</div>
 
 					{selected && (
@@ -222,26 +243,6 @@ export function App() {
 							<EventDetail event={selected} />
 						</div>
 					)}
-				</Section>
-
-				<Section
-					id="briefings"
-					kicker="análise"
-					title="briefings"
-					desc="leitura curta dos eventos mais quentes — sempre ligada às fontes e ao dossiê"
-					cta="ver todos os eventos"
-					ctaHref="#feed"
-				>
-					<Briefings events={events} onSelect={onSelect} />
-				</Section>
-
-				<Section
-					id="cameras"
-					kicker="sensores"
-					title="câmeras autorizadas"
-					desc="somente sensores ambientais públicos de vias e praças — nunca vigilância de pessoas"
-				>
-					<Cameras cameras={DEMO ? DEMO_CAMERAS : []} feeds={camsPoll.data?.cameras ?? []} focusUf={filters.uf} />
 				</Section>
 
 				<Section
