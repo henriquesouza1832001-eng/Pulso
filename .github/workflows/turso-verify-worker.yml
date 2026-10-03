@@ -1,0 +1,22 @@
+name: Verificar Turso no Worker
+
+# Chama a rota interna /api/admin/turso-ping do Worker em produção: prova que os segredos do WRANGLER (os que o Worker usa)
+# são válidos e que a camada TursoDatabase funciona de dentro da Cloudflare. Nunca imprime segredos.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping
+        env:
+          API: ${{ secrets.PULSO_API_URL }}
+          TOKEN: ${{ secrets.PULSO_INGEST_TOKEN }}
+        run: |
+          code=$(curl -s -o out.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/admin/turso-ping")
+          echo "HTTP $code"; cat out.json; echo
+          [ "$code" = "200" ]
