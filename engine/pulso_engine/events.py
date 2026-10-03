@@ -31,13 +31,14 @@ def dominant_category(signals: list[Signal]) -> str:
     return counts.most_common(1)[0][0] if counts else "OTHER"
 
 
-def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> EventStats:
+def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
     sources = {s.source_id for s in signals}
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
     last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
+    prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
     assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
@@ -59,6 +60,8 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> Eve
         geo_consistency=1.0 if len({s.state for s in signals if s.state}) <= 1 else 0.3,
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
+        contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
+        extra={"acceleration": float(last_hour - prev_hour)},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
@@ -120,11 +123,13 @@ OFFICIAL_ALERT_FLOOR = 3  # piso do nível PULSO quando o órgão oficial declar
 
 
 def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None,
-                alert_sources: frozenset[str] = frozenset()) -> dict:
+                alert_sources: frozenset[str] = frozenset(), contradiction: float = 0.0) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
-    stats = stats_for(sigs, now, anomaly)
+    stats = stats_for(sigs, now, anomaly, contradiction)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
+    if stats.contradiction > 0:  # explícito no "POR QUE?": a divergência já está descontada da confiança, não do score
+        breakdown = [*breakdown, {"key": "contradiction", "label": "Fontes divergem (reduz a confiança)", "points": 0}]
     level = alert_level(score, conf, stats)
     # Alerta OFICIAL de risco extremo (INMET "Grande Perigo", Defesa Civil "Extreme": o adaptador os classifica como
     # EMERGENCY) nunca fica abaixo de "Elevado": o próprio órgão já declarou o perigo, e o score ainda não enxerga isso

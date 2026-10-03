@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 
+from .. import flags
 from ..models import SOCIAL_CLASSES, EventStats
 from .confidence import confidence
 
@@ -33,6 +34,23 @@ WEIGHTS: list[tuple[str, str, int]] = [
     ("geo_reach", "Alcance geográfico", 5),
 ]
 assert sum(w for _, _, w in WEIGHTS) == 100
+
+# V2 (flag PULSE_V2, padrão DESLIGADO): aceleração e diversidade de tipos de sensor viram componentes próprios. O V1 acima
+# NÃO muda; só se a flag for ligada, depois do portão de promoção (docs/engineering/ENGINE_V2_PLAN.md). Pesos somam 100.
+WEIGHTS_V2: list[tuple[str, str, int]] = [
+    ("severity", "Severidade", 20),
+    ("confidence", "Confiança", 15),
+    ("velocity", "Velocidade de sinais", 10),
+    ("acceleration", "Aceleração dos sinais", 5),
+    ("sources", "Diversidade de fontes", 10),
+    ("sensors", "Diversidade de tipos de sensor", 5),
+    ("anomaly", "Anomalia vs. baseline", 15),
+    ("recency", "Recência", 10),
+    ("persistence", "Persistência", 5),
+    ("geo_reach", "Alcance geográfico", 5),
+]
+assert sum(w for _, _, w in WEIGHTS_V2) == 100
+ACCELERATION_SATURATION = 15.0  # +15 sinais/hora sobre a hora anterior = aceleração máxima
 
 
 def _clamp01(x: float) -> float:
@@ -62,12 +80,25 @@ def components(s: EventStats, conf: int) -> dict[str, float]:
     }
 
 
-def pulse_score(s: EventStats) -> tuple[int, list[dict]]:
-    """Retorna (score, breakdown). Os pontos do breakdown somam o score (após arredondamento)."""
-    comp = components(s, confidence(s))
+def components_v2(s: EventStats, conf: int) -> dict[str, float]:
+    """Componentes do V2: os do V1, com `sources` só de fontes independentes e `sensors` (tipos de fonte) e `acceleration`
+    (sinais/hora a mais que na hora anterior, de events.stats_for) separados. Queda de atividade não pontua."""
+    comp = components(s, conf)
+    comp["sources"] = _clamp01((s.independent_sources - 1) / 9)
+    comp["sensors"] = _clamp01((len(s.source_classes) - 1) / 3)  # tipo de sensor pesa mais que volume bruto
+    comp["acceleration"] = _clamp01(s.extra.get("acceleration", 0.0) / ACCELERATION_SATURATION)
+    return comp
+
+
+def pulse_score(s: EventStats, v2: bool | None = None) -> tuple[int, list[dict]]:
+    """Retorna (score, breakdown). Os pontos do breakdown somam o score (após arredondamento).
+    `v2=None` segue a flag PULSE_V2 (padrão desligada: resultado idêntico ao V1)."""
+    use_v2 = flags.enabled("PULSE_V2") if v2 is None else v2
+    conf = confidence(s)
+    comp, weights = (components_v2(s, conf), WEIGHTS_V2) if use_v2 else (components(s, conf), WEIGHTS)
     f = freshness(s)
     breakdown = [
-        {"key": k, "label": label, "points": round(comp[k] * w * f)} for k, label, w in WEIGHTS
+        {"key": k, "label": label, "points": round(comp[k] * w * f)} for k, label, w in weights
     ]
     breakdown = [b for b in breakdown if b["points"] > 0]
     breakdown.sort(key=lambda b: -b["points"])
