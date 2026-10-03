@@ -14,4 +14,4 @@ O PULSO mede **atividade e sinais detectados**, não a probabilidade de dano a n
 
 **Entrando no backend? Comece por [docs/BACKEND_STATUS.md](docs/BACKEND_STATUS.md)** (estado, ambientes, problemas conhecidos e roadmap).
 
-Documentação: [arquitetura](docs/architecture/ARCHITECTURE.md) · [API](docs/api/API.md) · [scoring](docs/SCORING.md) · [fontes](docs/sources/SOURCES.md) ([catálogo](docs/sources/CATALOGO_FONTES.md), [câmeras](docs/sources/CAMERAS.md)) · [operação](docs/RUNBOOK.md) · [estado do backend](docs/BACKEND_STATUS.md) · [decisões](docs/decisions) · [como contribuir](CONTRIBUTING.md) · [regras para agentes](AGENTS.md)
+Documentação: [arquitetura](docs/architecture/ARCHITECTURE.md) · [API](docs/api/API.md) · [scoring](docs/SCORING.md) · [fontes](docs/sources/SOURCES.md) ([catálogo](docs/sources/CATALOGO_FONTES.md), [câmeras](docs/sources/CAMERAS.md)) · [operação](docs/RUNBOOK.md) · [pendências do dono](docs/PENDENCIAS_DO_DONO.md) · [estado do backend](docs/BACKEND_STATUS.md) · [decisões](docs/decisions) · [como contribuir](CONTRIBUTING.md) · [regras para agentes](AGENTS.md)

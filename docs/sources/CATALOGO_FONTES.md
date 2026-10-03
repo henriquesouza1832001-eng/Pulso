@@ -2,7 +2,7 @@
 
 > Gerado de `engine/config/sources.json` por `py -m pulso_engine.catalog_doc`. **Não edite à mão**: mude a configuração e gere de novo. Fichas detalhadas (termos, limites, retenção) estão em `SOURCES.md`.
 
-**114 fontes cadastradas, 107 ativas.** Ativas por classe: Imprensa nacional/internacional 60, Imprensa regional 29, Oficial 18.
+**116 fontes cadastradas, 109 ativas.** Ativas por classe: Imprensa nacional/internacional 60, Imprensa regional 31, Oficial 18.
 
 Critérios: feed público oficial do veículo/órgão, testado ao vivo com o coletor real; publicação recente; sem filiação política declarada (para não enviesar a amostra); feeds em inglês ficam de fora enquanto o vocabulário do motor for em português. `revisão pendente` = ainda falta uma pessoa conferir os termos (COLLECTION_PROTOCOL §4).
 
@@ -112,6 +112,8 @@ Critérios: feed público oficial do veículo/órgão, testado ao vivo com o col
 | `folha-vitoria` | Folha Vitória (ES) | ES | 600 s | ativa, revisão pendente |
 | `g1-ma` | G1 Maranhão | MA | 600 s | ativa, revisão pendente |
 | `o-imparcial-ma` | O Imparcial (MA) | MA | 600 s | ativa, revisão pendente |
+| `bhaz-mg` | BHAZ (MG) | MG | 600 s | ativa, revisão pendente |
+| `uai-mg` | UAI (MG) | MG | 600 s | ativa, revisão pendente |
 | `g1-mt` | G1 Mato Grosso | MT | 600 s | ativa, revisão pendente |
 | `diario-do-para` | Diário do Pará | PA | 600 s | ativa, revisão pendente |
 | `g1-pa` | G1 Pará | PA | 600 s | ativa, revisão pendente |
