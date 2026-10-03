@@ -82,9 +82,24 @@ def signal_from_row(r: dict) -> Signal | None:
         return None  # linha corrompida nunca derruba o ciclo
 
 
-def regeolocate(s: Signal) -> Signal:
-    """Reaplica o geolocalizador ao texto do sinal (corrige localizações antigas erradas)."""
+# Adaptadores cuja geografia vem da PRÓPRIA FONTE (dado estruturado), não do texto da manchete.
+GEO_ADAPTERS = frozenset({"inmet", "inpe_fires", "idap_cap", "usgs", "infodengue", "reddit"})
+
+
+def geo_source_ids(sources: list[dict]) -> frozenset[str]:
+    """Fontes cujo lugar não se deduz do texto: feed regional (`state` na configuração) e adaptadores de dado geográfico."""
+    return frozenset(s["id"] for s in sources if s.get("state") or s.get("adapter") in GEO_ADAPTERS)
+
+
+def regeolocate(s: Signal, source_geo: frozenset[str] = frozenset()) -> Signal:
+    """Reaplica o geolocalizador ao texto do sinal (corrige localizações antigas erradas).
+
+    Se o texto não cita lugar e a localização do sinal veio da FONTE (estado de um feed regional, coordenadas do INPE, da
+    Defesa Civil, do USGS...), ela é mantida: apagá-la faria o lugar do evento mudar de um ciclo para o outro. Para as demais
+    fontes, sem lugar no texto a localização antiga (possivelmente errada) é limpa."""
     place = locate(f"{s.title}. {s.text or ''}")
+    if place is None and s.source_id in source_geo:
+        return s
     return replace(
         s,
         latitude=place.lat if place else None, longitude=place.lon if place else None,
@@ -175,6 +190,7 @@ def run_once(
 
     # Estado: sinais já gravados entram no agrupamento, então a história continua a mesma
     # (mesmo event_id) mesmo depois que a notícia mais antiga sai do feed.
+    source_geo = geo_source_ids(catalog if catalog is not None else sources)
     prior_ids: dict[str, str] = {}
     known_ids: dict[str, str | None] = {}  # hash -> event_id já gravado (None = gravado sem evento)
     all_signals: dict[str, Signal] = {}
@@ -185,7 +201,7 @@ def run_once(
         known_ids[old.hash] = old.event_id  # mesmo fora da janela: já está no banco, não reenviar
         if (now - old.timestamp) > STATE_WINDOW:
             continue
-        old = regeolocate(old)  # correções do geolocalizador valem também para sinais já gravados
+        old = regeolocate(old, source_geo)  # correções do geolocalizador valem também para sinais já gravados
         if old.event_id:
             prior_ids[old.hash] = old.event_id
         all_signals[old.hash] = old
@@ -268,12 +284,14 @@ def changed_series(series_now: list[dict], stored: list[dict] | None) -> list[di
     return [r for r in series_now if int(r["signals"]) > have.get((r["scope"], r["category"], r["bucket"]), -1)]
 
 
-def select_sources(batch: dict, now: datetime, full_every_min: int = 30, slot_min: int = 5) -> None:
+def select_sources(batch: dict, now: datetime, full_every_min: int = 30, slot_min: int = 5,
+                   extra_ids: frozenset[str] | set[str] = frozenset()) -> None:
     """Catálogo COMPLETO só no horário de revisão (a cada `full_every_min` min); nos demais ciclos, só as fontes
-    dos sinais enviados (a chave estrangeira exige que existam) e sem desativar nenhuma outra."""
+    dos sinais enviados e das linhas de saúde enviadas (as chaves estrangeiras exigem que existam) e sem desativar
+    nenhuma outra."""
     if now.minute % full_every_min < slot_min:
         return
-    used = {g["source_id"] for g in batch["signals"]}
+    used = {g["source_id"] for g in batch["signals"]} | set(extra_ids)
     batch["sources"] = [s for s in batch["sources"] if s["id"] in used]
     batch["catalog_complete"] = False
 
@@ -313,8 +331,10 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
         cur_e.append(e)
         cur_s.extend(es[:max_signals])
     parts.append({"events": cur_e, "signals": cur_s})
-    # Sinais sem evento (ex.: matéria isolada de tema irrelevante): gravados para o estado, em lotes próprios.
-    orphans = sigs_by_event.get(None, [])
+    # Sinais sem evento (matéria isolada de tema irrelevante) E sinais de um evento que não foi reenviado (nada mudou nele,
+    # mas o sinal é novo ou trocou de evento): gravados em lotes próprios. O evento já existe no banco (chave estrangeira).
+    sent_events = {e["event_id"] for e in batch["events"]}
+    orphans = [g for g in batch["signals"] if g["event_id"] is None or g["event_id"] not in sent_events]
     for i in range(0, len(orphans), max_signals):
         parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
@@ -361,15 +381,28 @@ def main(argv: list[str] | None = None) -> int:
         # valida o protocolo; fonte fora do protocolo não roda
         catalog = load_sources(args.config)
         sources = [s for s in catalog if is_due(s, now)]
-    from .client import fetch_event_digest, fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
+    from .client import (WorkerAuthError, WorkerUnavailable, fetch_event_digest, fetch_history, fetch_open_forecasts,
+                         fetch_pulse_history, fetch_signals)
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     # Janelas mínimas que bastam (o D1 gratuito limita as linhas LIDAS por dia): 36 h de séries (a previsão de
     # volume precisa de > 25 h) e 24 h do Pulso (o previsor exige ~3,5 h).
     history = fetch_history(hours=36) if args.push else []
-    stored = fetch_signals() if args.push else []
     pulse_points = fetch_pulse_history(hours=24) if args.push else []
     open_forecasts = fetch_open_forecasts() if args.push else []
-    known_events = fetch_event_digest() if args.push else []
+    # Sinais e resumo de eventos gravados são ESTRITOS: se o Worker falhar, "fora do ar" não pode virar "banco vazio"
+    # (o ciclo recriaria e reenviaria tudo e estouraria o orçamento de escrita do D1). Pula o ciclo; a próxima recolhe o mesmo.
+    stored, known_events = [], []
+    if args.push:
+        try:
+            stored = fetch_signals(strict=True)
+            known_events = fetch_event_digest(strict=True)
+        except WorkerUnavailable as exc:
+            print(f"[aviso] Worker indisponível ({exc}): ciclo pulado para não reenviar tudo; a próxima rodada recolhe os mesmos itens.",
+                  file=sys.stderr)
+            return 0
+        except WorkerAuthError as exc:
+            print(f"[erro] {exc}", file=sys.stderr)
+            return 1
     batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
                      catalog=catalog, known_events=known_events)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])}/{batch['events_total']} "
@@ -386,14 +419,16 @@ def main(argv: list[str] | None = None) -> int:
         for g in batch["signals"]:
             ufs[g["state"] or "sem_UF"] = ufs.get(g["state"] or "sem_UF", 0) + 1
         print("  estados:", ", ".join(f"{k}={v}" for k, v in sorted(ufs.items())) or "-")
-        return 0
-    for e in sorted(batch["events"], key=lambda e: -e["pulse"])[:8]:
-        print(f"  [{e['pulse']:>3}] {e['category']:<14} fontes={e['source_count']} conf={e['confidence']:>3} {e['title'][:70]}")
+    else:
+        for e in sorted(batch["events"], key=lambda e: -e["pulse"])[:8]:
+            print(f"  [{e['pulse']:>3}] {e['category']:<14} fontes={e['source_count']} conf={e['confidence']:>3} {e['title'][:70]}")
+    # (antes, uma fonte metrics_only ATIVA encerrava a rodada aqui e NADA era enviado: a ingestão parava em silêncio)
     if args.push:
         from .client import push_batch
         now_push = datetime.now(timezone.utc)
-        select_sources(batch, now_push)
         batch["source_health"] = select_health(batch["source_health"], now_push)
+        # as linhas de saúde enviadas também precisam das suas fontes registradas (chave estrangeira)
+        select_sources(batch, now_push, extra_ids={h["source_id"] for h in batch["source_health"]})
         for part in chunks(batch):
             print("  push:", push_batch(part))
     return 0
