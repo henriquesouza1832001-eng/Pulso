@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from ...models import Signal
 from ...processing.geo import locate, state_place
+from ...processing.importance import brazil_relevant
 from ...processing.keyword_engine import KeywordEngine
 from ...processing.normalizer import canonical_url, clean_text, content_hash, is_broadcast_listing
 
@@ -25,6 +26,7 @@ MAX_BYTES = 5_000_000
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/elements/1.1/}"
 RSS1 = "{http://purl.org/rss/1.0/}"
+PHYSICAL_CATEGORIES = frozenset({"WEATHER", "TRAFFIC", "SECURITY", "INFRASTRUCTURE", "EMERGENCY", "HEALTH", "PROTEST"})
 
 # Confiabilidade base da FONTE por classe (um componente da confiança do evento, nunca "verdade").
 RELIABILITY = {
@@ -181,7 +183,13 @@ class RssAdapter:
         # O título é o sinal mais forte: só recorre ao resumo se o título não classificar.
         category = self._keywords.classify(title) or self._keywords.classify(text) or "OTHER"
         # Feed regional (source.state = UF): sem lugar no texto, a notícia herda o estado da fonte, com confiança baixa.
-        place = locate(text) or (state_place(self.source["state"], confidence=35) if self.source.get("state") else None)
+        explicit_place = locate(text)
+        place = explicit_place or (state_place(self.source["state"], confidence=35) if self.source.get("state") else None)
+        # Acontecimento físico de OUTRO país (engarrafamento na Ucrânia, surto na Flórida, protesto na França) não conta nas
+        # séries brasileiras de clima/trânsito/saúde...: vira INTERNATIONAL. Política e economia ficam como estão (citam
+        # países estrangeiros o tempo todo em assuntos brasileiros). Só o lugar EXPLÍCITO no texto vale, não o da fonte.
+        if category in PHYSICAL_CATEGORIES and not brazil_relevant(text, explicit_place is not None):
+            category = "INTERNATIONAL"
         digest = content_hash(canon, title)
         return Signal(
             signal_id=f"sig-{digest}", source_id=self.source_id, source_class=self.source_class,  # type: ignore[arg-type]
