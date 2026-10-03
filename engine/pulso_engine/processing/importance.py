@@ -19,7 +19,7 @@ TIER_B = (  # evento físico relevante ou risco imediato
     "enchente", "alagamento", "inundacao", "deslizamento", "ciclone", "temporal", "tempestade",
     "incendio", "queimada", "apagao", "surto", "epidemia", "evacuacao", "resgate", "explosao",
     "tiroteio", "defesa civil", "onda de calor", "estiagem", "granizo", "feridos", "alerta de",
-    "evacuam", "evacuado", "evacuados", "falha eletrica", "principio de incendio",
+    "evacuam", "evacuado", "evacuados", "falha eletrica", "falha no transporte", "principio de incendio",
 )
 TIER_C = (  # contexto que sozinho não basta
     "chuva forte", "acidente", "interdicao", "interditado", "interrompido", "risco estrutural", "bloqueio", "greve", "dengue", "congestionamento",
@@ -60,6 +60,7 @@ EDITORIAL_PATTERNS = (
     "escalacao", "resultado do jogo", "tabela do", "classificacao do", "palpite",
     "apostas", "odds", "mercado da bola", "transferencia", "brasileirao", "campeonato",
     "jogo entre", "partida entre", "sao paulo recebe", "corinthians recebe",
+    "vence", "lideranca", "placar", "abre e fecha", "transferido", "classico",
 )
 SCHEDULED_PATTERNS = (
     "partida", "jogo", "show", "festival", "concerto", "evento marcado", "ingressos",
@@ -123,7 +124,7 @@ def assess(text: str) -> Importance:
     scheduled = any(pat.search(folded) for _, pat in _SCHEDULED)
     has_disruption = any(pat.search(folded) for _, pat in _DISRUPTION)
     if not matched:
-        role = EDITORIAL_ONLY if editorial else (SCHEDULED_CONTEXT if scheduled else OPERATIONAL_SIGNAL)
+        role = POTENTIAL_INCIDENT if has_disruption else (EDITORIAL_ONLY if editorial else (SCHEDULED_CONTEXT if scheduled else OPERATIONAL_SIGNAL))
         return Importance(0, (), noise, routine, role)
     top = next(t for t in ("A", "B", "C") if hits[t])
     score = BASE[top] + EXTRA_PER_HIT * (len(matched) - 1)
