@@ -37,6 +37,18 @@ def dominant_category(signals: list[Signal]) -> str:
     return counts.most_common(1)[0][0] if counts else "OTHER"
 
 
+def _origin_key(signal: Signal) -> str:
+    """Conservadoramente agrupa cópias idênticas para não contar volume como evidência."""
+    title = normalized_title(signal.title)
+    return title if title else (signal.canonical_url or signal.url or signal.signal_id)
+
+
+def _independent_origin_count(signals: list[Signal]) -> int:
+    # Mesmo título/URL é uma única origem factual, independentemente de quantos
+    # publishers o republicaram. Paráfrases não detectáveis continuam distintas.
+    return len({_origin_key(s) for s in signals})
+
+
 def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
     gate = flags.enabled("NOISE_GATE")
@@ -44,21 +56,11 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
-    last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
-    prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
-    independent = len(sources)
-    if gate:
-        # QA-003: repost social com o MESMO título não é evidência independente. Conta cada veículo não social, mais um
-        # por título social distinto que não repete nenhuma manchete não social.
-        non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
-        news_titles = {normalized_title(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES}
-        social_titles = {normalized_title(s.title) for s in signals if s.source_class in SOCIAL_CLASSES} - news_titles
-        independent = len(non_social) + len(social_titles)
-        # QA-004: velocidade conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
-        def distinct(lo: float, hi: float) -> int:
-            return len({(s.source_id, normalized_title(s.title)) for s in signals
-                        if lo < (now - s.timestamp).total_seconds() <= hi})
-        last_hour, prev_hour = distinct(-1, 3600), distinct(3600, 7200)
+    last_hour = len({_origin_key(s) for s in signals if (now - s.timestamp).total_seconds() <= 3600})
+    prev_hour = len({_origin_key(s) for s in signals if 3600 < (now - s.timestamp).total_seconds() <= 7200})
+    raw_last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
+    raw_prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
+    independent = _independent_origin_count(signals)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
     assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
@@ -72,7 +74,7 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
-        independent_sources=independent,
+        independent_sources=_independent_origin_count(signals),
         source_classes=frozenset(s.source_class for s in signals),
         newest_age_min=max(0.0, (now - max(times)).total_seconds() / 60),
         persistence_min=(max(times) - min(times)).total_seconds() / 60,
@@ -84,7 +86,7 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
         contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
-        extra={"acceleration": float(last_hour - prev_hour),
+        extra={"acceleration": float(raw_last_hour - raw_prev_hour),
                "content_roles": sorted({a.role for a in assessed})},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
@@ -92,6 +94,8 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
 
 def status_for(stats: EventStats) -> str:
     # Volume de relatos sociais não é confirmação independente.
+    if stats.contradiction >= 0.5:
+        return "DISPUTED"
     if stats.source_classes <= SOCIAL_CLASSES:
         return "DETECTED"
     if stats.official_confirmation or stats.independent_sources >= 3:

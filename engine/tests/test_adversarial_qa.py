@@ -86,7 +86,10 @@ def test_noise_from_a_single_outlet_never_becomes_event(name):
     "Enchente deixa desalojados em Porto Alegre após chuva forte",
 ])
 def test_physical_incidents_with_four_outlets_reach_n2(title):
-    ev = only_event(run(same_story(title, 4)))
+    # Quatro redações independentes; republicações do mesmo título não são
+    # usadas como confirmação após o gate de proveniência.
+    feeds = {f"s{i}": rss([(f"{title} — relato independente {i}", f"https://s{i}.com/{i}", 10 + i)]) for i in range(4)}
+    ev = only_event(run(feeds))
     assert ev["alert_level"] >= 2 and ev["status"] == "CONFIRMED"
 
 
@@ -192,7 +195,6 @@ def test_incident_with_injured_outranks_football_at_equal_volume():
     assert tumult["alert_level"] > football
 
 
-@pytest.mark.xfail(strict=True, reason="QA-003: repost social idêntico conta como fonte independente e confirma o evento")
 def test_identical_social_reposts_do_not_confirm_a_single_story():
     title = "Incêndio atinge galpão em Campinas e mobiliza bombeiros"
     feeds = {"a": rss([(title, "https://a.com/1", 10)]),
@@ -201,7 +203,6 @@ def test_identical_social_reposts_do_not_confirm_a_single_story():
     assert ev["status"] != "CONFIRMED"
 
 
-@pytest.mark.xfail(strict=True, reason="QA-004: cópias da mesma fonte inflam a velocidade e o Pulso (30 -> 45)")
 def test_duplicate_volume_from_one_outlet_does_not_inflate_pulse():
     title = "Incêndio atinge galpão em Campinas e mobiliza bombeiros"
     one = only_event(run({"a": rss([(title, "https://a.com/n0", 5)])}))
@@ -209,7 +210,6 @@ def test_duplicate_volume_from_one_outlet_does_not_inflate_pulse():
     assert many["pulse"] <= one["pulse"] + 5
 
 
-@pytest.mark.xfail(strict=True, reason="QA-005: a mesma história redigida de 4 jeitos vira 4 eventos de 1 fonte (false split)")
 def test_paraphrased_coverage_of_one_story_is_one_event():
     titles = ["Deslizamento de terra atinge casas em Petrópolis", "Petrópolis: chuva provoca deslizamento e soterra imóveis",
               "Defesa Civil confirma deslizamento em Petrópolis após temporal",
