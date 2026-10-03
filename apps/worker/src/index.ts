@@ -11,9 +11,18 @@ import { stats } from "./routes/stats";
 import { history } from "./routes/history";
 import { cameras } from "./routes/cameras";
 import type { AppEnv, Bindings } from "./env";
+import { TursoDatabase } from "./lib/turso";
 import { dispatchCollection, dispatchHealthcheck, isHealthcheckSlot } from "./lib/dispatch";
 
 const app = new Hono<AppEnv>();
+
+// Troca o banco por requisição: com DB_BACKEND="turso" as rotas continuam usando `c.env.DB`, agora sobre o Turso.
+app.use("*", async (c, next) => {
+	if (c.env.DB_BACKEND === "turso" && c.env.TURSO_URL && c.env.TURSO_TOKEN) {
+		c.env = { ...c.env, DB: new TursoDatabase({ url: c.env.TURSO_URL, token: c.env.TURSO_TOKEN }) as unknown as D1Database };
+	}
+	await next();
+});
 
 app.use("/api/*", async (c, next) => {
 	const origins = c.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
