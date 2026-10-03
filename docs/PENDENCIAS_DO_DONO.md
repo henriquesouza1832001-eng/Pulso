@@ -47,3 +47,10 @@ Atenção especial: INPE, Defesa Civil (IDAP), InfoDengue, Banco Central e USGS 
 - Criar conta do bot no **Bluesky** + senha de app (grátis, imediato) e guardar `BLUESKY_HANDLE`/`BLUESKY_APP_PASSWORD` nos segredos do GitHub.
 - **Reddit**: aprovação da API; **X**: plano pago. Use apenas chaves emitidas para o projeto (nunca chave de terceiros).
 - Depois de guardar: Actions > "Verificar chaves sociais". Só então o piloto de 48 h e, por fim, `enabled: true` por PR.
+
+## Token administrativo separado (RT-007, menor privilégio)
+O painel `/api/admin/*` hoje usa o MESMO token do ingest: quem consegue gravar lote também lê o painel. O código para separar já está no Worker; falta o segredo (só você cria, nunca cole em chat):
+1. Gere um valor longo e aleatório e rode `wrangler secret put ADMIN_TOKEN` (em `apps/worker`).
+2. Crie o segredo de repositório `PULSO_ADMIN_TOKEN` com o mesmo valor (o workflow "Verificar Turso no Worker" passa a usá-lo; sem ele, continua com o token do ingest).
+3. Confira em `/api/admin/engine-status`: `admin_token_separate: true`. O Engine segue funcionando só com o `INGEST_TOKEN` (as rotas que ele lê aceitam os dois).
+Sem esses passos nada quebra: o comportamento atual é mantido.

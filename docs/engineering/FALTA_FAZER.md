@@ -9,7 +9,7 @@ Lista honesta do que **não** está pronto. Atualizada no fim de cada rodada. Do
 |---|---|---|---|
 | A1 | **Ensaio de falha do storage (RT-005), parte remota:** a lógica do Worker/adaptador está ensaiada (rodada 2); falta o servidor Turso real e o binding D1 real (timeout, lote parcial) — só dá com credenciais, em ambiente de teste. | EM ANDAMENTO | A prova local não substitui o banco de verdade. |
 | A1b | **`write_budget` gravado depois do lote:** com resposta perdida o orçamento subestima. Mover a contagem para dentro da mesma transação do lote. | ABERTO | Governador otimista por um lote. |
-| A2 | **Token administrativo separado (RT-007):** hoje `/api/admin/*` usa o mesmo token do ingest. | ABERTO (código é meu; criar o segredo é do dono) | Menor privilégio: quem escreve lote não deveria ler o painel. |
+| A2 | **Token administrativo separado (RT-007):** o código está pronto (`ADMIN_TOKEN` opcional, menor privilégio por rota); falta o DONO criar o segredo (`wrangler secret put ADMIN_TOKEN` + `PULSO_ADMIN_TOKEN` no GitHub). Passo a passo em `PENDENCIAS_DO_DONO.md`. | DEPENDE do dono | Até lá, o painel segue com o token do ingest (`engine-status` mostra `admin_token_separate: false`). |
 | A3 | **Rate limit / WAF na borda (RT-007).** | DEPENDE do dono (regra no painel da Cloudflare; Worker sem estado não limita sozinho) | Sem isso, token vazado ou força bruta não encontra freio. |
 | A4 | **Trilha de auditoria do admin** (quem leu o quê). | ABERTO | Rotas de diagnóstico expõem dados operacionais. |
 | A5 | **Frescor de CONTEÚDO por fonte (RT-002):** fonte com HTTP 200 e conteúdo repetido/parado deve aparecer como STALE, sem virar "normal". Hoje só a idade do Pulso nacional é medida. | ABERTO (engine mede; Worker expõe) | HTTP 200 não é dado novo. |
