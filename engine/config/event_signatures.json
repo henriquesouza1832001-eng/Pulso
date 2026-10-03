@@ -1,0 +1,19 @@
+{
+  "_nota": "Assinaturas de evento (docs do Sentinela §24/§57). Cada tipo lista os SENSORES que costumam aparecer antes (leading), junto (concurrent) e depois (confirming). É um grafo de correlação/assinatura, NÃO afirma causalidade, e as ordens são hipóteses a validar com o backtest de eventos. Formato JSON (e não YAML) para não adicionar dependência ao motor. Tipos de sensor: rainfall, radar, river_level, traffic, transit, social, civil_defense, official, news, energy_utility, internet_monitor, airport, seismic, fire_detection, cameras.",
+  "types": {
+    "FLOOD": {"category": "WEATHER", "leading": ["rainfall", "radar", "river_level"], "concurrent": ["traffic", "transit", "social"], "confirming": ["civil_defense", "official", "news"]},
+    "FIRE": {"category": "EMERGENCY", "leading": ["fire_detection"], "concurrent": ["social", "traffic", "cameras"], "confirming": ["civil_defense", "official", "news"]},
+    "BLACKOUT": {"category": "INFRASTRUCTURE", "leading": ["energy_utility"], "concurrent": ["social", "traffic", "transit"], "confirming": ["official", "news"]},
+    "TRAFFIC_COLLAPSE": {"category": "TRAFFIC", "leading": ["rainfall", "traffic"], "concurrent": ["social", "transit", "cameras"], "confirming": ["official", "news"]},
+    "LANDSLIDE": {"category": "WEATHER", "leading": ["rainfall", "radar"], "concurrent": ["traffic", "social"], "confirming": ["civil_defense", "official", "news"]},
+    "STORM": {"category": "WEATHER", "leading": ["radar", "rainfall"], "concurrent": ["traffic", "energy_utility", "social"], "confirming": ["official", "civil_defense", "news"]},
+    "EARTHQUAKE": {"category": "EMERGENCY", "leading": ["seismic"], "concurrent": ["social"], "confirming": ["official", "news"]},
+    "PROTEST": {"category": "PROTEST", "leading": ["social"], "concurrent": ["traffic", "transit", "cameras"], "confirming": ["news", "official"]},
+    "LARGE_EVENT": {"category": "EVENT", "leading": ["social"], "concurrent": ["traffic", "transit"], "confirming": ["official", "news"]},
+    "PUBLIC_TRANSPORT_FAILURE": {"category": "INFRASTRUCTURE", "leading": ["transit"], "concurrent": ["social", "traffic"], "confirming": ["official", "news"]},
+    "INTERNET_OUTAGE": {"category": "TECH", "leading": ["internet_monitor"], "concurrent": ["social"], "confirming": ["official", "news"]},
+    "AIRPORT_DISRUPTION": {"category": "INFRASTRUCTURE", "leading": ["airport", "rainfall"], "concurrent": ["social"], "confirming": ["official", "news"]},
+    "ROAD_BLOCK": {"category": "TRAFFIC", "leading": ["traffic"], "concurrent": ["social", "cameras"], "confirming": ["official", "news"]},
+    "INFRASTRUCTURE_FAILURE": {"category": "INFRASTRUCTURE", "leading": ["energy_utility", "transit"], "concurrent": ["social", "traffic"], "confirming": ["civil_defense", "official", "news"]}
+  }
+}

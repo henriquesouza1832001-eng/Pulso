@@ -25,6 +25,9 @@ Soma de pontos = peso × componente (0–1). A lista de pontos é o "POR QUE 87?
 
 Avisos do INMET: "Grande Perigo" entra como `EMERGENCY` (base 70) e "Perigo" como `WEATHER` (base 55); "Perigo Potencial" não entra por padrão (ADR 0004).
 
+## Pulso V2 (atrás da flag `PULSE_V2`, padrão DESLIGADO)
+`scoring/pulse.py` tem `WEIGHTS` (V1, o que roda em produção, intacto) e `WEIGHTS_V2`: **aceleração** (5; sinais/hora a mais que na hora anterior, queda não pontua) e **diversidade de tipos de sensor** (5; oficial, imprensa, social... pesa mais que volume bruto) tiram 5 de velocidade (15→10) e 5 de diversidade de fontes (15→10); a soma continua 100 e o "POR QUE N?" continua somando o score. Só liga depois do portão de promoção (shadow + backtest V1×V2, `docs/engineering/ENGINE_V2_PLAN.md`). **Contradição**: `stats_for`/`build_event` aceitam `contradiction` (0-1, vem da validação do Sentinela); reduz a confiança (30 × contradição) e aparece no "POR QUE?" como item de 0 pontos ("Fontes divergem") só quando > 0. Com a flag desligada e contradição 0 o resultado é idêntico ao V1 (teste de igualdade).
+
 ## Frescor: o que é de agora vale mais que o de ontem
 O Pulso de um evento é multiplicado por um **fator de frescor** de 0,25 a 1, calculado a partir da idade do sinal mais recente e de uma **meia-vida que depende da categoria** (`HALF_LIFE_BY_CATEGORY` em `scoring/pulse.py`):
 
