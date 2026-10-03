@@ -51,7 +51,7 @@ jobs:
       # Piloto de 48 h (COLLECTION_PROTOCOL.md §3): fontes sociais desativadas rodam aqui só se
       # o secret existir, NUNCA enviam ao Worker e o log mostra só contagens (repo público).
       - name: Piloto dos sensores sociais (sem envio)
-        if: always()
+        if: ${{ !cancelled() }}  # roda mesmo se o passo principal falhar, mas não em execução cancelada
         continue-on-error: true
         working-directory: engine
         env:

@@ -86,9 +86,9 @@ forecasts.get("/track-record", async (c) => {
 			 FROM forecasts GROUP BY method, method_version ORDER BY method`,
 		).all<Record<string, number | string | null>>(),
 		c.env.DB.prepare(
-			`SELECT method, MIN(CAST(probability * 5 AS INTEGER), 4) AS bin, COUNT(*) AS n,
+			`SELECT method, method_version, MIN(CAST(probability * 5 AS INTEGER), 4) AS bin, COUNT(*) AS n,
 			        AVG(probability) AS mean_probability, AVG(outcome) AS observed_rate
-			 FROM forecasts WHERE status='resolved' GROUP BY method, bin ORDER BY method, bin`,
+			 FROM forecasts WHERE status='resolved' GROUP BY method, method_version, bin ORDER BY method, method_version, bin`,
 		).all<Record<string, number | string | null>>(),
 	]);
 	c.header("Cache-Control", cacheControl(60));

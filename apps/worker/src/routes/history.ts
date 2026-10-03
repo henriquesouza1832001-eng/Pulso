@@ -56,7 +56,7 @@ history.get("/", async (c) => {
 			.all<Record<string, string | number | null>>(),
 		c.env.DB.prepare(
 			`SELECT timestamp, score, alert_level FROM pulse_history
-			 WHERE scope = 'BR' AND alert_level >= ?1 AND timestamp >= ?2 ORDER BY timestamp ASC LIMIT 5000`,
+			 WHERE scope = 'BR' AND alert_level >= ?1 AND timestamp >= ?2 ORDER BY timestamp DESC LIMIT 5000`,
 		)
 			.bind(min_level, since)
 			.all<Point>(),
@@ -78,7 +78,7 @@ history.get("/", async (c) => {
 			source_count: e.source_count,
 			detected_at: e.detected_at,
 		})),
-		...toEpisodes(national.results).map((ep) => ({
+		...toEpisodes([...national.results].reverse()).map((ep) => ({
 			kind: "national" as const,
 			date: ep.peak_at,
 			level: ep.peak_level,
