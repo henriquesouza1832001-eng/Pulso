@@ -42,3 +42,8 @@ Atenção especial: INPE, Defesa Civil (IDAP), InfoDengue, Banco Central e USGS 
 - O Worker agora usa o Turso (grátis, sem cartão). A assinatura do Workers Paid deixa de ser urgente; segue como seguro opcional.
 - **Segurança:** o token do Turso foi gerado e guardado como segredo no GitHub e no Wrangler. Não cole tokens em chats ou arquivos. Se algum dia vazar, gere outro (`turso db tokens create pulso`) e atualize os dois lugares.
 - Conferir consumo do Turso: painel turso.tech (plano grátis: 10 milhões de linhas escritas/mês, 500 milhões de leituras, 5 GB).
+
+## Chaves das redes sociais (roteiro completo em `docs/ATIVAR_REDES_SOCIAIS.md`)
+- Criar conta do bot no **Bluesky** + senha de app (grátis, imediato) e guardar `BLUESKY_HANDLE`/`BLUESKY_APP_PASSWORD` nos segredos do GitHub.
+- **Reddit**: aprovação da API; **X**: plano pago. Use apenas chaves emitidas para o projeto (nunca chave de terceiros).
+- Depois de guardar: Actions > "Verificar chaves sociais". Só então o piloto de 48 h e, por fim, `enabled: true` por PR.

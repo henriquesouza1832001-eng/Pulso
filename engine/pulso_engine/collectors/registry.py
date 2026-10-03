@@ -19,6 +19,7 @@ from .official.inmet import InmetAdapter
 from .official.inpe_fires import InpeFiresAdapter
 from .official.ons_ear import OnsEarAdapter
 from .official.usgs import UsgsAdapter
+from .social.bluesky import BlueskyAdapter
 from .social.google_trends import GoogleTrendsAdapter
 from .social.mastodon import MastodonAdapter
 from .social.reddit import RedditAdapter
@@ -27,6 +28,7 @@ from .social.x import XAdapter
 ADAPTERS: dict[str, Callable] = {
     "rss": RssAdapter,
     "reddit": RedditAdapter,
+    "bluesky": BlueskyAdapter,
     "x": XAdapter,
     "inmet": InmetAdapter,
     "gdelt": GdeltAdapter,

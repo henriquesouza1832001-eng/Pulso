@@ -224,6 +224,20 @@ Exibição pública permitida: headline_link (link da notícia original), com at
 Papel: termômetro de ATENÇÃO (estilo pizza index). Classe SOCIAL (confiabilidade baixa): detecta, nunca confirma; só pesa quando casa com imprensa/oficial.
 ```
 
+## Ficha: Bluesky, busca de posts (`bluesky-politics`, `bluesky-clima`)
+```
+Fonte / URL: https://bsky.social/xrpc/app.bsky.feed.searchPosts (API oficial AT Protocol, PDS bsky.social)
+Tipo de acesso: API oficial, conta dedicada do projeto + SENHA DE APP (nunca a senha da conta). Termos: https://bsky.social/about/support/tos (PENDENTE de revisão do dono).
+Autenticação e secrets: BLUESKY_HANDLE e BLUESKY_APP_PASSWORD (segredos do GitHub; nunca no repositório).
+Limites e custo: gratuito. Uma sessão (`createSession`) + uma busca por termo a cada 15 min (até 8 termos, 25 posts cada). A criação de sessão tem limite próprio (dezenas por 5 min), longe do nosso uso.
+Dados coletados e retenção: título curto do post sem links e @menções; link pelo DID da conta (opaco); sem autor, sem texto integral, sem métricas. 1 dia. Posts com rótulo de moderação ou fora do português são descartados.
+Frequência: 900 s.
+Fallback se cair: fica OFFLINE/AUTH_ERROR; as demais seguem.
+Observação: NÃO validado contra o serviço real (sem a conta ainda): a busca pública sem login devolveu HTTP 403 em 2026-10-03. Validar com o workflow "Verificar chaves sociais" assim que a conta existir.
+Exibição pública permitida: metrics_only (só contagem/agregado); classe SOCIAL, detecta e nunca confirma.
+Papel: detector rápido de eventos de clima, emergência e política.
+```
+
 ## Fontes de alerta (`alert_source`)
 As fontes marcadas com `"alert_source": true` (`inmet-avisos`, `defesa-civil-idap`) são canais oficiais de alerta de desastre: um alerta delas classificado como EMERGENCY (risco extremo) dá ao evento um piso de nível PULSO 3 (ver `docs/SCORING.md`). Não marque como `alert_source` uma fonte de comunicados ou notícias.
 
