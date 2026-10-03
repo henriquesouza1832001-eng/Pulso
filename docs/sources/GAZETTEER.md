@@ -19,6 +19,17 @@ Base local com **os 5.571 municípios** do IBGE, usada pela geolocalização V2 
 3. **Evidência explícita.** Cada resultado traz `geo_precision`, `geo_confidence` (0-95) e `geo_evidence` (por que).
 4. **Nunca a capital por padrão.** O ponto é o do próprio município. Sinal cuja geografia veio da fonte (INPE, Defesa Civil, USGS, InfoDengue) nunca é trocado.
 
+## Falsos positivos do red team (Codex, 2026-10-03) e as regras que saíram deles
+O Codex reproduziu quatro casos que o primeiro `geo_v2` localizava com falsa precisão. Todos viraram teste e regra:
+| Caso | Antes | Regra nova |
+|---|---|---|
+| "Aeroporto de Congonhas tem filas" | Congonhas/MG (o aeroporto fica em SP) | nome logo depois de instalação, logradouro ou bairro com "de/da/do" (ou colado: "Rua Santa Luzia") não é o município; "rodovia **em** Itaúna" continua valendo |
+| "Rio Grande sobe após chuva" | Rio Grande/RS (é o rio) | nome de 2 palavras também exige contexto (preposição ou UF); só nome de 3 ou mais palavras vale sozinho |
+| "Bairro da Liberdade recebe feira" | Liberdade/MG | palavras comuns que são município (`Liberdade`, `Bonito`, `Esperança`, `Vitória`...) só valem com UF explícita |
+| "Acidente em Sao Jose deixa feridos" | São José/SC sem UF | nome com prefixo genérico (São, Santa, Bom, Nova...) que é início de outros municípios ("São José dos Campos") exige UF ou UF da fonte; homônimo com prefixo genérico nunca resolve só por população |
+
+Princípio mantido: na dúvida, `None`. Falta um corpus independente de manchetes (positivas e negativas) para medir a acurácia de cidade do V1 e do V2 antes de ligar `GEO_V2`; está com o Codex (`engine/tests/golden/`).
+
 ## Integração
 `pipeline.refine_geo` aplica o V2 nos sinais novos **e** nos gravados (senão o lugar do evento oscilaria entre V1 e V2). Com `GEO_V2` desligada (padrão), o pipeline só registra em sombra quantos sinais ganhariam município (`geo_v2 (sombra)` no log do ciclo). Ligar só depois do portão de promoção (`docs/engineering/ENGINE_V2_PLAN.md` §5): comparar a acurácia de cidade e de estado do V1 e do V2 sobre uma amostra rotulada.
 

@@ -11,7 +11,7 @@ T = datetime(2026, 10, 3, 15, 2, tzinfo=timezone.utc)
 
 def test_defaults_are_safe_only_shadow_features_are_on():
     on = {n for n, (default, state, _) in FLAGS.items() if default}
-    assert on == {"HISTORY_OBSERVATIONS", "SENTINEL"}
+    assert on == {"HISTORY_OBSERVATIONS", "SENTINEL", "FORECAST_REGISTRY"}
     assert all(state == "SHADOW" for n, (d, state, _) in FLAGS.items() if d)
     assert all(state == "OFF" for n, (d, state, _) in FLAGS.items() if not d)
 

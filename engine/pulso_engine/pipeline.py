@@ -27,9 +27,11 @@ from .processing.clustering import cluster_signals
 from .processing.geo import locate
 from .processing.geo_v2 import resolve as resolve_city
 from .flags import enabled as flag
+from .forecast_v2 import annotate_shadow, shadow_rows
 from .investigations_io import investigation_dict, investigation_from_row
 from .radar import analyze
 from .research.history import build_observations
+from .validation.forecast_registry import build_entry
 from .series import build_series
 from .processing.keyword_engine import KeywordEngine
 
@@ -348,6 +350,21 @@ def run_once(
         *resolve_surge_due(open_forecasts or [], series_rows, points, now),
         *(f for f in make_surge_forecasts(series_rows, now, events) if f["forecast_id"] not in already_open),
     ]
+    # Trilha de auditoria (imutável): o que o modelo viu quando fez cada previsão NOVA. Só grava; o Worker ignora reenvio.
+    forecast_registry: list[dict] = []
+    if flag("FORECAST_REGISTRY"):
+        for f in forecasts:
+            if f["status"] != "open" or f["forecast_id"] in already_open:
+                continue
+            feats = {k: v for k, v in (f.get("evidence") or {}).items() if k not in ("leading_indicators", "event_types", "note")}
+            entry = build_entry(f, feats, now, model_version=str(f["method_version"]), feature_version="1",
+                                baseline_version="seasonal_v1" if flag("SEASONAL_BASELINE_V2") else "ewma_v1")
+            if len(entry["snapshot"]) <= 8000:  # teto do Worker (zod)
+                forecast_registry.append(entry)
+    shadow_results: list[dict] = []
+    if flag("FORECAST_V2_SHADOW"):  # V2 em sombra: só acrescenta evidence.shadow_v2 e linhas de shadow_results; o V1 não muda
+        forecasts = annotate_shadow(forecasts, {"BR": points}, now)
+        shadow_results = shadow_rows(forecasts)
     events_to_send = changed_events(events, known_events)
     series_to_send = changed_series(series_now, history)
     observations = select_observations(build_observations(list(all_signals.values()), duplicates, now), now) if flag("HISTORY_OBSERVATIONS") else []
@@ -377,6 +394,7 @@ def run_once(
         "forecasts": forecasts,
         "observations": observations,
         "investigations": investigations,
+        "forecast_registry": forecast_registry,
         "geo_v2_shadow": geo_shadow,  # só para o log do ciclo; o Worker ignora (chunks não o repassa)
     }
 
@@ -512,7 +530,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "series": batch["series"] if i == len(parts) - 1 else [],
          "forecasts": batch.get("forecasts", []) if i == len(parts) - 1 else [],
          "observations": batch.get("observations", []) if i == len(parts) - 1 else [],
-         "investigations": batch.get("investigations", []) if i == len(parts) - 1 else []}
+         "investigations": batch.get("investigations", []) if i == len(parts) - 1 else [],
+         "forecast_registry": batch.get("forecast_registry", []) if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 

@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from pulso_engine.validation.replay import ReplayClock, ReplayDataset, ReplayItem
 
 
@@ -22,3 +24,9 @@ def test_late_fetch_is_not_visible_when_event_already_happened():
     item = ReplayItem("late", event_time=at(17), published_at=at(17), fetched_at=at(17, 45))
     assert not item.visible_at(ReplayClock(at(17, 30)))
     assert item.visible_at(ReplayClock(at(17, 45)))
+
+
+@pytest.mark.parametrize("field", ["outcome", "resolved_at", "resolution", "OUTCOME"])
+def test_replay_rejects_future_outcome_hidden_inside_inference_payload(field):
+    with pytest.raises(ValueError, match="desfecho/resolução"):
+        ReplayItem("must-not-leak", payload={field: 1}, observed_at=at(17))
