@@ -122,6 +122,8 @@ class IdapCapAdapter:
         if uf:
             city = re.match(r"\s*([^/,]+)/" + uf, areas[0])
             place = (locate(f"{city.group(1).title()}, {uf}") if city and len(areas) == 1 else None) or state_place(uf, confidence=70)
+            if place.precision == "STATE":  # a área do alerta oficial é dado estruturado: confiança plena no estado
+                place = state_place(uf, confidence=70)
         digest = content_hash(f"{PORTAL}?alerta={raw['identifier']}", f"idap-{raw['identifier']}")
         return Signal(
             signal_id=f"sig-{digest}", source_id=self.source_id, source_class=self.source_class,  # type: ignore[arg-type]

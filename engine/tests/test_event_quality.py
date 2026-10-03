@@ -100,3 +100,26 @@ def test_text_impact_raises_severity_within_the_same_category():
     assert d >= r + 10  # mortes pesam bem mais que o relato de rotina
     assert g <= r       # entretenimento nunca sobe a severidade
     assert d <= 100
+
+
+def test_explicit_state_sigla_counts_as_well_located_so_different_states_never_merge():
+    """Caso real de produção: 'Defesa Civil: Inundações (extremo) em São Borja/RS' (sigla, conf. 55) se fundia com os
+    alertas de Manaus/AM porque a trava exigia confiança 60. Sigla é menção explícita de estado: tem que valer."""
+    rs = sig(1, "Defesa Civil: Inundações (extremo) em São Borja/RS", source="idap", cls="OFFICIAL", cat="EMERGENCY", state="RS", conf=55)
+    am = sig(2, "Defesa Civil: Corridas de massa (extremo) em Manaus/AM", source="idap", cls="OFFICIAL", cat="EMERGENCY", state="AM", conf=70)
+    assert len(cluster_signals([rs, am])) == 2
+    # um estado só herdado da fonte regional (35) ou por gentílico (50) continua sem travar o agrupamento
+    inherited = sig(3, "Defesa Civil: Inundações (extremo) em São Borja/RS", source="g1-rs", state="RS", conf=35)
+    assert len(cluster_signals([inherited, am])) == 1
+
+
+def test_idap_alert_with_only_state_known_gets_full_state_confidence():
+    from pulso_engine.collectors.official.idap_cap import IdapCapAdapter
+    xml = ("<feed xmlns='http://www.w3.org/2005/Atom'><entry><content type='text/xml'>"
+           "<alert xmlns='urn:oasis:names:tc:emergency:cap:1.2'><identifier>1/2026</identifier><sent>2026-10-03T00:10:00-03:00</sent>"
+           "<status>Actual</status><msgType>Alert</msgType><info><event>INUNDAÇÕES</event><severity>Extreme</severity>"
+           "<expires>2026-10-03T23:55:00-03:00</expires><description>x</description>"
+           "<area><areaDesc>São Borja/RS</areaDesc></area></info></alert></content></entry></feed>").encode()
+    src = {"id": "idap", "adapter": "idap_cap", "source_class": "OFFICIAL", "url": "https://x"}
+    (s,) = IdapCapAdapter(src, None, lambda u: xml, lambda: NOW).run()
+    assert s.state == "RS" and s.geo_confidence == 70 and s.geo_precision == "STATE"

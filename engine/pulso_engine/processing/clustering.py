@@ -23,7 +23,10 @@ WINDOW = timedelta(hours=12)
 JACCARD_MIN = 0.34
 MIN_SHARED = 3
 MIN_HIT_RATIO = 0.25  # fração dos membros com que a matéria nova deve se parecer (evita ligação em cadeia)
-CONFIDENT_GEO = 60
+# Faixas da geolocalização: cidade 70, nome de estado 60, sigla com contexto ("São Borja, RS", "(MG)") 55, gentílico 50,
+# estado herdado da fonte 35. Até a sigla é uma menção EXPLÍCITA de estado: conta como bem localizado para a trava de
+# "estados diferentes nunca se juntam". (Com 60, um alerta de São Borja/RS se fundia com os de Manaus/AM.)
+CONFIDENT_GEO = 55
 
 
 def tokens(title: str) -> frozenset[str]:
