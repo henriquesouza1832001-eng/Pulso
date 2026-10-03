@@ -45,22 +45,45 @@ describe("source_runtime: persistência econômica e idempotente", () => {
 });
 
 describe("a observabilidade nunca custa dado de verdade", () => {
-	it("tabela de observabilidade ausente (migration atrasada): 200, dado gravado, observability=failed", async () => {
+	it("tabela de observabilidade ausente (migration atrasada): 200, dado gravado, optional_writes=failed", async () => {
 		const s = setup();
 		s.sqlite.exec("DROP TABLE source_runtime; DROP TABLE engine_cycle;");
 		const r = await s.post(BATCH);
-		const body = (await r.json()) as { ok: boolean; observability: string };
+		const body = (await r.json()) as { ok: boolean; optional_writes: string };
 		expect(r.status).toBe(200);
-		expect(body.observability).toBe("failed");
+		expect(body.optional_writes).toBe("failed");
 		expect((s.sqlite.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n).toBe(1);
 		expect((s.sqlite.prepare("SELECT COUNT(*) AS n FROM signals").get() as { n: number }).n).toBe(2);
 	});
 
+	it("migration atrasada de QUALQUER tabela opcional não trava o produto: eventos, sinais, Pulso, séries e previsões gravam; só o opcional falha", async () => {
+		const clean = setup();
+		await clean.post(BATCH);
+		const product = ["sources", "events", "signals", "pulse_history", "source_health", "series", "forecasts"];
+		const s = setup();
+		s.sqlite.exec("DROP TABLE signal_observations; DROP TABLE investigations; DROP TABLE forecast_registry; DROP TABLE calibrators; DROP TABLE source_runtime; DROP TABLE engine_cycle;");
+		const r = await s.post(BATCH);
+		expect(r.status).toBe(200);
+		expect(((await r.json()) as { optional_writes: string }).optional_writes).toBe("failed");
+		const n = (db: ReturnType<typeof setup>, t: string) => (db.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n;
+		for (const t of product) expect(n(s, t), t).toBe(n(clean, t));
+	});
+
+	it("coluna ausente numa tabela opcional (esquema desatualizado) também não derruba o dado de produto", async () => {
+		const s = setup();
+		s.sqlite.exec("ALTER TABLE investigations DROP COLUMN last_anomalous_at;");
+		const r = await s.post(BATCH);
+		expect(r.status).toBe(200);
+		expect(((await r.json()) as { optional_writes: string }).optional_writes).toBe("failed");
+		expect((s.sqlite.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n).toBe(1);
+		expect((s.sqlite.prepare("SELECT COUNT(*) AS n FROM pulse_history").get() as { n: number }).n).toBe(1);
+	});
+
 	it("lote sem observabilidade (Engine antigo) continua válido e reporta skipped", async () => {
 		const s = setup();
-		const { source_runtime: _a, engine_cycle: _b, ...old } = BATCH;
-		const body = (await (await s.post(old)).json()) as { observability: string };
-		expect(body.observability).toBe("skipped");
+		const { source_runtime: _a, engine_cycle: _b, observations: _c, investigations: _d, forecast_registry: _e, calibrators: _f, shadow_results: _g, driver_registry: _h, ...old } = BATCH;
+		const body = (await (await s.post(old)).json()) as { optional_writes: string };
+		expect(body.optional_writes).toBe("skipped");
 	});
 });
 
