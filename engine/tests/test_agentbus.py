@@ -75,3 +75,20 @@ def test_claim_keeps_the_dot_of_hidden_folders_and_ignores_dot_slash():
     claims = bus._read(bus.DIR / "claims.json", {})
     assert claims["claude-hen"] == [".github/workflows/", "README.md"]
     assert bus.claim("codex", [".github/workflows/turso-schema.yml"]) == 1  # dentro da pasta reservada
+
+
+def test_check_staged_blocks_without_the_lock_and_on_files_owned_by_others(capsys):
+    bus.claim("claude-motor", ["engine/pulso_engine/forecast_v2.py"])
+    bus.claim("claude-hen", ["engine/pulso_engine/pipeline.py"])
+    # sem trava: bloqueia
+    assert bus.check_staged("claude-hen", ["engine/pulso_engine/pipeline.py"]) == 1
+    assert "NÃO tem a trava" in capsys.readouterr().err
+    bus.lock_acquire("claude-hen", "x")
+    assert bus.check_staged("claude-hen", ["engine/pulso_engine/pipeline.py"]) == 0
+    # arquivo reservado por outro agente: bloqueia mesmo com a trava
+    assert bus.check_staged("claude-hen", ["engine/pulso_engine/pipeline.py", "engine/pulso_engine/forecast_v2.py"]) == 1
+    assert "reservado por claude-motor" in capsys.readouterr().err
+    # nada em git add: bloqueia; arquivo sem dono: só avisa
+    assert bus.check_staged("claude-hen", []) == 1
+    assert bus.check_staged("claude-hen", ["docs/novo.md"]) == 0
+    assert "não tem dono" in capsys.readouterr().err
