@@ -63,11 +63,19 @@ def match_signature(event_type: str, observed: list[tuple[str, float]]) -> dict:
             "lead_seconds": None if not ordered else conf_t - lead_t}
 
 
-def best_signature(observed: list[tuple[str, float]], category: str | None = None) -> dict | None:
-    """Assinatura de maior cobertura (opcionalmente restrita à categoria). None se nada casar."""
+def rank_signatures(observed: list[tuple[str, float]], category: str | None = None) -> list[dict]:
+    """Assinaturas com ALGUM sensor observado, da mais cobertura à menos. Vários tipos compartilham sensores (chuva forte
+    serve a FLOOD, STORM e LANDSLIDE): o ranking é ambíguo por natureza e quem decide o tipo é o texto (event_types.json),
+    não a assinatura sozinha. Por isso se devolve a lista, não um veredito."""
     cands = [match_signature(t, observed) for t, sig in load_signatures().items() if category in (None, sig["category"])]
     cands = [c for c in cands if c["coverage"] > 0]
-    return max(cands, key=lambda c: (c["coverage"], c["event_type"]), default=None)
+    return sorted(cands, key=lambda c: (-c["coverage"], c["event_type"]))
+
+
+def best_signature(observed: list[tuple[str, float]], category: str | None = None) -> dict | None:
+    """Primeira do ranking (maior cobertura); None se nada casar. Veja a ressalva de ambiguidade em `rank_signatures`."""
+    ranked = rank_signatures(observed, category)
+    return ranked[0] if ranked else None
 
 
 def sensor_graph(path: Path = DEFAULT_PATH) -> dict[str, dict[str, int]]:

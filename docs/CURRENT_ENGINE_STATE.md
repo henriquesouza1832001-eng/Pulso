@@ -1,5 +1,7 @@
 # CURRENT_ENGINE_STATE — o Motor Python hoje vs. o documento "Motor Python + PULSO Sentinela"
 
+> **Atualização 2026-10-04 — implementação concluída no código (V2 atrás de flags).** Passos 1-14 da ordem do §7 existem como módulos testados: `research/history.py`, `baseline.py` (sazonal), `intelligence/trends.py`, `anomaly.py` (v2), `research/{sentinel,query_expansion,deep_search,validator}.py`, `radar.py`, `processing/cluster_refine.py`, `scoring/pulse.py` (`WEIGHTS_V2`, flag `PULSE_V2`), `forecast_scopes.py`, `calibration.py`, `backtest_events.py`, mais Fase 2 (`intelligence/emerging_terms.py`, `signatures.py`, `config/event_signatures.json`) e `simulation.py` (normal_day, flood_bh, blackout_sp, traffic_collapse_rj). Decisões em `docs/decisions/0009`. **O que falta é operacional, não de código:** ligar cada flag no `pipeline.py` após o portão de promoção (shadow + backtest V1×V2), acumular semanas de histórico (baseline sazonal, calibração, lead time reais), e a revisão de termos das fontes. O diagnóstico abaixo é o de 2026-10-03, antes da implementação.
+
 > **Data:** 2026-10-03 · **Branch:** `hen` · Primeira entrega pedida pelo §76 do documento. Nenhum código foi alterado: este arquivo é só o diagnóstico e a proposta de ordem.
 > Fontes lidas: `AGENTS.md`, `docs/BACKEND_STATUS.md`, `docs/architecture/*`, `docs/SCORING.md`, `engine/pulso_engine/**`, `database/migrations`, `apps/worker/src/routes`, `.github/workflows`.
 
