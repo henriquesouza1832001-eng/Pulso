@@ -2,12 +2,13 @@
 
 Lista honesta do que **não** está pronto. Atualizada no fim de cada rodada. Dono entre colchetes. Status de cada item: ABERTO, EM ANDAMENTO ou DEPENDE (de dados, de decisão ou de outra pessoa).
 
-Última atualização: 2026-10-03, rodada 1 de hardening (plataforma).
+Última atualização: 2026-10-03, rodada 2 de hardening (plataforma): storage ensaiado sob falha.
 
 ## A. Plataforma (Claude B / hen)
 | # | O que falta | Status | Por quê importa |
 |---|---|---|---|
-| A1 | **Ensaio de falha do storage (RT-005):** harness local para Turso e D1 com timeout, resposta perdida, lote parcial e retry sem duplicar. | ABERTO | Sem isso, "o dado não se perde nem duplica" é crença, não prova. Autoridade de storage segue UNVERIFIED. |
+| A1 | **Ensaio de falha do storage (RT-005), parte remota:** a lógica do Worker/adaptador está ensaiada (rodada 2); falta o servidor Turso real e o binding D1 real (timeout, lote parcial) — só dá com credenciais, em ambiente de teste. | EM ANDAMENTO | A prova local não substitui o banco de verdade. |
+| A1b | **`write_budget` gravado depois do lote:** com resposta perdida o orçamento subestima. Mover a contagem para dentro da mesma transação do lote. | ABERTO | Governador otimista por um lote. |
 | A2 | **Token administrativo separado (RT-007):** hoje `/api/admin/*` usa o mesmo token do ingest. | ABERTO (código é meu; criar o segredo é do dono) | Menor privilégio: quem escreve lote não deveria ler o painel. |
 | A3 | **Rate limit / WAF na borda (RT-007).** | DEPENDE do dono (regra no painel da Cloudflare; Worker sem estado não limita sozinho) | Sem isso, token vazado ou força bruta não encontra freio. |
 | A4 | **Trilha de auditoria do admin** (quem leu o quê). | ABERTO | Rotas de diagnóstico expõem dados operacionais. |

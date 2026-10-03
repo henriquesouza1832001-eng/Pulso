@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../env";
 
 /**
@@ -27,3 +27,9 @@ export const requestContext: MiddlewareHandler<AppEnv> = async (c, next) => {
 
 /** Teto do corpo de /api/ingest (o Engine divide o lote em partes bem menores que isto). */
 export const INGEST_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Handler de erro não tratado: detalhe só no log (com o request_id); a resposta nunca vaza stack nem mensagem interna. */
+export const errorHandler = (err: unknown, c: Context<AppEnv>) => {
+	console.error("unhandled", c.get("requestId"), err);
+	return c.json({ error: "internal_error" }, 500);
+};

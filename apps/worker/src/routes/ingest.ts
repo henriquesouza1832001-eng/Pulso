@@ -339,7 +339,15 @@ ingest.post("/", async (c) => {
 			   -- pico: o máximo já atingido e quando (as expressões leem os valores ANTIGOS da linha)
 			   peak_at=CASE WHEN excluded.peak_pulse > events.peak_pulse THEN excluded.peak_at ELSE events.peak_at END,
 			   peak_alert_level=MAX(events.peak_alert_level,excluded.peak_alert_level),
-			   peak_pulse=MAX(events.peak_pulse,excluded.peak_pulse)`,
+			   peak_pulse=MAX(events.peak_pulse,excluded.peak_pulse)
+			 -- reenvio idêntico não grava (idempotência e orçamento): só se algum campo mudou
+			 WHERE events.updated_at IS NOT excluded.updated_at OR events.title IS NOT excluded.title OR events.summary IS NOT excluded.summary
+			   OR events.category IS NOT excluded.category OR events.status IS NOT excluded.status OR events.latitude IS NOT excluded.latitude
+			   OR events.longitude IS NOT excluded.longitude OR events.geo_precision IS NOT excluded.geo_precision OR events.geo_confidence IS NOT excluded.geo_confidence
+			   OR events.state IS NOT excluded.state OR events.city IS NOT excluded.city OR events.severity IS NOT excluded.severity
+			   OR events.confidence IS NOT excluded.confidence OR events.pulse IS NOT excluded.pulse OR events.alert_level IS NOT excluded.alert_level
+			   OR events.score_breakdown IS NOT excluded.score_breakdown OR events.signal_count IS NOT excluded.signal_count
+			   OR events.source_count IS NOT excluded.source_count OR excluded.peak_pulse > events.peak_pulse OR excluded.peak_alert_level > events.peak_alert_level`,
 				)
 				.bind(json(events)),
 		);
@@ -381,8 +389,10 @@ ingest.post("/", async (c) => {
 		stmts.push(
 			db
 				.prepare(
-					`INSERT OR REPLACE INTO pulse_history (scope,timestamp,score,alert_level,contributors)
-			 SELECT ${f("scope")},${f("timestamp")},${f("score")},${f("alert_level")},${f("contributors")} FROM json_each(?1) j`,
+					`INSERT INTO pulse_history (scope,timestamp,score,alert_level,contributors)
+			 SELECT ${f("scope")},${f("timestamp")},${f("score")},${f("alert_level")},${f("contributors")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(scope,timestamp) DO UPDATE SET score=excluded.score,alert_level=excluded.alert_level,contributors=excluded.contributors
+			 WHERE pulse_history.score IS NOT excluded.score OR pulse_history.alert_level IS NOT excluded.alert_level OR pulse_history.contributors IS NOT excluded.contributors`,
 				)
 				.bind(json(pulses)),
 		);
@@ -406,7 +416,8 @@ ingest.post("/", async (c) => {
 				.prepare(
 					`INSERT INTO series (scope,category,bucket,signals,sources)
 			 SELECT ${f("scope")},${f("category")},${f("bucket")},${f("signals")},${f("sources")} FROM json_each(?1) j WHERE true
-			 ON CONFLICT(scope,category,bucket) DO UPDATE SET signals=MAX(signals,excluded.signals),sources=MAX(sources,excluded.sources)`,
+			 ON CONFLICT(scope,category,bucket) DO UPDATE SET signals=MAX(signals,excluded.signals),sources=MAX(sources,excluded.sources)
+			 WHERE excluded.signals > series.signals OR excluded.sources > series.sources`,
 				)
 				.bind(json(series)),
 		);
@@ -538,7 +549,7 @@ ingest.post("/", async (c) => {
 			 SELECT ${f("forecast_id")},${f("kind")},${f("question")},${f("scope")},${f("metric")},${f("comparator")},${f("threshold")},${f("method")},${f("method_version")},${f("probability")},${f("interval_low")},${f("interval_high")},${f("horizon_minutes")},${f("created_at")},${f("resolves_at")},${f("evidence")},${f("status")},${f("outcome")},${f("observed_value")},${f("resolved_at")},${f("brier")}
 			 FROM json_each(?1) j WHERE true
 			 ON CONFLICT(id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,observed_value=excluded.observed_value,resolved_at=excluded.resolved_at,brier=excluded.brier
-			 WHERE forecasts.status = 'open'`,
+			 WHERE forecasts.status = 'open' AND excluded.status != 'open'`, // aberta reenviada igual não grava; só a resolução/anulação grava
 				)
 				.bind(json(forecasts)),
 		);
