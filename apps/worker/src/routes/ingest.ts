@@ -109,6 +109,8 @@ const forecastSchema = z
 const batchSchema = z.object({
 	batch_id: z.string().min(1).max(80),
 	sources: z.array(sourceSchema).max(100),
+	/** true = `sources` é o catálogo COMPLETO de fontes ativas: as que não vierem são desativadas. */
+	catalog_complete: z.boolean().optional().default(false),
 	events: z.array(eventSchema).max(200),
 	signals: z.array(signalSchema).max(500),
 	pulses: z
@@ -158,7 +160,7 @@ ingest.post("/", async (c) => {
 	if (!parsed.success) {
 		return c.json({ error: "invalid_batch", detail: parsed.error.issues[0]?.message }, 400);
 	}
-	const { sources, events, signals, pulses, source_health, series, forecasts } = parsed.data;
+	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts } = parsed.data;
 
 	const db = c.env.DB;
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
@@ -175,10 +177,18 @@ ingest.post("/", async (c) => {
 					`INSERT INTO sources (id,name,domain,adapter,source_class,url,state)
 			 SELECT ${f("id")},${f("name")},${f("domain")},${f("adapter")},${f("source_class")},${f("url")},${f("state")}
 			 FROM json_each(?1) j WHERE true
-			 ON CONFLICT(id) DO UPDATE SET name=excluded.name,domain=excluded.domain,adapter=excluded.adapter,source_class=excluded.source_class,url=excluded.url,state=excluded.state`,
+			 ON CONFLICT(id) DO UPDATE SET name=excluded.name,domain=excluded.domain,adapter=excluded.adapter,source_class=excluded.source_class,url=excluded.url,state=excluded.state,enabled=1`,
 				)
 				.bind(json(sources)),
 		);
+		if (catalog_complete) {
+			// Fonte desligada ou removida do config/sources.json some do /api/health (e do painel do front).
+			stmts.push(
+				db
+					.prepare(`UPDATE sources SET enabled = 0 WHERE id NOT IN (SELECT ${f("id")} FROM json_each(?1) j)`)
+					.bind(json(sources)),
+			);
+		}
 	}
 	if (events.length) {
 		stmts.push(

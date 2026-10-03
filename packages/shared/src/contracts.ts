@@ -167,6 +167,8 @@ export interface Forecast {
 export interface IngestBatch {
 	batch_id: string;
 	sources: SourceDef[];
+	/** true = `sources` é o catálogo completo de fontes ativas; o Worker desativa as ausentes. Padrão false. */
+	catalog_complete?: boolean;
 	events: PulsoEvent[];
 	signals: Signal[];
 	pulses: PulseSnapshot[];

@@ -45,7 +45,7 @@ Exigem `Authorization: Bearer <INGEST_TOKEN>` (fail-closed) e nunca são cachead
 
 | Endpoint | Função |
 |---|---|
-| `POST /api/ingest` | Lote do Engine. Agora aceita `series` (`SeriesPoint[]`): contagem por escopo×categoria×janela de 5 min, gravada com o MAIOR valor já visto e retida por 90 dias. |
+| `POST /api/ingest` | Lote do Engine. Campo opcional `catalog_complete` (padrão `false`): quando `true`, `sources` é o catálogo completo de fontes ativas e o Worker marca `enabled = 0` nas que não vierem (somem de `/api/health` e do painel "Fontes ativas"); fonte que volta a vir é reativada. Aceita `series` (`SeriesPoint[]`): contagem por escopo×categoria×janela de 5 min, gravada com o MAIOR valor já visto e retida por 90 dias. |
 | `GET /api/admin/series?hours=48&scope=BR` | Histórico de contagens para o baseline do Engine. |
 | `GET /api/admin/signals?hours=24` | Sinais recentes gravados (até 5000), para o Engine agrupar com estado e reaproveitar `event_id`. |
 | `GET /api/admin/pulse-history?scope=BR&hours=72` | Série do Pulso: matéria-prima dos previsores e da resolução. |

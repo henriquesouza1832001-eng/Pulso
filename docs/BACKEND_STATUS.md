@@ -4,7 +4,7 @@
 > Este arquivo é o ponto de entrada de quem entra no backend. **Quem muda algo relevante atualiza este arquivo no mesmo PR** (seções 2, 6, 7 e o registro da seção 10).
 
 ## 1. O que é o PULSO (em 30 segundos)
-Plataforma brasileira de inteligência situacional em tempo real, a partir de **sinais públicos** (notícias hoje; fontes oficiais e sociais depois). Agrupa sinais em **eventos**, calcula **severidade**, **confiança** e **Pulso Score** (sempre explicável), e a meta é **antecipar** acontecimentos como previsões probabilísticas calibradas, no espírito do "Pizza Index".
+Plataforma brasileira de inteligência situacional em tempo real, a partir de **sinais públicos** (notícias e fontes oficiais hoje; redes sociais quando houver acesso às APIs). Agrupa sinais em **eventos**, calcula **severidade**, **confiança** e **Pulso Score** (sempre explicável), e a meta é **antecipar** acontecimentos como previsões probabilísticas calibradas, no espírito do "Pizza Index".
 
 Três peças desacopladas:
 | Peça | Pasta | Tecnologia | Quem |
@@ -36,6 +36,7 @@ Leitura obrigatória, nesta ordem: `AGENTS.md` → `docs/architecture/ARCHITECTU
 | Worker | `GH_DISPATCH_TOKEN` | token fino do GitHub (Actions: leitura e escrita, só o repo Pulso) para o Cron acionar a coleta. **Vence em 31/12/2026**: renovar antes disso (gerar novo, `wrangler secret put GH_DISPATCH_TOKEN`), senão a coleta automática para. |
 | GitHub Actions | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy automático |
 | GitHub Actions | `PULSO_API_URL`, `PULSO_INGEST_TOKEN` | a coleta enviar lotes ao Worker |
+| GitHub Actions | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`, `X_BEARER_TOKEN` | **ainda não criados**: sensores sociais (só depois da aprovação; ver `docs/sources/SOURCES.md`) |
 
 Quem precisa de acesso novo: convite como colaborador no GitHub e na conta Cloudflare (Membros). Peça os valores dos segredos a quem os criou; **não** os cole em chats, issues nem PRs.
 
@@ -46,7 +47,7 @@ npm run db:migrate && npm run db:seed          # D1 local + dados FICTÍCIOS
 copy apps\worker\.dev.vars.example apps\worker\.dev.vars   # edite INGEST_TOKEN (local)
 npm run dev:worker                              # API em :8787
 npm run dev:web                                 # Web em :5173 (proxy /api → :8787)
-cd engine && py -m pip install -e ".[dev]" && py -m pytest      # 36+ testes
+cd engine && py -m pip install -e ".[dev]" && py -m pytest      # 50+ testes
 py -m pulso_engine.pipeline                     # rodada simulada (não envia)
 ```
 Enviar ao Worker local: `PULSO_API_URL=http://localhost:8787 PULSO_INGEST_TOKEN=<seu .dev.vars> py -m pulso_engine.pipeline --push`.
@@ -69,21 +70,27 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 6. Estado atual (marque ao concluir)
 **Pronto e testado**
 - [x] Monorepo, CI, deploy automático, Cloudflare (D1, Worker, front)
-- [x] Coleta RSS de 5 fontes (Agência Brasil, G1, Folha, CNN Brasil, UOL) com dedup, geo (cidade/estado), clusterização, eventos
+- [x] Coleta de **8 fontes em produção** (confirmado em `/api/health` em 2026-10-03, todas ONLINE): RSS de Agência Brasil, G1, Folha, CNN Brasil, UOL, **Agência Senado** e **Agência Câmara** (`OFFICIAL`), e avisos do **INMET** (`OFFICIAL`, só Perigo/Grande Perigo, um evento por UF). Dedup, geo (cidade/estado + gentílicos/assembleias/TRE-UF), clusterização, eventos
 - [x] Confiança, Pulso Score explicável, níveis 1–5
 - [x] API pública: `/api/pulse/*`, `/api/events`, `/api/events/:id`, `/api/map`, `/api/health`
 - [x] Rotas internas: `/api/ingest`, `/api/admin/series`, `/api/admin/overview`
 - [x] Histórico em séries (5 min), baseline (EWMA) e anomalia (inválida com < 12 h de dados)
 - [x] Protocolo de coleta validado em código; `/api/health` mostra o atraso da coleta
-- [x] Testes: 36 Python, 4 do Worker
+- [x] Testes: 89 Python, 4 do Worker
 
 **Em andamento / aguardando**
 - [x] **PR #7** mergeado e publicado em 2026-10-03: séries, baseline, anomalia, rotas admin, Cron Trigger (`*/5 * * * *` registrado), migration `0002` aplicada
 - [x] Registro de coletores (`collectors/registry.py`): fonte nova = arquivo novo + uma linha, sem mexer no pipeline
-- [ ] **Segredo `GH_DISPATCH_TOKEN`** no Worker (sem ele o Cron não aciona a coleta; `/api/health` mostra `scheduler_configured: false`)
+- [x] Adaptadores Reddit/X completos para política BR (busca temática, filtro por categoria, geo, `RATE_LIMITED`/`AUTH_ERROR`, cadência por `interval_s`, modo piloto `--source`); `enabled: false`, sem autorização nem credenciais (ADR 0003)
+- [ ] Reddit: abrir pedido de acesso (Responsible Builder Policy exige aprovação prévia desde nov/2025; RSS do Reddit é bloqueado pelo robots.txt)
+- [x] **8 fontes ativas** (2026-10-03): 5 RSS + Agência Senado, Agência Câmara e INMET (ativação antecipada, piloto < 48 h, decisão de Arthur266760). O painel "Fontes ativas" acompanha o `sources.json` (`catalog_complete`)
+- [x] Clima impactante por estado: coletor oficial `inmet` (avisos Perigo/Grande Perigo, um evento por UF) + `reddit-clima`/`x-clima`; geo com gentílicos/assembleias/TRE; Reddit regional por UF (ADR 0004). Tudo `enabled: false` aguardando revisão
+- [x] Piloto automático no `collect.yml`: liga sozinho quando os secrets sociais existirem, sem envio e sem conteúdo no log
+- [ ] Reddit/X: registrar app/contratar plano (com teto de gasto), revisar termos, criar secrets (inicia o piloto), avaliar 48 h e só então `enabled: true` (checklist em `docs/sources/SOURCES.md`)
+- [ ] Confirmar cadência do Cron pelos logs de produção: `/api/health` mostra a presença do token, não sucesso do dispatch
 
 ## 7. Problemas e limitações conhecidos (seja honesto ao priorizar)
-1. **Coleta contínua não está garantida.** O `schedule` do GitHub nunca disparou sozinho (atrasos de mais de 30 min). Solução em curso: Cron Trigger da Cloudflare → `workflow_dispatch`. Enquanto o `GH_DISPATCH_TOKEN` não existir, o Pulso só atualiza quando alguém dispara a coleta manualmente (`gh workflow run collect.yml`). Sem coleta contínua não há histórico, e sem histórico o baseline e a previsão não funcionam.
+1. **Coleta contínua**: Cron Trigger da Cloudflare confirmado em produção em 2026-10-03 (coleta a cada 5 min). `/api/health` só mostra a presença do segredo: acompanhar pelos logs que cada rodada foi aceita e terminou. `GH_DISPATCH_TOKEN` vence em 31/12/2026. Sem coleta contínua não há histórico para baseline/previsão.
 2. ~~Clusterização sem estado~~ **Resolvido em 2026-10-03**: o Engine busca os sinais das últimas 24 h (`/api/admin/signals`), agrupa tudo junto e reaproveita o `event_id` existente. Limitação: se dois eventos antigos se fundirem, o menor id vence e o outro fica órfão até sair da lista de 24 h.
 3. **Classificação inicial por keywords** gera falsos positivos (a geolocalização teve um bug grave de "para"=Pará, já corrigido; ainda só reconhece capitais e estados) (ex.: um boletim de vídeos classificado como POLITICS) e perde casos (a mesma história em dois eventos). Calibrar com dados reais.
 4. **Conformidade das 5 fontes pendente**: `terms_url`/`reviewed_by` = `PENDENTE` em `engine/config/sources.json` (G1, Folha e CNN sem link de termos verificado). Alguém precisa ler os termos de cada site (coletar RSS, exibir título/link com atribuição, usar em previsões).
@@ -95,14 +102,14 @@ Armadilhas conhecidas (Windows): use `py` (o `python` do PATH não funciona); se
 ## 8. Roadmap do backend (ordem sugerida)
 | # | Item | Estado |
 |---|---|---|
-| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | em andamento (falta o segredo) |
+| 1 | Coleta confiável a cada 5 min (Cron CF → Actions) | **feito** (confirmado em 2026-10-03); acompanhar logs; renovar token até 31/12/2026 |
 | 2 | Clusterização com estado (ids estáveis) | **feito** (2026-10-03) |
 | 3 | **Previsões**: tabela `forecasts`, API, resolução e pontuação (Brier); NOWCAST primeiro | **v1 feita** (experimental). Faltam EVENT/QUANTITY/OPEN e modelos melhores |
-| 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | a fazer (ler termos antes) |
+| 4 | Fontes oficiais (Defesa Civil, INMET, PRF, TSE, IBGE, Banco Central) por API/dados abertos | INMET, Agência Senado e Agência Câmara **ativos**; próximos: TSE (candidaturas), dados abertos da Câmara/Senado, Defesa Civil, GDELT (tensões) |
 | 5 | Tempo real: SSE em `/api/events/live`; `/api/trending` | a fazer |
 | 6 | Painel admin: proteger `/api/admin/*` (Cloudflare Access/token próprio) + definir necessidades com o front | a fazer |
 | 7 | `/api/search`, `/api/timeline` | a fazer |
-| 8 | Reddit e X (APIs oficiais; perfis pequenos pesam menos e nunca confirmam sozinhos) | a fazer (cadastro, custo e termos) |
+| 8 | Reddit e X (APIs oficiais; nunca confirmam sozinhos) | código pronto (política e clima por UF); Reddit exige pedido de acesso (Responsible Builder Policy), X exige plano pago com teto de gasto; secrets → piloto automático |
 | 9 | Fase 3: câmeras públicas autorizadas, trânsito (Waze só por parceria), visão computacional onde permitido | futuro |
 | 10 | Robustez: Queues, KV (cache), rate limiting, staging, observabilidade | conforme a carga |
 
@@ -133,7 +140,7 @@ Ordem sugerida: E1 → E2 (aquecimento) → E3 → E4 → E5.
 |---|---|---|---|
 | E1 | Onboarding acima + PR de teste (ex.: corrigir um erro de digitação em doc) | docs | valida acesso, CI e fluxo |
 | E2 | **Qualidade da classificação e da geo**: ampliar o gazetteer (mais municípios, bairros conhecidos), ajustar famílias de keywords, reduzir falsos positivos, com testes | `processing/geo.py`, `processing/keywords.json`, `tests/` | exemplos reais ruins estão na seção 7 (itens 2 e 3) |
-| E3 | **Coletores de fontes oficiais**, um por PR: INMET (alertas), Defesa Civil, PRF, IBGE, Banco Central | `collectors/official/<fonte>.py` + 1 linha em `collectors/registry.py` + entrada em `config/sources.json` + ficha em `docs/sources/SOURCES.md` | **antes de codar**: ler API/termos/limites e preencher o checklist de `COLLECTION_PROTOCOL.md` §4; teste com feed gravado (sem rede) |
+| E3 | **Coletores de fontes oficiais**, um por PR: ~~INMET (alertas)~~ ✅ feito (`collectors/official/inmet.py` serve de modelo), Defesa Civil, PRF, IBGE, Banco Central, TSE (candidaturas) | `collectors/official/<fonte>.py` + 1 linha em `collectors/registry.py` + entrada em `config/sources.json` + ficha em `docs/sources/SOURCES.md` | **antes de codar**: ler API/termos/limites e preencher o checklist de `COLLECTION_PROTOCOL.md` §4; teste com feed gravado (sem rede) |
 | E4 | `/api/search` e `/api/timeline` | `apps/worker/src/routes/search.ts`, `timeline.ts` (novos) + registrar em `index.ts` | seguir o padrão de `events.ts` (zod, cache, erros) e documentar em `docs/api/API.md` |
 | E5 | Proteger `/api/admin/*` (Cloudflare Access ou token próprio) e definir com o front o que o painel precisa | `apps/worker/src/routes/admin.ts` | combinar antes com o responsável |
 

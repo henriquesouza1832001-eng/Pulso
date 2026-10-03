@@ -5,7 +5,7 @@ import hashlib
 from collections import Counter
 from datetime import datetime
 
-from .models import EventStats, Signal
+from .models import EventStats, Signal, SOCIAL_CLASSES
 from .processing.clustering import Cluster
 from .processing.normalizer import normalized_title
 from .scoring.confidence import confidence
@@ -53,6 +53,9 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0) -> Eve
 
 
 def status_for(stats: EventStats) -> str:
+    # Volume de relatos sociais não é confirmação independente.
+    if stats.source_classes <= SOCIAL_CLASSES:
+        return "DETECTED"
     if stats.official_confirmation or stats.independent_sources >= 3:
         return "CONFIRMED"
     if stats.independent_sources >= 2:

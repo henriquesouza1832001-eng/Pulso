@@ -115,6 +115,15 @@ def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now
     return anomaly_score(float(current), base)
 
 
+def is_due(src: dict, now: datetime, tick_s: int = 300) -> bool:
+    """O agendador roda a cada 5 min; fonte com interval_s maior só roda na sua janela.
+
+    Sem estado: a janela é derivada do relógio (ex.: 900 s → rodadas de :00, :15, :30, :45).
+    """
+    every = max(1, int(src.get("interval_s", tick_s)) // tick_s)
+    return int(now.timestamp()) // tick_s % every == 0
+
+
 def run_once(
     sources: list[dict],
     fetcher: Callable[[str], bytes] = http_fetch,
@@ -124,6 +133,7 @@ def run_once(
     stored: list[dict] | None = None,
     pulse_points: list[dict] | None = None,
     open_forecasts: list[dict] | None = None,
+    catalog: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -131,12 +141,14 @@ def run_once(
     health: list[dict] = []
     for src in sources:
         try:
-            got = build_adapter(src, keywords, fetcher, lambda: now).run()
+            # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
+            got = build_adapter(src, keywords, fetcher if src["adapter"] in ("rss", "inmet") else None, lambda: now).run()
             status, detail = ("ONLINE", None) if got else ("DEGRADED", "feed sem itens válidos")
             for s in got:
                 signals.setdefault(s.hash, s)  # dedup por URL canônica/título
         except Exception as exc:  # uma fonte caída nunca derruba o ciclo
-            got, status, detail = [], "OFFLINE", f"{type(exc).__name__}: {exc}"[:300]
+            status = getattr(exc, "health_status", "OFFLINE")  # RATE_LIMITED/AUTH_ERROR das APIs
+            got, detail = [], f"{type(exc).__name__}: {exc}"[:300]
             print(f"[warn] {src['id']}: {detail}", file=sys.stderr)
         health.append({"source_id": src["id"], "status": status,
                        "last_success": iso(now) if got else None, "detail": detail})
@@ -184,7 +196,11 @@ def run_once(
     ]
     return {
         "batch_id": uuid.uuid4().hex,
-        "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")} for s in sources],
+        # Com `catalog`, envia TODAS as fontes ativas (mesmo as fora da janela de interval_s) e o Worker
+        # desativa as ausentes: o painel "Fontes ativas" acompanha o config/sources.json.
+        "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")}
+                    for s in (catalog if catalog is not None else sources)],
+        "catalog_complete": catalog is not None,
         "events": events,
         "signals": [signal_dict(s) for s in to_send],
         "pulses": pulses,
@@ -226,7 +242,7 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
     for i in range(0, len(orphans), max_signals):
         parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
-        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"],
+        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"], "catalog_complete": batch["catalog_complete"],
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
@@ -242,20 +258,53 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Roda uma rodada do Engine do PULSO.")
     ap.add_argument("--config", type=Path, default=DEFAULT_SOURCES)
     ap.add_argument("--push", action="store_true", help="envia ao Worker (exige PULSO_API_URL e PULSO_INGEST_TOKEN)")
+    ap.add_argument("--source", action="append", metavar="ID",
+                    help="piloto: roda só estas fontes, mesmo desativadas (proibido com --push)")
+    ap.add_argument("--respect-interval", action="store_true",
+                    help="com --source: roda a fonte só na sua janela de interval_s (piloto agendado)")
     args = ap.parse_args(argv)
 
-    sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
+    if args.source:
+        sources = [s for s in load_sources(args.config, only_enabled=False) if s["id"] in args.source]
+        if missing := set(args.source) - {s["id"] for s in sources}:
+            ap.error(f"fonte(s) inexistente(s): {', '.join(sorted(missing))}")
+        if args.push and any(not s.get("enabled", True) for s in sources):
+            ap.error("fonte desativada só roda em piloto, sem --push (COLLECTION_PROTOCOL.md §3)")
+        if args.respect_interval:
+            now = datetime.now(timezone.utc)
+            sources = [s for s in sources if is_due(s, now)]
+            if not sources:
+                print("nenhuma fonte na janela de interval_s; nada a fazer")
+                return 0
+        catalog = None  # piloto/rodada parcial nunca desativa outras fontes no Worker
+    else:
+        now = datetime.now(timezone.utc)
+        # valida o protocolo; fonte fora do protocolo não roda
+        catalog = load_sources(args.config)
+        sources = [s for s in catalog if is_due(s, now)]
     from .client import fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     history = fetch_history() if args.push else []
     stored = fetch_signals() if args.push else []
     pulse_points = fetch_pulse_history() if args.push else []
     open_forecasts = fetch_open_forecasts() if args.push else []
-    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts)
+    batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
+                     catalog=catalog)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
         print(f"  {h['source_id']:<16} {h['status']:<9} {h['detail'] or ''}")
+    if any(s["display"] == "metrics_only" for s in sources):
+        # Conteúdo de fonte metrics_only não aparece em log (os logs do Actions são públicos).
+        cats: dict[str, int] = {}
+        for g in batch["signals"]:
+            cats[g["category"]] = cats.get(g["category"], 0) + 1
+        print("  categorias:", ", ".join(f"{k}={v}" for k, v in sorted(cats.items())) or "-")
+        ufs: dict[str, int] = {}
+        for g in batch["signals"]:
+            ufs[g["state"] or "sem_UF"] = ufs.get(g["state"] or "sem_UF", 0) + 1
+        print("  estados:", ", ".join(f"{k}={v}" for k, v in sorted(ufs.items())) or "-")
+        return 0
     for e in sorted(batch["events"], key=lambda e: -e["pulse"])[:8]:
         print(f"  [{e['pulse']:>3}] {e['category']:<14} fontes={e['source_count']} conf={e['confidence']:>3} {e['title'][:70]}")
     if args.push:
