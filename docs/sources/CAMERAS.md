@@ -80,3 +80,9 @@ Sobre "mais de uma API e ir trocando para não bater o limite": usar **provedore
 - `acervodigital.net` e `digitei.com`: páginas de texto (SEO) que apenas linkam os donos (CET-SP, DER-SP, Motiva, DAER/EGR, DNIT, Ecovias, Skyline). Sem player nem dado reaproveitável; servem de índice de onde procurar.
 - `skylinewebcams.com`: ~113 páginas de câmeras no Brasil, empresa comercial sem API pública; só link, nunca copiar.
 - `wavesnow.com.br`: não respondeu no teste (timeout); reavaliar.
+
+## Catálogo atual e regras de exibição (2026-10-03)
+- Fonte única: `engine/config/cameras.json`. O arquivo do Worker é GERADO por `py engine/scripts/gen_cameras_ts.py`; um teste falha se os dois divergirem. Câmera repetida é barrada por teste (id, stream, página de origem, provedor + rótulo + cidade).
+- 59 itens: 6 RealData e 10 Motiva (com prévia ao vivo do player do próprio provedor, autorização do dono já obtida), 37 câmeras do SkylineWebcams e 6 painéis oficiais (CET-SP, DER-SP, DAER-RS, COR-Rio, DNIT, Windy), estes 43 só com link.
+- SkylineWebcams: o PULSO mostra o cartão e leva o clique à página da câmera. **Sem miniatura**: o CDN deles bloqueia hotlink (devolve erro quando o Referer é de outro site, e só serve a imagem sem Referer). Usar `no-referrer` para driblar isso seria contornar uma proteção do provedor, então não é feito. Para ter imagem, pedir autorização ao Skyline ou usar o player/embute oficial da Windy.
+- Cobertura real: o Skyline tem só 37 câmeras no Brasil (SP 7, RS 7, SC 6, RJ 5, BA 3, AM 3, e 1 em AL, DF, RN, PB, ES, PE). A meta de 50 por capital não é atingível com fontes abertas; só com a Windy ou acordos com órgãos.
