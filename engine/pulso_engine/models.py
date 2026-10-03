@@ -1,6 +1,9 @@
 """Espelho Python dos contratos de packages/shared/src/contracts.ts.
 
 Mudou aqui? Mude lá (e docs/api/API.md) no mesmo PR.
+
+O lote de ingestão (IngestBatch) é montado como dict em pipeline.run_once; campo opcional
+`catalog_complete`: true quando `sources` é o catálogo completo de fontes ativas.
 """
 from __future__ import annotations
 
