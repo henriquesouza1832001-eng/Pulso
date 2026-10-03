@@ -7,11 +7,10 @@ import { UF_LIST } from "./regions";
 
 /** Itens de navegação: só seções que existem de verdade na página (âncoras). */
 const NAV: Array<[string, string, string]> = [
-	["painel", "Visão geral", "activity"],
-	["mapa", "Mapa ao vivo", "pin"],
-	["previsao", "Previsão (nowcast)", "trend"],
+	// o mapa abre o painel e previsão + sensores dividem a mesma linha de cards: um item para cada bloco
+	["painel", "Visão geral e mapa", "pin"],
+	["previsao", "Previsão e sensores", "trend"],
 	["feed", "Eventos", "alert"],
-	["sensores", "Fontes e sensores", "radar"],
 	["cameras", "Câmeras", "cam"],
 	["historico", "Histórico", "clock"],
 	["faq", "Sobre o Pulso", "globe"],
