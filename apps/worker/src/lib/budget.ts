@@ -31,6 +31,7 @@ export interface BatchLike {
 	source_health: { status: string }[];
 	series: { scope: string }[];
 	forecasts: { status: string }[];
+	observations: { scope: string }[];
 }
 
 /**
@@ -48,7 +49,9 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 	const series = mode === "critical" ? [] : b.series.filter((s) => s.scope === "BR");
 	const source_health = b.source_health.filter((h) => h.status !== "ONLINE");
 	const forecasts = mode === "critical" ? b.forecasts.filter((f) => f.status !== "open") : b.forecasts;
-	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts };
+	// histórico agregado: em economia só o nacional; em modo crítico nada (nunca se perde evento por causa dele)
+	const observations = mode === "critical" ? [] : b.observations.filter((o) => o.scope === "BR");
+	const batch: T = { ...b, sources: [], catalog_complete: false, events, signals, pulses, series, source_health, forecasts, observations };
 	const shed = {
 		events: b.events.length - events.length,
 		signals: b.signals.length - signals.length,
@@ -57,6 +60,7 @@ export function shedBatch<T extends BatchLike>(b: T, mode: BudgetMode): { batch:
 		source_health: b.source_health.length - source_health.length,
 		sources: b.sources.length,
 		forecasts: b.forecasts.length - forecasts.length,
+		observations: b.observations.length - observations.length,
 	};
 	return { batch, shed };
 }

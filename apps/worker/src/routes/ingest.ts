@@ -154,6 +154,21 @@ const batchSchema = z.object({
 		.max(3000)
 		.default([]),
 	forecasts: z.array(forecastSchema).max(200).default([]),
+	/** Histórico agregado por HORA (docs/research/SPEC_01_HISTORY.md). Opcional: um Engine antigo não manda. */
+	observations: z
+		.array(
+			z.object({
+				scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+				category: z.enum(CATEGORIES),
+				source_class: z.enum(SOURCE_CLASSES),
+				hour: iso.refine((h) => /T\d{2}:00:00(\.0+)?Z$/.test(h), { message: "hour deve ser o início de uma hora" }),
+				signals: z.number().int().min(0).max(100000),
+				sources: z.number().int().min(0).max(1000),
+				duplicates: z.number().int().min(0).max(100000).default(0),
+			}),
+		)
+		.max(2000)
+		.default([]),
 });
 
 const SERIES_RETENTION_DAYS = 90;
@@ -179,7 +194,7 @@ ingest.post("/", async (c) => {
 		.catch(() => 0);
 	const mode = budgetMode(used);
 	const { batch: plan, shed } = shedBatch(parsed.data, mode);
-	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts } = plan;
+	const { sources, catalog_complete, events, signals, pulses, source_health, series, forecasts, observations } = plan;
 
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
 	// lendo o array JSON com json_each. Ordem respeita as chaves estrangeiras.
@@ -303,6 +318,32 @@ ingest.post("/", async (c) => {
 				.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
 		);
 	}
+	if (observations.length) {
+		// Só sobe: uma hora fechada pode receber um sinal tardio, mas a contagem nunca diminui (o feed descarta itens
+		// antigos) e reenvio idêntico não grava nada (o WHERE evita a escrita).
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO signal_observations (scope,category,source_class,hour,signals,sources,duplicates)
+			 SELECT ${f("scope")},${f("category")},${f("source_class")},${f("hour")},${f("signals")},${f("sources")},${f("duplicates")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(scope,category,source_class,hour) DO UPDATE SET
+			   signals=MAX(signal_observations.signals,excluded.signals),
+			   sources=MAX(signal_observations.sources,excluded.sources),
+			   duplicates=MAX(signal_observations.duplicates,excluded.duplicates)
+			 WHERE excluded.signals > signal_observations.signals OR excluded.sources > signal_observations.sources OR excluded.duplicates > signal_observations.duplicates`,
+				)
+				.bind(json(observations)),
+		);
+		// Retenção de 90 dias UMA vez por dia (03:00 UTC): a tabela não tem índice por hora, então a limpeza varre a tabela.
+		const now = new Date();
+		if (now.getUTCHours() === 3 && now.getUTCMinutes() < 10) {
+			stmts.push(
+				db
+					.prepare("DELETE FROM signal_observations WHERE hour < ?1")
+					.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
+			);
+		}
+	}
 	if (forecasts.length) {
 		// IMUTABILIDADE: a previsão (probabilidade, pergunta, método, evidência) é gravada uma vez e nunca
 		// reescrita; o reenvio só pode preencher a resolução, e apenas enquanto ainda estiver aberta.
@@ -338,6 +379,7 @@ ingest.post("/", async (c) => {
 		source_health: source_health.length,
 		series: series.length,
 		forecasts: forecasts.length,
+		observations: observations.length,
 		budget: { mode, used_before: used, written, shed },
 	});
 });

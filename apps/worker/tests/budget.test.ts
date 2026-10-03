@@ -14,6 +14,7 @@ const batch = (): BatchLike => ({
 	source_health: [{ status: "ONLINE" }, { status: "OFFLINE" }],
 	series: [{ scope: "BR" }, { scope: "UF:RJ" }],
 	forecasts: [{ status: "open" }, { status: "resolved" }],
+	observations: [{ scope: "BR" }, { scope: "UF:MG" }],
 });
 
 describe("governador do orçamento de escrita", () => {
@@ -42,6 +43,7 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.sources).toEqual([]);
 		expect(out.catalog_complete).toBe(false); // senão as fontes ausentes seriam desativadas
 		expect(out.pulses).toHaveLength(2);
+		expect(out.observations).toEqual([{ scope: "BR" }]); // histórico agregado: só o nacional em economia
 		expect(shed.events).toBe(1);
 	});
 
@@ -52,5 +54,6 @@ describe("governador do orçamento de escrita", () => {
 		expect(out.pulses).toEqual([{ scope: "BR" }]);
 		expect(out.series).toEqual([]);
 		expect(out.forecasts).toEqual([{ status: "resolved" }]); // a resolução de uma previsão nunca se perde
+		expect(out.observations).toEqual([]);
 	});
 });

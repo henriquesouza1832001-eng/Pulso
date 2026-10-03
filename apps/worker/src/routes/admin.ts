@@ -54,6 +54,28 @@ admin.get("/series", async (c) => {
 	return c.json({ since, series: results });
 });
 
+const observationsQuery = z.object({
+	hours: z.coerce.number().int().min(1).max(24 * 90).default(24 * 14),
+	scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/).optional(),
+	category: z.string().regex(/^[A-Z_]{2,20}$/).optional(),
+	limit: z.coerce.number().int().min(1).max(50000).default(20000),
+});
+
+/** Histórico agregado por hora (base do baseline sazonal e das tendências). Mais novas primeiro, como /series. */
+admin.get("/observations", async (c) => {
+	const q = observationsQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare(
+		`SELECT scope, category, source_class, hour, signals, sources, duplicates FROM signal_observations
+		 WHERE hour >= ?1 AND (?2 IS NULL OR scope = ?2) AND (?3 IS NULL OR category = ?3)
+		 ORDER BY hour DESC LIMIT ?4`,
+	)
+		.bind(since, q.data.scope ?? null, q.data.category ?? null, q.data.limit)
+		.all();
+	return c.json({ since, observations: results });
+});
+
 const signalsQuery = z.object({
 	hours: z.coerce.number().int().min(1).max(72).default(24),
 });

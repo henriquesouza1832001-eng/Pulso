@@ -95,3 +95,15 @@ class CameraFeed:
     preview: CameraPreview | None = None
     lat: float | None = None
     lon: float | None = None
+
+
+@dataclass(frozen=True)
+class ObservationPoint:
+    """Espelho de `ObservationPoint` em packages/shared/src/contracts.ts (campo opcional `observations` do IngestBatch)."""
+    scope: str  # "BR" | "UF:MG"
+    category: str
+    source_class: str
+    hour: str  # início da hora, ISO-8601 UTC
+    signals: int
+    sources: int
+    duplicates: int = 0
