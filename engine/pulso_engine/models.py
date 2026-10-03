@@ -174,3 +174,22 @@ class CalibratorArtifact:
     artifact: str  # JSON
     created_at: str
     status: str = "candidate"  # candidate | active | retired
+
+
+@dataclass(frozen=True)
+class SourceRuntimeRow:
+    """Espelho de `SourceRuntimeRow` (contracts.ts): estado por fonte (frescor + circuit breaker), valores no instante `updated_at`."""
+    source_id: str
+    transport: str  # ONLINE | DEGRADED | RATE_LIMITED | OFFLINE | AUTH_ERROR
+    freshness_state: str  # FRESH | STALE | EMPTY | QUIET | UNKNOWN | UNAVAILABLE (UNKNOWN != 0: o transporte falhou)
+    newest_item_age_min: float | None
+    last_content_advance: str | None
+    records: int
+    new_records: int
+    duplicate_records: int
+    breaker_state: str  # CLOSED | OPEN | HALF_OPEN
+    consecutive_failures: int
+    next_attempt_at: str | None
+    opened_count: int
+    breaker_reason: str | None
+    updated_at: str

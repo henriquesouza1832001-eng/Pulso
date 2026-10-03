@@ -133,3 +133,8 @@ def fetch_event_digest(hours: int = 24, base_url: str | None = None, token: str 
     """Resumo dos eventos já gravados: o Engine só reenvia o que é novo ou mudou (limite de escrita do D1)."""
     return _get_json(f"/api/admin/events-digest?hours={hours}", "events", base_url, token, strict)
 
+
+
+def fetch_source_runtime(base_url: str | None = None, token: str | None = None) -> list[dict]:
+    """Estado anterior por fonte (circuit breaker e último avanço de conteúdo). O Actions não tem memória entre ciclos."""
+    return _get_json("/api/admin/source-runtime", "source_runtime", base_url, token)

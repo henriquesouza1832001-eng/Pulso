@@ -66,5 +66,5 @@ def test_flag_off_disables_it_and_changes_nothing_else(monkeypatch):
     monkeypatch.setenv("PULSO_FLAG_SOURCE_FRESHNESS", "1")
     on = run_once([src("fresh")], fetcher=fetcher, now=NOW)
     assert off["source_freshness"] == [] and len(on["source_freshness"]) == 1
-    strip = lambda b: {k: v for k, v in b.items() if k not in ("batch_id", "source_freshness")}  # noqa: E731
+    strip = lambda b: {k: v for k, v in b.items() if k not in ("batch_id", "source_freshness", "source_runtime")}  # noqa: E731
     assert strip(off) == strip(on)  # eventos, sinais, pulsos, saúde de transporte: idênticos

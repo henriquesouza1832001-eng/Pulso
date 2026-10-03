@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import math
 import uuid
 import zlib
@@ -27,6 +28,8 @@ from .processing.clustering import cluster_signals
 from .processing.geo import locate
 from .processing.geo_v2 import resolve as resolve_city
 from .flags import enabled as flag
+from .circuit_breaker import BreakerState, allow_request, record as breaker_record
+from .source_runtime import breaker_from_row, cycle_summary, parse_iso, retry_after_seconds, runtime_row, select_runtime
 from .source_freshness import SourceReading, assess as assess_freshness, coverage as freshness_coverage, freshness_percentiles
 from .forecast_v2 import annotate_shadow, shadow_rows
 from .investigations_io import investigation_dict, investigation_from_row
@@ -252,13 +255,33 @@ def run_once(
     known_events: list[dict] | None = None,
     obs_rows: list[dict] | None = None,
     active_investigations: list[dict] | None = None,
+    breakers: dict[str, dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
     signals: dict[str, Signal] = {}  # sinais coletados NESTA rodada
     duplicates: dict[str, int] = {}  # hash -> cópias descartadas na deduplicação (base do duplicate_ratio do histórico)
     health: list[dict] = []
+    # Circuit breaker por fonte (CIRCUIT_BREAKER = SHADOW: calcula e persiste; CIRCUIT_BREAKER_ENFORCE = também PULA a fonte aberta).
+    # O estado anterior vem do Worker (o Actions não tem memória); sem ele, tudo CLOSED (nunca bloqueia por falta de informação).
+    track_breaker = flag("CIRCUIT_BREAKER")
+    enforce_breaker = track_breaker and flag("CIRCUIT_BREAKER_ENFORCE")
+    prior_runtime = breakers or {}
+    breaker_before = {s["id"]: breaker_from_row(prior_runtime.get(s["id"])) for s in sources}
+    breaker_probe: dict[str, BreakerState] = {}  # estado depois de allow_request (OPEN vencido vira HALF_OPEN)
+    skipped: set[str] = set()  # puladas (só com ENFORCE): não houve tentativa, então o breaker não muda
+    no_record: set[str] = set()  # em SHADOW, fonte que o breaker bloquearia: coletamos, mas o estado não evolui (não infla o backoff)
+    retry_after: dict[str, float | None] = {}
+
     def collect(src: dict) -> tuple[list[Signal], str, str | None]:
+        if track_breaker:
+            allowed, probe = allow_request(breaker_before[src["id"]], now)
+            breaker_probe[src["id"]] = probe
+            if not allowed:
+                if enforce_breaker:
+                    skipped.add(src["id"])
+                    return [], "OFFLINE", f"circuit breaker aberto até {iso(probe.next_attempt_at)}" if probe.next_attempt_at else "circuit breaker aberto"
+                no_record.add(src["id"])
         try:
             # RSS e INMET buscam uma URL com o fetcher; sensores sociais usam requisições OAuth próprias.
             got = build_adapter(src, keywords, fetcher if src["adapter"] in URL_FETCH_ADAPTERS else None, lambda: now).run()
@@ -271,12 +294,20 @@ def run_once(
             print(f"[warn] {src['id']}: {detail}", file=sys.stderr)
             # RATE_LIMITED/AUTH_ERROR das APIs sociais; HTTP 429 de qualquer fonte também é limite de taxa (não insistir).
             status = getattr(exc, "health_status", None) or ("RATE_LIMITED" if getattr(exc, "code", None) == 429 else "OFFLINE")
+            retry_after[src["id"]] = retry_after_seconds(exc, now)  # Retry-After do servidor: o breaker nunca volta antes dele
             return [], status, detail
 
     # Em paralelo (cada fonte é independente e espera rede): dezenas de fontes não estouram o tempo do ciclo.
     # `map` preserva a ordem das fontes, então o resultado continua determinístico.
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_SOURCES) as pool:
         collected = list(pool.map(collect, sources))
+    breaker_after: dict[str, BreakerState] = {}
+    for src, (_g, status, _d) in zip(sources, collected):
+        sid = src["id"]
+        if not track_breaker or sid in skipped or sid in no_record:
+            breaker_after[sid] = breaker_before[sid]
+        else:  # só falha de TRANSPORTE conta; vazio/velho com transporte ok não abre breaker (é problema de dado, não de rede)
+            breaker_after[sid] = breaker_record(breaker_probe.get(sid, breaker_before[sid]), sid, status, now, retry_after.get(sid))
     for src, (got, status, detail) in zip(sources, collected):
         for s in got:
             if s.hash in signals:  # dedup por URL canônica/título; a cópia descartada é contada, não some em silêncio
@@ -320,7 +351,13 @@ def run_once(
             # de agora) usa o instante da coleta como data.
             reading = SourceReading(src["id"], status, True, tuple(g.hash for g in got), tuple(
                 g.timestamp if (src.get("quiet_ok") or g.timestamp != g.collected_at) else None for g in got))
-            freshness.append(assess_freshness(src, reading, now, known))
+            prev_advance = parse_iso((prior_runtime.get(src["id"]) or {}).get("last_content_advance"))
+            freshness.append(assess_freshness(src, reading, now, known, prev_advance_at=prev_advance))
+    runtime_rows: list[dict] = []
+    if flag("RUNTIME_PERSIST"):
+        by_assessment = {a["source_id"]: a for a in freshness}
+        for src, (_g, status, _d) in zip(sources, collected):
+            runtime_rows.append(runtime_row(by_assessment.get(src["id"]), src["id"], status, breaker_after[src["id"]], now))
     geo_shadow = None if flag("GEO_V2") else geo_v2_shadow(list(signals.values()), source_geo, source_states)
     signals = {h: refine_geo(s, source_geo, source_states) for h, s in signals.items()}
     all_signals.update(signals)  # o dado fresco prevalece sobre o gravado
@@ -409,6 +446,8 @@ def run_once(
         "forecast_registry": forecast_registry,
         "shadow_results": shadow_results,
         "source_freshness": freshness,  # só log/observabilidade neste ciclo; o Worker ignora (chunks não o repassa)
+        "source_runtime": runtime_rows,  # TODAS as fontes coletadas; `main` seleciona o que vale gravar (mudou ou batimento)
+        "breakers_skipped": len(skipped),
         "geo_v2_shadow": geo_shadow,  # só para o log do ciclo; o Worker ignora (chunks não o repassa)
     }
 
@@ -547,7 +586,9 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
          "investigations": batch.get("investigations", []) if i == len(parts) - 1 else [],
          "forecast_registry": batch.get("forecast_registry", []) if i == len(parts) - 1 else [],
          "shadow_results": batch.get("shadow_results", []) if i == len(parts) - 1 else [],
-         "calibrators": batch.get("calibrators", []) if i == len(parts) - 1 else []}
+         "calibrators": batch.get("calibrators", []) if i == len(parts) - 1 else [],
+         "source_runtime": batch.get("source_runtime_send", []) if i == len(parts) - 1 else [],
+         "engine_cycle": batch.get("engine_cycle") if i == len(parts) - 1 else None}
         for i, p in enumerate(parts)
     ]
 
@@ -563,6 +604,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--respect-interval", action="store_true",
                     help="com --source: roda a fonte só na sua janela de interval_s (piloto agendado)")
     args = ap.parse_args(argv)
+    t_start = time.monotonic()
 
     if args.source:
         sources = [s for s in load_sources(args.config, only_enabled=False) if s["id"] in args.source]
@@ -583,7 +625,7 @@ def main(argv: list[str] | None = None) -> int:
         catalog = load_sources(args.config)
         sources = [s for s in catalog if is_due(s, now)]
     from .client import (WorkerAuthError, WorkerUnavailable, fetch_active_investigations, fetch_event_digest, fetch_history,
-                         fetch_observations, fetch_open_forecasts, fetch_pulse_history, fetch_signals)
+                         fetch_observations, fetch_open_forecasts, fetch_pulse_history, fetch_signals, fetch_source_runtime)
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
     # Janelas mínimas que bastam (o D1 gratuito limita as linhas LIDAS por dia): 36 h de séries (a previsão de
     # volume precisa de > 25 h) e 24 h do Pulso (o previsor exige ~3,5 h).
@@ -613,8 +655,16 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"[aviso] radar pulado neste ciclo: {type(exc).__name__}", file=sys.stderr)
             obs_rows = None
+    # Estado anterior por fonte (breaker, último avanço de conteúdo). Falhou? Segue SEM ele: tudo CLOSED, nada é bloqueado por dúvida.
+    prev_runtime: dict[str, dict] = {}
+    if args.push and (flag("CIRCUIT_BREAKER") or flag("RUNTIME_PERSIST")):
+        try:
+            prev_runtime = {r["source_id"]: r for r in fetch_source_runtime()}
+        except Exception as exc:  # noqa: BLE001
+            print(f"[aviso] estado por fonte indisponível ({type(exc).__name__}): breaker sem memória neste ciclo", file=sys.stderr)
     batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
-                     catalog=catalog, known_events=known_events, obs_rows=obs_rows, active_investigations=active_inv)
+                     catalog=catalog, known_events=known_events, obs_rows=obs_rows, active_investigations=active_inv,
+                     breakers=prev_runtime)
     if batch.get("geo_v2_shadow"):
         g = batch["geo_v2_shadow"]
         print(f"  geo_v2 (sombra): {g['would_upgrade']} de {g['signals']} sinais ganhariam município")
@@ -647,6 +697,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.push:
         from .client import push_batch
         now_push = datetime.now(timezone.utc)
+        if flag("RUNTIME_PERSIST") and batch.get("source_runtime"):
+            from .flags import snapshot as flags_snapshot
+            families = {s["id"]: s.get("source_class", "?") for s in sources}
+            batch["engine_cycle"] = cycle_summary(batch["source_runtime"], batch.get("source_freshness", []), families, now=now_push,
+                                                  duration_s=time.monotonic() - t_start, sources_due=len(sources),
+                                                  sources_skipped=batch.get("breakers_skipped", 0), signals_sent=len(batch["signals"]),
+                                                  events=len(batch["events"]), flags=flags_snapshot())
+            batch["source_runtime_send"] = select_runtime(batch["source_runtime"], prev_runtime, now_push)
+            print(f"  runtime: {len(batch['source_runtime_send'])} de {len(batch['source_runtime'])} fontes mudaram de estado ou vencem o batimento; "
+                  f"breakers abertos={batch['engine_cycle']['breakers_open']} puladas={batch['engine_cycle']['sources_skipped']}")
         batch["source_health"] = select_health(batch["source_health"], now_push, sources=catalog if catalog is not None else sources)
         # as linhas de saúde enviadas também precisam das suas fontes registradas (chave estrangeira)
         select_sources(batch, now_push, extra_ids={h["source_id"] for h in batch["source_health"]})
