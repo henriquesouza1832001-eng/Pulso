@@ -26,6 +26,9 @@
 .dsb li a:hover { background: var(--dbg2); color: var(--tx0); }
 .dsb li a.on { background: rgba(59, 164, 255, 0.1); color: var(--tx0); border-left-color: var(--acc); }
 
+/* âncoras do menu: param logo abaixo da barra fixa (altura medida em DashTopBar) */
+.dmain [id] { scroll-margin-top: calc(var(--dtb-h, 76px) + 10px); }
+
 /* barra superior */
 .dtb {
 	position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Category } from "@pulso/shared";
 import type { Clock } from "../../hooks/useClock";
 import { CATEGORY_PT } from "../../lib/format";
@@ -64,8 +64,19 @@ export function DashTopBar({
 	sourcesTotal: number;
 }) {
 	const pct = sourcesTotal ? Math.round((sourcesOnline / sourcesTotal) * 100) : 0;
+	// A barra é fixa no topo e quebra em mais linhas em tela estreita: publica a altura real em --dtb-h para os links
+	// do menu pararem logo abaixo dela (scroll-margin-top), em vez de esconder o título da seção atrás dela.
+	const bar = useRef<HTMLElement>(null);
+	useEffect(() => {
+		const el = bar.current;
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const root = document.documentElement;
+		const ro = new ResizeObserver(() => root.style.setProperty("--dtb-h", `${el.offsetHeight}px`));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
 	return (
-		<header className="dtb">
+		<header className="dtb" ref={bar}>
 			<label className="dtb-search">
 				<Icon name="scan" size={15} />
 				<input
