@@ -20,10 +20,6 @@ export function Footer({
 					o pulso monitora sinais públicos do brasil 24/7 e transforma ruído em eventos com
 					fonte, intensidade e histórico. independente, sem anúncios, sem dado pessoal.
 				</p>
-				<div className="foot-cta">
-					<a href="#topo" className="fbtn solid">ABRIR O PAINEL</a>
-					<a href="/api/health" className="fbtn">STATUS DA API</a>
-				</div>
 			</div>
 
 			<div className="foot-cols">

@@ -550,14 +550,6 @@
 .foot { border-top: 1px solid var(--ln0); margin-top: var(--secpad); background: var(--bg1); }
 .foot-promo { max-width: var(--maxw); margin: 0 auto; padding: 44px 20px 8px; }
 .foot-promo p { margin-top: 10px; max-width: 560px; font-size: 13px; line-height: 1.7; color: var(--tx1); }
-.foot-cta { margin-top: 16px; display: flex; gap: 10px; }
-.fbtn {
-	font-size: 10.5px; letter-spacing: 0.12em; padding: 7px 16px;
-	border: 1px solid var(--tx0); color: var(--tx0);
-}
-.fbtn.solid { background: var(--tx0); color: #0a0a0a; }
-.fbtn:hover { border-color: var(--acc); color: var(--acc); }
-.fbtn.solid:hover { background: var(--acc); border-color: var(--acc); color: #0a0a0a; }
 .foot-cols {
 	max-width: var(--maxw); margin: 0 auto; padding: 36px 20px;
 	display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;
