@@ -1,0 +1,75 @@
+/* PULSO · base · reset, CRT sutil, utilidades de terminal */
+*,
+*::before,
+*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { background: var(--bg0); scroll-behavior: smooth; }
+
+body {
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--tx1);
+	background: var(--bg0);
+	font-variant-numeric: tabular-nums;
+	-webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(61, 220, 132, 0.22); color: var(--tx0); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: var(--bg0); }
+::-webkit-scrollbar-thumb { background: var(--ln1); }
+::-webkit-scrollbar-thumb:hover { background: var(--ln1); }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+
+/* utilidades */
+.dim { color: var(--tx2); }
+.dead { color: var(--tx1); }
+.l1 { color: var(--lv1); }
+.l2 { color: var(--lv2); }
+.l3 { color: var(--lv3); }
+.l4 { color: var(--lv4); }
+.l5 { color: var(--lv5); }
+.grn { color: var(--grn); }
+.cyn { color: var(--cyn); }
+
+.cursor {
+	display: inline-block;
+	width: 7px;
+	height: 13px;
+	background: var(--grn);
+	vertical-align: -2px;
+	animation: blink var(--t-blink) steps(1) infinite;
+}
+.led {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	background: var(--grn);
+	vertical-align: 0;
+	animation: pulse var(--t-pulse) infinite;
+}
+.led.off { background: var(--amb); animation: none; }
+.led.err { background: var(--red); animation: none; }
+
+@keyframes blink { 50% { opacity: 0.12; } }
+@keyframes pulse {
+	0%, 100% { box-shadow: 0 0 0 0 rgba(52, 224, 124, 0.45); }
+	50% { box-shadow: 0 0 0 5px rgba(52, 224, 124, 0); }
+}
+
+/* linhas de log entrando */
+@keyframes linein {
+	from { opacity: 0; transform: translateY(3px); }
+	to { opacity: 1; transform: none; }
+}
+.linein { animation: linein 180ms ease-out; }
+
+/* respeito a reduced motion: a ferramenta continua utilizável */
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation: none !important; transition: none !important; }
+	html { scroll-behavior: auto; }
+}
