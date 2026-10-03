@@ -74,7 +74,7 @@ const signalSchema = z.object({
 	city: z.string().max(100).nullable(),
 });
 
-const forecastSchema = z
+export const forecastSchema = z
 	.object({
 		forecast_id: z.string().regex(/^fc-[a-z0-9-]{1,100}$/),
 		kind: z.enum(FORECAST_KINDS),
@@ -102,9 +102,14 @@ const forecastSchema = z
 	.refine((f) => f.interval_low <= f.probability && f.probability <= f.interval_high, {
 		message: "probability fora do intervalo",
 	})
-	.refine((f) => (f.status === "resolved") === (f.outcome !== null && f.brier !== null), {
-		message: "forecast resolvida exige outcome e brier",
-	});
+	.refine(
+		(f) => {
+			if (f.status === "resolved") return f.outcome !== null && f.brier !== null && f.observed_value !== null && f.resolved_at !== null;
+			if (f.status === "void") return f.outcome === null && f.brier === null && f.observed_value === null; // anulada: sem resultado
+			return f.outcome === null && f.brier === null && f.observed_value === null && f.resolved_at === null; // aberta
+		},
+		{ message: "status da previsão incoerente com os campos de resolução" },
+	);
 
 const batchSchema = z.object({
 	batch_id: z.string().min(1).max(80),

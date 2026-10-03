@@ -94,6 +94,13 @@ def test_surge_forecast_loop_end_to_end():
         assert re.fullmatch(r"BR|UF:[A-Z]{2}", f["scope"]) and 5 <= len(f["question"]) <= 300
         assert 0 < f["probability"] < 1 and f["interval_low"] <= f["probability"] <= f["interval_high"]
         assert (f["status"] == "resolved") == (f["outcome"] is not None and f["brier"] is not None)
+        # coerência exigida pelo Worker (ingest.ts): aberta sem resolução; anulada sem resultado; resolvida com tudo
+        if f["status"] == "open":
+            assert f["outcome"] is None and f["brier"] is None and f["observed_value"] is None and f["resolved_at"] is None
+        elif f["status"] == "void":
+            assert f["outcome"] is None and f["brier"] is None and f["observed_value"] is None
+        else:
+            assert f["observed_value"] is not None and f["resolved_at"] is not None
         if f["brier"] is not None:
             assert 0 <= f["brier"] <= 1
 
