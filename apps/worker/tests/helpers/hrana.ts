@@ -2,9 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 import { TursoDatabase } from "../../src/lib/turso";
 
 /** Servidor Hrana (/v2/pipeline) de mentira, com SQLite de verdade por baixo. Valida a lógica da camada, não o servidor real. */
-export type Fault = "before" | "after" | "http500" | "reset" | "slow" | "hang";
+export type Fault = "before" | "after" | "http500" | "http429" | "dns" | "reset" | "slow" | "hang";
 
-/** `fault(n, body)` decide a falha da n-ésima chamada: `before` = a rede cai ANTES do servidor agir (nada gravado); `after` = o servidor GRAVA e a resposta se perde; `http500` = o servidor recusa; `reset` = conexão derrubada no meio (ECONNRESET); `slow` = responde, mas só depois de `slowMs`; `hang` = nunca responde (só o timeout do adaptador encerra). */
+/** `fault(n, body)` decide a falha da n-ésima chamada: `before` = a rede cai ANTES do servidor agir (nada gravado); `after` = o servidor GRAVA e a resposta se perde; `http500` = o servidor recusa; `http429` = limite de taxa do banco; `dns` = o nome do banco não resolve; `reset` = conexão derrubada no meio (ECONNRESET); `slow` = responde, mas só depois de `slowMs`; `hang` = nunca responde (só o timeout do adaptador encerra). */
 export function mockHrana(fault?: (n: number, body: any) => Fault | undefined, opts: { timeoutMs?: number; slowMs?: number } = {}) {
 	const sqlite = new DatabaseSync(":memory:");
 	const val = (v: any): any => (v.type === "null" ? null : v.type === "integer" ? Number(v.value) : v.value);
@@ -28,6 +28,8 @@ export function mockHrana(fault?: (n: number, body: any) => Fault | undefined, o
 		const f = fault?.(calls.length, body);
 		if (f === "before") throw new TypeError("network_down");
 		if (f === "http500") return new Response("boom", { status: 500 });
+		if (f === "http429") return new Response("rate limited", { status: 429, headers: { "retry-after": "30" } });
+		if (f === "dns") throw new TypeError("fetch failed: getaddrinfo ENOTFOUND x.turso.io");
 		if (f === "reset") throw new TypeError("fetch failed: ECONNRESET");
 		if (f === "hang") return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal.reason)));
 		if (f === "slow") await new Promise((r) => setTimeout(r, opts.slowMs ?? 2100));
