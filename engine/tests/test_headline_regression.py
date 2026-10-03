@@ -47,6 +47,10 @@ CATEGORY_CASES = [
     ("Fachin aperta regras para evitar que pedidos ao Supremo sejam direcionados a ministros específicos", "POLITICS"),
     ("Trump diz que IA será grande tema de reunião com Xi Jinping", "INTERNATIONAL"),
     ("Nvidia anuncia aumento recorde em programa de recompra de ações", "TECH"),
+    ("Eleitor vai votar duas vezes para senador e os dois votos têm o mesmo peso", "POLITICS"),
+    ("Justiça Eleitoral recebe denúncias de compra de votos no primeiro turno", "POLITICS"),
+    ("Petrobras tem lucro de R$ 30 bilhões no trimestre e paga dividendos", "ECONOMY"),
+    ("Banco divulga balanço com prejuízo de R$ 2 bilhões", "ECONOMY"),
 ]
 
 # Conteúdo sem relevância para o Pulso: deve continuar SEM categoria (o vocabulário novo não pode trazer ruído).
