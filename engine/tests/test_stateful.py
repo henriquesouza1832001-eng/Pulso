@@ -55,8 +55,9 @@ def test_old_state_outside_the_window_is_ignored_and_bad_rows_do_not_crash():
     f1, s1 = feeds(("a", A, 50), ("b", B, 40))
     run1 = run_once(s1, lambda u: f1[u], T0)
     bad = rows_from(run1) + [{"hash": "x"}, {"signal_id": "z"}]
-    f2, s2 = feeds(("c", C, 5))
-    run2 = run_once(s2, lambda u: f2[u], T0 + timedelta(hours=30), stored=bad)  # 30 h depois: fora da janela
+    # 30 h depois: o estado antigo está fora da janela; a matéria nova foi publicada 5 min antes dessa rodada
+    f2, s2 = feeds(("c", C, -(30 * 60 - 5)))
+    run2 = run_once(s2, lambda u: f2[u], T0 + timedelta(hours=30), stored=bad)
     assert run2["events"][0]["signal_count"] == 1
     assert signal_from_row({"hash": "x"}) is None
 

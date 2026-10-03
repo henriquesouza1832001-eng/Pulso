@@ -1,0 +1,89 @@
+"""Importância de um texto: separa fato de impacto (desastre, vítimas, emergência) de ruído (fofoca).
+
+Heurística transparente e auditável, sem modelo opaco. O score serve para decidir se um sinal de
+rede social entra no motor: o PULSO mede o que afeta pessoas, não o que está em alta por curiosidade.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from .keyword_engine import _fold
+
+# Termos por nível de impacto. O nível mais alto casado define a base do score.
+TIER_A = (  # perda de vidas, colapso, catástrofe
+    "mortos", "mortes", "morreu", "morreram", "vitimas", "desabamento", "rompimento", "tornado",
+    "terremoto", "tsunami", "calamidade", "estado de emergencia", "desaparecidos", "atentado", "chacina",
+)
+TIER_B = (  # evento físico relevante ou risco imediato
+    "enchente", "alagamento", "inundacao", "deslizamento", "ciclone", "temporal", "tempestade",
+    "incendio", "queimada", "apagao", "surto", "epidemia", "evacuacao", "resgate", "explosao",
+    "tiroteio", "defesa civil", "onda de calor", "estiagem", "granizo", "feridos", "alerta de",
+)
+TIER_C = (  # contexto que sozinho não basta
+    "chuva forte", "acidente", "interdicao", "bloqueio", "greve", "dengue", "congestionamento",
+)
+# Ruído de entretenimento e vida privada de famosos.
+NOISE = (
+    "casou", "casamento", "noivado", "namoro", "affair", "separacao", "fofoca", "famosos", "celebridade",
+    "bbb", "novela", "reality", "tretou", "treta", "lacrou", "influencer", "ex-jogador", "gol de",
+)
+
+BASE = {"A": 60, "B": 45, "C": 25}
+EXTRA_PER_HIT = 8
+NOISE_PENALTY = 30
+DEFAULT_THRESHOLD = 45
+
+
+@dataclass(frozen=True)
+class Importance:
+    score: int
+    high_impact: tuple[str, ...]
+    noise: tuple[str, ...]
+
+    def is_important(self, threshold: int = DEFAULT_THRESHOLD) -> bool:
+        return self.score >= threshold
+
+
+BR_HINTS = re.compile(r"(?<![a-z0-9])(?:brasil|brasileir[oa]s?|pais inteiro|todo o pais)(?![a-z0-9])")
+# Países e regiões que, citados sem nenhum lugar do Brasil, indicam notícia de fora do escopo.
+FOREIGN = (
+    "india", "nepal", "paquistao", "bangladesh", "china", "japao", "filipinas", "indonesia", "eua",
+    "estados unidos", "mexico", "argentina", "chile", "peru", "colombia", "venezuela", "portugal", "angola",
+    "mocambique", "europa", "italia", "espanha", "franca", "alemanha", "russia", "ucrania", "israel", "gaza",
+    "ira", "turquia", "africa", "australia", "canada",
+)
+_FOREIGN = re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(t) for t in FOREIGN) + r")(?![a-z0-9])")
+
+
+def brazil_relevant(text: str, has_place: bool) -> bool:
+    """Descarta só o que claramente é de outro país: cita país estrangeiro e nenhum lugar/menção ao Brasil.
+
+    Não exigimos lugar conhecido: o dicionário geográfico não cobre todas as cidades e perderíamos eventos reais.
+    """
+    folded = _fold(text)
+    if has_place or BR_HINTS.search(folded):
+        return True
+    return not _FOREIGN.search(folded)
+
+
+def _compile(terms: tuple[str, ...]) -> list[tuple[str, re.Pattern[str]]]:
+    return [(t, re.compile(rf"\b{re.escape(t)}\b")) for t in terms]
+
+
+_TIERS = {"A": _compile(TIER_A), "B": _compile(TIER_B), "C": _compile(TIER_C)}
+_NOISE = _compile(NOISE)
+
+
+def assess(text: str) -> Importance:
+    folded = _fold(text)
+    hits: dict[str, list[str]] = {t: [term for term, pat in pats if pat.search(folded)] for t, pats in _TIERS.items()}
+    noise = tuple(term for term, pat in _NOISE if pat.search(folded))
+    matched = [term for tier in ("A", "B", "C") for term in hits[tier]]
+    if not matched:
+        return Importance(0, (), noise)
+    top = next(t for t in ("A", "B", "C") if hits[t])
+    score = BASE[top] + EXTRA_PER_HIT * (len(matched) - 1)
+    if noise:
+        score -= NOISE_PENALTY
+    return Importance(max(0, min(100, score)), tuple(matched), noise)

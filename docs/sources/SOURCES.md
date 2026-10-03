@@ -11,7 +11,11 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | INMET — avisos meteorológicos | OFFICIAL | API de avisos (`inmet`) | ✅ ativa desde 2026-10-03 (piloto encurtado, ver ficha) |
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
-| Trânsito, câmeras públicas | — | — | Fase 2/3 |
+| GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 desligada: **não validada ao vivo** (429 persistente mesmo a 7 s de intervalo e consulta vazia em 2026-10-03) |
+| Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| **Catálogo RSS** (imprensa nacional, regional, internacional e órgãos oficiais) | NEWS_HIGH / NEWS_REGIONAL / OFFICIAL | RSS/Atom/RDF (`rss`) | ✅ ativos, `revisão pendente`: ver [CATALOGO_FONTES.md](CATALOGO_FONTES.md) |
+| Trânsito, câmeras públicas | — | — | ver [CAMERAS.md](CAMERAS.md) |
 
 ## Modelo de ficha
 ```
@@ -100,3 +104,61 @@ Mesmo modelo dos sensores de política (mesmas comunidades e `subreddit_states` 
 **Piloto automático no Actions:** o `collect.yml` tem o passo "Piloto dos sensores sociais (sem envio)". Ele não faz nada até existirem os secrets; criado `REDDIT_CLIENT_ID`+`REDDIT_CLIENT_SECRET` e/ou `X_BEARER_TOKEN`, a fonte correspondente passa a rodar na sua janela de `interval_s` (`--respect-interval`), sem `--push`, e o log mostra só saúde e contagem por categoria (fonte `metrics_only`; o repositório é público). Para encerrar o piloto, apague o secret. Avaliar as 48 h pelos logs do workflow "Coleta".
 
 **Checklist para ambos:** documentar autorização/ref do contrato, revisão por pessoa e data; confirmar licença, exibição pública, agregação para previsão, retenção/exclusão e processamento de remoções; adicionar credenciais só em secrets; piloto de ≥48 h sem `--push`; testar a recuperação de falhas e orçamento antes de alterar `enabled` para `true`. O pipeline atual é centrado no Brasil; cobertura mundial confiável demanda decisão arquitetural de escopo geográfico/contratos antes de publicação global.
+
+## Ficha: GDELT (`gdelt-br`)
+```
+Fonte / URL: GDELT DOC 2.0, https://api.gdeltproject.org/api/v2/doc/doc
+Tipo de acesso: dados abertos (sem chave).
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito; 1 requisição a cada 5 s (o coletor faz UMA por rodada). Responde 429/aviso de texto se exceder; o coletor sinaliza RATE_LIMITED.
+Dados coletados e retenção: título, link, data do artigo (sem texto integral). Retenção 90 dias.
+Frequência: 900 s (o índice do GDELT atualiza a cada ~15 min).
+Fallback se cair: as demais fontes de notícia (RSS) seguem.
+Termos relevantes: https://www.gdeltproject.org/about.html (citar a fonte).
+Exibição pública permitida: headline_link.
+```
+
+## Ficha: Mastodon (`mastodon-impacto`)
+```
+Fonte / URL: GET https://<instância>/api/v1/timelines/tag/<hashtag> (linha do tempo pública)
+Tipo de acesso: API pública oficial do Mastodon, sem login.
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito; limites por instância (padrão 300 req/5 min). 8 hashtags por rodada.
+Dados coletados e retenção: texto (<= 500 car.), link e data. NENHUM autor ou perfil é guardado. Retenção 30 dias.
+Frequência: 900 s.
+Fallback se cair: uma instância/hashtag fora do ar é ignorada; as outras seguem.
+Termos relevantes: termos de cada instância (confirmar mastodon.social antes de ativar).
+Exibição pública permitida: a confirmar (por ora headline_link).
+Filtro: processing/importance.py (só desastre/vítimas/emergência) + descarte de notícia de outro país.
+Papel: detecta, nunca confirma sozinho (classe SOCIAL).
+```
+
+## Ficha: USGS (`usgs-terremotos`)
+```
+Fonte / URL: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson
+Tipo de acesso: dados abertos (GeoJSON), sem chave.
+Limites e custo: gratuito; o feed atualiza a cada minuto, usamos 900 s.
+Dados coletados e retenção: título, link, data; coordenadas só se dentro do Brasil. Retenção 90 dias.
+Termos relevantes: domínio público do governo dos EUA, citar a fonte.
+Exibição pública permitida: sim (headline_link).
+Papel: entra como INTERNATIONAL; abalos relevantes no exterior contam como contexto, não como evento nacional.
+```
+
+## Catálogo RSS em escala (2026-10-03)
+```
+Fontes: ver CATALOGO_FONTES.md (gerado de engine/config/sources.json).
+Tipo de acesso: feeds RSS/Atom/RDF públicos publicados pelo próprio veículo ou órgão (access = public_feed).
+Autenticação e secrets: nenhum.
+Limites e custo: gratuito. Coleta em paralelo (8 simultâneas), User-Agent identificado, timeout de 15 s, resposta de no máximo 5 MB.
+Dados coletados e retenção: título, resumo curto (<= 500 car.), link, data. Retenção 90 dias. Sem texto integral.
+Frequência: 300 a 900 s por fonte (is_due respeita interval_s).
+Fallback se cair: cada fonte é isolada; falha vira source_health e não derruba o ciclo.
+Termos relevantes: terms_url = PENDENTE na maioria; um humano precisa conferir os termos de cada veículo (COLLECTION_PROTOCOL §4).
+Exibição pública permitida: headline_link (título + link com atribuição).
+Decisão: o dono do projeto autorizou ativar o catálogo mesmo com a revisão pendente (ADR 0006). O aviso de conformidade continua sendo emitido (agregado).
+Critérios de entrada: testado ao vivo com o coletor real; publicação recente; sem filiação política declarada;
+  feeds em inglês ficam de fora enquanto o vocabulário for em português; feeds que exigem contornar bloqueio (ex.: governo de SP com desafio anti-robô) NÃO entram.
+Leitor tolerante: gzip (com limite na saída), RSS 1.0/RDF (gov.br), '&' solto e entidades HTML; declarações <!ENTITY seguem recusadas.
+Cobertura regional: G1 de 17 estados; ES, SC, PA, MA, AM, RN, BA, DF, SP (Metrópoles), RJ (prefeitura) e GO (governo) por portais locais.
+  Lacunas: não há RSS regional utilizável para SP capital, RJ, MG, PE e CE (os feeds do G1 desses estados estão parados desde ~2018).
+```

@@ -81,3 +81,9 @@ def push_batch(batch: dict, base_url: str | None = None, token: str | None = Non
     )
     with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - URL controlada pela configuração
         return json.loads(resp.read())
+
+
+def fetch_event_digest(hours: int = 24, base_url: str | None = None, token: str | None = None) -> list[dict]:
+    """Resumo dos eventos já gravados: o Engine só reenvia o que é novo ou mudou (limite de escrita do D1)."""
+    return _get_json(f"/api/admin/events-digest?hours={hours}", "events", base_url, token)
+
