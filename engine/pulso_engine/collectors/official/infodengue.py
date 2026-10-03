@@ -58,7 +58,10 @@ class InfoDengueAdapter:
         errors: list[Exception] = []
         for uf, (_, code) in CAPITALS.items():
             try:
-                out[uf] = list(json.loads(self._fetch(self._url(code))))
+                rows = json.loads(self._fetch(self._url(code)))
+                if not isinstance(rows, list):  # a API devolve um objeto {"error": ...} quando algo falha
+                    raise ValueError(f"resposta inesperada para {uf}")
+                out[uf] = [r for r in rows if isinstance(r, dict)]
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
         if not out and errors:

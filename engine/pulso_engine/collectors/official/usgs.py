@@ -34,7 +34,8 @@ class UsgsAdapter:
             return None
         now = self._now()
         ts = aware(datetime.fromtimestamp(p["time"] / 1000, tz=timezone.utc), now)
-        lon, lat = (raw.get("geometry") or {}).get("coordinates", [None, None])[:2]
+        coords = (raw.get("geometry") or {}).get("coordinates") or []
+        lon, lat = (coords[0], coords[1]) if len(coords) >= 2 else (None, None)
         # Só o próprio USGS sabe o país: o título termina em ", Brazil". Uma caixa de coordenadas pegaria Chile,
         # Argentina, Bolívia e Peru, que ficam dentro dela.
         in_br = lat is not None and "brazil" in title.lower()

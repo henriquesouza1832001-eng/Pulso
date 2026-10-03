@@ -57,9 +57,13 @@ class BcbPtaxAdapter:
             except (KeyError, ValueError, TypeError):
                 continue
         quotes.sort(reverse=True)
-        if len(quotes) < 2:
+        by_day: dict = {}
+        for t, v in quotes:  # o boletim MAIS RECENTE de cada dia (a API pode devolver vários no mesmo dia)
+            by_day.setdefault(t.date(), (t, v))
+        days = sorted(by_day.values(), reverse=True)
+        if len(days) < 2:
             return []
-        (t_now, last), (_, prev) = quotes[0], quotes[1]
+        (t_now, last), (_, prev) = days[0], days[1]
         now = self._now()
         pct = (last / prev - 1) * 100
         if abs(pct) < self._min_pct or now - t_now.astimezone(timezone.utc) > MAX_QUOTE_AGE:
