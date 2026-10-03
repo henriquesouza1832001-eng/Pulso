@@ -13,6 +13,7 @@ import os
 # nome -> (padrão, estado, o que faz)
 FLAGS: dict[str, tuple[bool, str, str]] = {
     "HISTORY_OBSERVATIONS": (True, "SHADOW", "agrega contagens por hora e envia ao banco; só grava, não muda nada visível"),
+    "FORECAST_REGISTRY": (True, "SHADOW", "grava a trilha de auditoria (snapshot + hash) de cada previsão nova em forecast_registry; só grava, não muda nada visível"),
     "SENTINEL": (True, "SHADOW", "abre/avança investigações; só grava em `investigations`, não muda evento, Pulso, alerta nem previsão"),
     "SEASONAL_BASELINE_V2": (False, "OFF", "usa seasonal_baseline (hora x dia da semana) em cluster_anomaly quando válido; senão EWMA"),
     "ANOMALY_V2": (False, "OFF", "anomalia por janela com percentil e separação score/confiança"),
@@ -25,6 +26,7 @@ FLAGS: dict[str, tuple[bool, str, str]] = {
     "NATIONAL_PULSE_V2": (False, "OFF", "Pulso nacional com dispersão geográfica e diversidade"),
     "DRIVER_VALIDATOR": (False, "OFF", "driver só afeta previsão se melhorar o Brier (registro de drivers)"),
     "EVENT_ESCALATION": (False, "OFF", "P(evento subir de nível) em shadow, depois experimental"),
+    "FORECAST_V2_SHADOW": (False, "OFF", "previsor V2 do Pulso (condicionado à hora do dia) em shadow: guarda a probabilidade em evidence.shadow_v2 e grava V1 x V2 x desfecho em shadow_results quando resolve; nunca muda a previsão exibida"),
     "CONTEXT_ENGINE": (False, "OFF", "feriados, jogos e eventos ajustam baseline/anomalia (nunca viram confirmação)"),
 }
 

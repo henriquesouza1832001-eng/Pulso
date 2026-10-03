@@ -65,3 +65,23 @@ def test_alias_and_all_caps_headline():
 def test_the_one_city_without_mesh_is_flagged():
     r = resolve("Chuva em Boa Esperança do Norte, MT")
     assert r.uf == "MT" and any("aproximada" in e for e in r.geo_evidence)
+
+
+def test_red_team_false_precisions_are_rejected():
+    """Casos reproduzidos pelo Codex (2026-10-03): antes viravam município com falsa precisão."""
+    assert resolve("Aeroporto de Congonhas tem filas") is None  # instalação em SP, não Congonhas/MG
+    assert resolve("Rio Grande sobe após chuva") is None  # o rio, não o município (nome de 2 palavras exige contexto)
+    assert resolve("Bairro da Liberdade recebe feira") is None  # bairro; Liberdade é palavra comum
+    assert resolve("Acidente em Sao Jose deixa feridos") is None  # homônimo com prefixo genérico: nunca por população
+
+
+def test_the_same_names_resolve_when_the_text_really_points_to_the_city():
+    assert resolve("Acidente em São José (SC) deixa feridos").uf == "SC"
+    assert resolve("Chuva forte em Rio Grande, RS, deixa desabrigados").city == "Rio Grande"
+    assert resolve("Festival de música em Bonito, MS, atrai turistas").city == "Bonito"
+    assert resolve("Estudantes de Congonhas, MG, vencem olimpíada").city == "Congonhas"  # "de" aqui é origem, com UF explícita
+
+
+def test_facility_blocker_only_applies_right_before_the_name():
+    assert resolve("Acidente grave na rodovia em Itaúna deixa feridos").city == "Itaúna"  # "rodovia em Itaúna": o município é Itaúna
+    assert resolve("Interdição na Avenida Paulista, em Itaúna").city == "Itaúna"

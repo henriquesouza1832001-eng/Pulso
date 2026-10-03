@@ -24,6 +24,20 @@ from .keyword_engine import _fold
 DATA = Path(__file__).resolve().parents[2] / "data" / "br_municipalities.json"
 PREPOSITIONS = frozenset({"em", "na", "no", "nas", "nos", "de", "da", "do", "das", "dos", "para", "pra", "a", "ao", "a", "ate"})
 UFS = frozenset("AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split())
+# Falsos positivos apontados pelo red team (Codex, 2026-10-03): o nome vem DEPOIS de uma instalação, logradouro ou bairro
+# ("Aeroporto de Congonhas" fica em SP, "Bairro da Liberdade" é bairro), então não é o município homônimo.
+FACILITY_WORDS = frozenset({
+    "aeroporto", "rodoviaria", "rodovia", "estacao", "terminal", "estadio", "arena", "bairro", "rua", "avenida", "av", "travessa", "alameda",
+    "praca", "parque", "hospital", "universidade", "faculdade", "escola", "ponte", "viaduto", "tunel", "shopping", "igreja", "fazenda",
+    "condominio", "loteamento", "distrito", "vila", "favela", "comunidade", "morro", "linha", "br", "mg", "sp", "rj",
+})
+# Palavras comuns que também são nome de município: só valem com UF explícita ("Bonito, MS"), nunca por preposição.
+COMMON_NOUN_NAMES = frozenset({
+    "liberdade", "esperanca", "progresso", "uniao", "bonito", "alegre", "cruzeiro", "planalto", "centro", "paz", "ouro", "pedra", "agua", "aguas",
+    "serra", "barra", "praia", "lagoa", "vitoria", "concordia", "sossego", "triunfo", "independencia", "fortaleza",
+})
+# Prefixos tão comuns que o desempate por população NUNCA vale ("São José", "Santa Luzia", "Bom Jesus", "Nova Esperança").
+GENERIC_PREFIXES = frozenset({"sao", "santa", "santo", "bom", "boa", "nova", "novo", "santana", "vila"})
 MAX_WORDS = 5
 DOMINANCE = 5.0
 DOMINANCE_MIN_POP = 100_000
@@ -51,6 +65,17 @@ def _index(path: Path = DATA) -> dict[str, list[dict]]:
         for alias in row.get("aliases") or []:
             idx.setdefault(_fold(alias), []).append(row)
     return idx
+
+
+@lru_cache(maxsize=1)
+def _abbreviable() -> frozenset[str]:
+    """Nomes que são o INÍCIO de outro município ("sao jose" de "sao jose dos campos"): na imprensa o curto costuma ser a abreviação do longo."""
+    prefixes: set[str] = set()
+    for name in _index():
+        words = name.split(" ")
+        for k in range(1, len(words)):
+            prefixes.add(" ".join(words[:k]))
+    return frozenset(n for n in _index() if n in prefixes)
 
 
 _WORD = re.compile(r"[A-Za-zÀ-ÿ0-9']+")
@@ -87,8 +112,15 @@ def resolve(text: str, source_state: str | None = None) -> GeoResolution | None:
             if not (all_caps or _capitalized(span[0][0])):
                 continue  # nome de lugar com inicial minúscula é palavra comum ("a serra", "o natal")
             uf_ctx = _uf_after(text, span[-1][3])
-            prep = i > 0 and toks[i - 1][1] in PREPOSITIONS
-            if uf_ctx or prep or n >= 2:
+            prev = toks[i - 1][1] if i > 0 else ""
+            prep = prev in PREPOSITIONS
+            # Instalação/logradouro/bairro + nome ("Rua Santa Luzia", "Aeroporto de Congonhas"): o nome é DELE, não do município.
+            # "em/na/no" depois da instalação ("rodovia em Itaúna") continua sendo lugar, então só "de/da/do..." e a junção direta bloqueiam.
+            owner = toks[i - 2][1] if prev in {"de", "da", "do", "das", "dos"} and i > 1 else prev
+            if owner in FACILITY_WORDS and not uf_ctx:
+                break
+            single_common = n == 1 and entries[0]["normalized_name"] in COMMON_NOUN_NAMES
+            if uf_ctx or (prep and not single_common) or n >= 3:  # nome de 2 palavras também exige contexto ("Rio Grande sobe" é o rio)
                 found.append((n, entries, span[0][2], uf_ctx, prep))
             break  # a janela mais longa que casou vence; não testa as menores a partir deste ponto
     if not found:
@@ -113,11 +145,16 @@ def resolve(text: str, source_state: str | None = None) -> GeoResolution | None:
     if pick is None:
         ranked = sorted(entries, key=lambda e: -(e.get("population") or 0))
         top, second = ranked[0], ranked[1] if len(ranked) > 1 else None
-        if second is not None and (top.get("population") or 0) >= DOMINANCE_MIN_POP and (top.get("population") or 0) >= DOMINANCE * max(1, second.get("population") or 0):
+        generic = top["normalized_name"].split(" ")[0] in GENERIC_PREFIXES
+        if not generic and second is not None and (top.get("population") or 0) >= DOMINANCE_MIN_POP and (top.get("population") or 0) >= DOMINANCE * max(1, second.get("population") or 0):
             pick, ambiguous = top, True
             evidence.append(f"homônimos em {len(entries)} estados; escolhido o de maior população ({top['uf']})")
         else:
             return None  # ambíguo de verdade: não chuta
+    # "São José", "Santa Luzia", "Bom Jesus" sem UF: mesmo com um único município exato no IBGE, o curto abrevia vários longos
+    generic = pick["normalized_name"].split(" ")[0] in GENERIC_PREFIXES
+    if generic and pick["normalized_name"] in _abbreviable() and not uf_ctx and source_state != pick["uf"]:
+        return None
     conf = 50
     conf += 25 if uf_ctx else 15 if prep else 10
     if source_state and pick["uf"] == source_state:
