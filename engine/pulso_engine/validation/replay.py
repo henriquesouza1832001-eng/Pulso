@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Iterable, Mapping
 
+_OUTCOME_KEYS = frozenset({"outcome", "resolved_at", "resolution"})
+
 
 def _aware(value: datetime | None, name: str) -> datetime | None:
     if value is not None and value.tzinfo is None:
@@ -51,6 +53,12 @@ class ReplayItem:
             _aware(getattr(self, name), name)
         if not self.item_id:
             raise ValueError("item_id é obrigatório")
+
+        # O observer recebe `payload` como feature observável. Desfecho e
+        # resolução pertencem à avaliação posterior, nunca à inferência.
+        forbidden = _OUTCOME_KEYS.intersection(str(key).lower() for key in self.payload)
+        if forbidden:
+            raise ValueError(f"payload de replay não pode conter desfecho/resolução: {', '.join(sorted(forbidden))}")
 
     @property
     def available_at(self) -> datetime | None:
