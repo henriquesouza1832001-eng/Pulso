@@ -17,6 +17,7 @@ from .collectors.news.rss import http_fetch
 from .collectors.registry import build_adapter
 from .config import load_sources
 from .forecast import make_nowcasts, resolve_due
+from .forecast_surge import METRIC_PREFIX, make_surge_forecasts, merge_series, resolve_surge_due
 from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
@@ -198,9 +199,15 @@ def run_once(
     # Previsões: resolve as vencidas com o valor REAL e cria novas só se houver histórico suficiente.
     br_now = {"timestamp": iso(now), "score": pulses[0]["score"]}
     points = [*(pulse_points or []), br_now]
+    # Série do que acabamos de coletar + a gravada; as previsões de volume usam as duas.
+    series_now = build_series(list(all_signals.values()), now)
+    series_rows = merge_series(history, series_now)
+    pulse_open = [f for f in open_forecasts or [] if not str(f.get("metric", "")).startswith(METRIC_PREFIX)]
     forecasts = [
-        *resolve_due(open_forecasts or [], points, now),
+        *resolve_due(pulse_open, points, now),
         *make_nowcasts(points, now),
+        *resolve_surge_due(open_forecasts or [], series_rows, points, now),
+        *make_surge_forecasts(series_rows, now),
     ]
     return {
         "batch_id": uuid.uuid4().hex,
@@ -213,7 +220,7 @@ def run_once(
         "signals": [signal_dict(s) for s in to_send],
         "pulses": pulses,
         "source_health": health,
-        "series": build_series(list(all_signals.values()), now),
+        "series": series_now,
         "forecasts": forecasts,
     }
 
