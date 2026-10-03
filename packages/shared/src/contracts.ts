@@ -120,6 +120,15 @@ export interface SourceHealth {
 	detail: string | null;
 }
 
+/** Contagem agregada por escopo x categoria x janela de 5 min: base do baseline e das previsões. */
+export interface SeriesPoint {
+	scope: string; // BR | UF:MG
+	category: Category;
+	bucket: string; // início da janela, ISO-8601 UTC
+	signals: number; // sinais publicados na janela
+	sources: number; // fontes distintas na janela
+}
+
 /** Payload que o Python Engine envia ao Worker (POST /api/ingest). Idempotente por event_id/scope+timestamp. */
 export interface IngestBatch {
 	batch_id: string;
@@ -128,6 +137,7 @@ export interface IngestBatch {
 	signals: Signal[];
 	pulses: PulseSnapshot[];
 	source_health: SourceHealth[];
+	series?: SeriesPoint[];
 }
 
 export interface ApiError {

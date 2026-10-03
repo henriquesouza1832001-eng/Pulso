@@ -8,11 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .anomaly import anomaly_score
+from .baseline import ewma_baseline, hourly_counts
 from .collectors.news.rss import RssAdapter, http_fetch
 from .config import load_sources
-from .events import build_event, is_publishable, iso
+from .events import build_event, dominant_category, is_publishable, iso
 from .models import Signal
 from .processing.clustering import cluster_signals
+from .series import build_series
 from .processing.keyword_engine import KeywordEngine
 
 DEFAULT_SOURCES = Path(__file__).resolve().parent.parent / "config" / "sources.json"
@@ -49,11 +52,27 @@ def build_pulses(events: list[dict], now: datetime) -> list[dict]:
     return pulses
 
 
+def cluster_anomaly(cluster, all_signals: list[Signal], history: list[dict], now: datetime) -> float:
+    """Anomalia do tema no escopo do evento: atividade da última hora vs. baseline histórico."""
+    sigs = cluster.signals
+    category = dominant_category(sigs)
+    state = next((s.state for s in sigs if s.state), None)
+    scope = f"UF:{state}" if state else "BR"
+    base = ewma_baseline(hourly_counts(history, scope, category, now))
+    # Mesma régua do baseline: todos os sinais do tema no escopo, na última hora.
+    current = sum(
+        1 for s in all_signals
+        if s.category == category and (scope == "BR" or s.state == state) and (now - s.timestamp).total_seconds() <= 3600
+    )
+    return anomaly_score(float(current), base)
+
+
 def run_once(
     sources: list[dict],
     fetcher: Callable[[str], bytes] = http_fetch,
     now: datetime | None = None,
     keywords: KeywordEngine | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -74,7 +93,8 @@ def run_once(
                        "last_success": iso(now) if got else None, "detail": detail})
 
     clusters = [c for c in cluster_signals(list(signals.values())) if is_publishable(c)]
-    events = [build_event(c, now) for c in clusters]
+    history = history or []
+    events = [build_event(c, now, cluster_anomaly(c, list(signals.values()), history, now)) for c in clusters]
     event_signals = [s for c in clusters for s in c.signals]
     return {
         "batch_id": uuid.uuid4().hex,
@@ -83,6 +103,7 @@ def run_once(
         "signals": [signal_dict(s) for s in event_signals],
         "pulses": build_pulses(events, now),
         "source_health": health,
+        "series": build_series(list(signals.values()), now),
     }
 
 
@@ -117,7 +138,8 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
         {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"],
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
-         "source_health": batch["source_health"] if i == len(parts) - 1 else []}
+         "source_health": batch["source_health"] if i == len(parts) - 1 else [],
+         "series": batch["series"] if i == len(parts) - 1 else []}
         for i, p in enumerate(parts)
     ]
 
@@ -131,7 +153,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     sources = load_sources(args.config)  # valida o protocolo; fonte fora do protocolo não roda
-    batch = run_once(sources)
+    from .client import fetch_history
+    history = fetch_history() if args.push else []  # baseline só com histórico real
+    batch = run_once(sources, history=history)
     print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:

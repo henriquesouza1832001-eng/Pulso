@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { CATEGORIES, EVENT_STATUSES, GEO_PRECISIONS, SOURCE_CLASSES, SOURCE_HEALTH } from "@pulso/shared";
 import type { AppEnv } from "../env";
+import { engineAuthorized } from "../lib/auth";
 
 export const ingest = new Hono<AppEnv>();
 
@@ -92,27 +93,32 @@ const batchSchema = z.object({
 			}),
 		)
 		.max(200),
+	series: z
+		.array(
+			z.object({
+				scope: z.string().regex(/^(BR|UF:[A-Z]{2})$/),
+				category: z.enum(CATEGORIES),
+				bucket: iso,
+				signals: z.number().int().min(0).max(100000),
+				sources: z.number().int().min(0).max(1000),
+			}),
+		)
+		.max(3000)
+		.default([]),
 });
 
-/** Comparação em tempo constante. */
-function safeEqual(a: string, b: string) {
-	if (a.length !== b.length) return false;
-	let d = 0;
-	for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	return d === 0;
-}
+const SERIES_RETENTION_DAYS = 90;
 
 ingest.post("/", async (c) => {
-	const token = c.env.INGEST_TOKEN;
-	const given = (c.req.header("Authorization") ?? "").replace(/^Bearer /, "");
-	// Sem segredo configurado, o endpoint fica fechado (fail-closed).
-	if (!token || !safeEqual(given, token)) return c.json({ error: "unauthorized" }, 401);
+	if (!engineAuthorized(c.req.header("Authorization"), c.env.INGEST_TOKEN)) {
+		return c.json({ error: "unauthorized" }, 401);
+	}
 
 	const parsed = batchSchema.safeParse(await c.req.json().catch(() => null));
 	if (!parsed.success) {
 		return c.json({ error: "invalid_batch", detail: parsed.error.issues[0]?.message }, 400);
 	}
-	const { sources, events, signals, pulses, source_health } = parsed.data;
+	const { sources, events, signals, pulses, source_health, series } = parsed.data;
 
 	const db = c.env.DB;
 	// O D1 limita as consultas por invocação (50 no plano gratuito): uma instrução por tabela,
@@ -196,6 +202,25 @@ ingest.post("/", async (c) => {
 				.bind(json(source_health), new Date().toISOString()),
 		);
 	}
+	if (series.length) {
+		// A janela pode ser reenviada com contagem menor (o feed já descartou itens antigos):
+		// nunca reduzimos o que já foi observado, e reenvio é idempotente.
+		stmts.push(
+			db
+				.prepare(
+					`INSERT INTO series (scope,category,bucket,signals,sources)
+			 SELECT ${f("scope")},${f("category")},${f("bucket")},${f("signals")},${f("sources")} FROM json_each(?1) j WHERE true
+			 ON CONFLICT(scope,category,bucket) DO UPDATE SET signals=MAX(signals,excluded.signals),sources=MAX(sources,excluded.sources)`,
+				)
+				.bind(json(series)),
+		);
+		// Retenção: contagens agregadas ficam 90 dias.
+		stmts.push(
+			db
+				.prepare("DELETE FROM series WHERE bucket < ?1")
+				.bind(new Date(Date.now() - SERIES_RETENTION_DAYS * 86400_000).toISOString()),
+		);
+	}
 	if (stmts.length) await db.batch(stmts);
 	return c.json({
 		ok: true,
@@ -204,5 +229,6 @@ ingest.post("/", async (c) => {
 		events: events.length,
 		pulses: pulses.length,
 		source_health: source_health.length,
+		series: series.length,
 	});
 });
