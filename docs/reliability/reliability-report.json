@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-10-03T21:00:00Z",
+  "campaign": "continuous-engineering-editorial-relevance",
+  "checks": {
+    "editorial_volume_gate": {"status": "PASS", "volumes": [10, 50, 100, 500, 1000]},
+    "editorial_paraphrase_gate": {"status": "PASS"},
+    "operational_sports_controls": {"status": "PASS", "cases": 4},
+    "focused_regression": {"status": "PASS", "tests": 28},
+    "full_python_suite": {"status": "INCOMPLETE", "reason": "dirty checkout and prior execution timeout"},
+    "worker_invalid_uf": {"status": "FAILED", "finding": "GET /api/pulse/state/ZZ returns synthetic NORMAL 200; owned by Worker follow-up"}
+  },
+  "promotion": "BLOCKED",
+  "notes": [
+    "Editorial sports content remains ingestible as context but cannot become an operational event by volume alone.",
+    "The gate is intentionally conservative and does not change contracts or promote predictive models."
+  ]
+}
