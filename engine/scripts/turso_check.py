@@ -11,7 +11,13 @@ import urllib.error
 import urllib.request
 
 url = os.environ.get("TURSO_URL", "").strip()
-token = os.environ.get("TURSO_TOKEN", "").strip()
+raw_token = os.environ.get("TURSO_TOKEN", "")
+token = raw_token.strip().strip("\"'").strip()
+if token.lower().startswith("bearer "):
+    token = token[7:].strip()
+# diagnóstico seguro (nunca imprime o token): formato esperado de JWT = 3 partes separadas por ponto, começando com "eyJ"
+print("token: comprimento", len(token), "| partes", token.count(".") + 1, "| começa com eyJ:", token.startswith("eyJ"),
+      "| espaços/quebras no original:", raw_token != raw_token.strip(), "| aspas:", token[:1] in "\"'" or raw_token.strip()[:1] in "\"'")
 if not url or not token:
     sys.exit("TURSO_URL/TURSO_TOKEN ausentes")
 base = url.replace("libsql://", "https://").rstrip("/")
