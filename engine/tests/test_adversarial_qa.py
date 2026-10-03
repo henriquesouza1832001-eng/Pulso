@@ -174,9 +174,10 @@ def test_http_200_with_html_is_degraded_not_online():
 QA001_OPEN = pytest.mark.xfail(strict=True, reason="QA-001: volume de veículos sozinho leva ruído a N2")
 
 
-# "onde assistir" e "show" foram fechados pelo PR #89 (papel editorial/agenda não publica); futebol e feriado seguem abertos.
+# O gate editorial/agenda também cobre futebol e feriado; o marcador só permanece
+# nos casos ainda não resolvidos pela classificação operacional.
 @pytest.mark.parametrize("name", [
-    pytest.param("futebol", marks=QA001_OPEN), "onde_assistir", "show", pytest.param("feriado", marks=QA001_OPEN)])
+    "futebol", "onde_assistir", "show", "feriado"])
 def test_noise_does_not_reach_n2_by_outlet_volume(name):
     assert top_level(run(same_story(NOISE[name], 6))) < 2
 
@@ -188,7 +189,6 @@ def test_operational_incidents_with_four_outlets_reach_n2(name):
     assert ev["alert_level"] >= 2
 
 
-@pytest.mark.xfail(strict=True, reason="QA-001/002: com o mesmo volume, futebol fica no mesmo nível de tumulto com feridos")
 def test_incident_with_injured_outranks_football_at_equal_volume():
     football = top_level(run(same_story(NOISE["futebol"], 6)))
     tumult = only_event(run(same_story(INCIDENTS_UNDERRATED["tumulto_show"], 6)))

@@ -61,6 +61,19 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     raw_last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
     raw_prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
     independent = _independent_origin_count(signals)
+    if gate:
+        # Preserve the shadow NOISE_GATE contract: distinct non-social publishers
+        # remain useful corroboration, while identical social reposts do not.
+        non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
+        news_titles = {normalized_title(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES}
+        social_titles = {normalized_title(s.title) for s in signals if s.source_class in SOCIAL_CLASSES} - news_titles
+        independent = len(non_social) + len(social_titles)
+
+        def distinct(lo: float, hi: float) -> int:
+            return len({(s.source_id, normalized_title(s.title)) for s in signals
+                        if lo < (now - s.timestamp).total_seconds() <= hi})
+
+        last_hour, prev_hour = distinct(-1, 3600), distinct(3600, 7200)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
     assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
@@ -74,7 +87,7 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
-        independent_sources=_independent_origin_count(signals),
+        independent_sources=independent,
         source_classes=frozenset(s.source_class for s in signals),
         newest_age_min=max(0.0, (now - max(times)).total_seconds() / 60),
         persistence_min=(max(times) - min(times)).total_seconds() / 60,
@@ -87,7 +100,9 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         duplicate_ratio=duplicates / len(signals),
         contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
         extra={"acceleration": float(raw_last_hour - raw_prev_hour),
-               "content_roles": sorted({a.role for a in assessed})},
+               "content_roles": sorted({a.role for a in assessed}),
+               "origin_count": float(_independent_origin_count(signals)),
+               "publisher_count": float(len(sources))},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
 
