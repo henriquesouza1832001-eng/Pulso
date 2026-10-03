@@ -313,6 +313,17 @@
 .osf-cats button:hover { color: var(--acc); }
 .osf-cats button.on { background: var(--bg2); color: var(--tx0); }
 .osf-more { padding: 10px 4px; font-size: 9.5px; letter-spacing: 0.1em; text-align: center; }
+/* recorte do feed por estado */
+.osf-uf { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 9.5px; letter-spacing: 0.08em; }
+.osf-uf label { display: flex; align-items: center; gap: 8px; }
+.osf-uf select {
+	font-family: inherit; font-size: 10px; letter-spacing: 0.06em; color: var(--tx0);
+	background: var(--bg1); border: 1px solid var(--ln1); padding: 3px 6px;
+}
+.osf-ufchip {
+	font-family: inherit; font-size: 9.5px; letter-spacing: 0.08em; cursor: pointer;
+	color: var(--acc); background: transparent; border: 1px solid var(--acc); padding: 2px 8px;
+}
 /* destaques por nível: N2+ marcado pela cor do nível; N3+ fixo no topo em todas as páginas */
 .osf-item.hot .osf-text { font-weight: 700; }
 .osf-item.hot.n2 { box-shadow: inset 2px 0 0 var(--lv2); }

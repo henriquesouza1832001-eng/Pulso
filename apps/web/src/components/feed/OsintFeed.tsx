@@ -45,6 +45,8 @@ export function OsintFeed({
 	demo,
 	sourcesCount,
 	onlineSources,
+	uf,
+	onUfChange,
 }: {
 	events: PulsoEvent[];
 	onSelect: (id: string) => void;
@@ -52,6 +54,9 @@ export function OsintFeed({
 	demo: boolean;
 	sourcesCount: number;
 	onlineSources: number;
+	/** Estado em foco ("SP"), "BR" = só notícias sem UF (nacionais/internacionais), null = todos. */
+	uf: string | null;
+	onUfChange: (uf: string | null) => void;
 }) {
 	const [tab, setTab] = useState<"live" | "top">("live");
 	const [cat, setCat] = useState<string>("ALL");
@@ -59,14 +64,26 @@ export function OsintFeed({
 	const listRef = useRef<HTMLDivElement>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
 
+	// Recorte por estado primeiro: categorias, contagens e páginas passam a falar só daquela UF.
+	const ufCounts = useMemo(() => {
+		const m = new Map<string, number>();
+		for (const e of events) if (e.state) m.set(e.state, (m.get(e.state) ?? 0) + 1);
+		return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+	}, [events]);
+	const nationalCount = useMemo(() => events.filter((e) => !e.state).length, [events]);
+	const inScope = useMemo(
+		() => (uf === null ? events : events.filter((e) => (uf === "BR" ? !e.state : e.state === uf))),
+		[events, uf],
+	);
+
 	const cats = useMemo(() => {
 		const present = new Map<string, number>();
-		for (const e of events) present.set(e.category, (present.get(e.category) ?? 0) + 1);
+		for (const e of inScope) present.set(e.category, (present.get(e.category) ?? 0) + 1);
 		return [...present.entries()].sort((a, b) => b[1] - a[1]);
-	}, [events]);
+	}, [inScope]);
 
 	const filtered = useMemo(() => {
-		const list = cat === "ALL" ? [...events] : events.filter((e) => e.category === cat);
+		const list = cat === "ALL" ? [...inScope] : inScope.filter((e) => e.category === cat);
 		// Nível mais alto sempre primeiro; dentro do nível, AO VIVO = mais recente, TOP = maior Pulso.
 		list.sort(
 			(a, b) =>
@@ -76,7 +93,7 @@ export function OsintFeed({
 					: +new Date(b.updated_at) - +new Date(a.updated_at) || b.pulse - a.pulse),
 		);
 		return list;
-	}, [events, cat, tab]);
+	}, [inScope, cat, tab]);
 
 	// Destaques: alertas (nível ≥ 3) fixos acima da lista, visíveis em qualquer página.
 	const pinned = useMemo(() => filtered.filter((e) => e.alert_level >= PIN_LEVEL).slice(0, MAX_PINNED), [filtered]);
@@ -92,10 +109,10 @@ export function OsintFeed({
 		listRef.current?.scrollTo({ top: 0 });
 	}, [curPage]);
 
-	// troca de filtro/tab volta para a primeira página
+	// troca de filtro/tab/estado volta para a primeira página
 	useEffect(() => {
 		setPage(0);
-	}, [cat, tab]);
+	}, [cat, tab, uf]);
 
 	// Evento escolhido no mapa/cidades/painel de UF: garante que ele apareça no feed (tira o filtro
 	// de categoria que o esconda, carrega a página onde ele está) e rola a lista até ele.
@@ -106,6 +123,10 @@ export function OsintFeed({
 	}, [selectedId]);
 	useEffect(() => {
 		if (!selectedId || pendingReveal.current !== selectedId) return;
+		if (uf !== null && !inScope.some((e) => e.event_id === selectedId)) {
+			onUfChange(null); // o estado em foco escondia o evento escolhido
+			return;
+		}
 		if (cat !== "ALL" && !filtered.some((e) => e.event_id === selectedId)) {
 			setCat("ALL");
 			return; // reexecuta com a lista sem filtro
@@ -121,7 +142,7 @@ export function OsintFeed({
 		rootRef.current
 			?.querySelector(`[data-evid="${CSS.escape(selectedId)}"]`)
 			?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-	}, [selectedId, filtered, rest, pinned, cat, curPage]);
+	}, [selectedId, filtered, rest, pinned, cat, curPage, uf, inScope, onUfChange]);
 
 
 	const reports = events.length;
@@ -162,7 +183,8 @@ export function OsintFeed({
 				<p className="osf-text">{e.title}</p>
 				<div className="osf-meta2">
 					{e.signal_count} sinais · {e.source_count} fonte(s) · conf {e.confidence}% ·{" "}
-					{[e.city, e.state].filter(Boolean).join("/") || "localizando…"}
+					{[e.city, e.state].filter(Boolean).join("/") ||
+						(e.category === "INTERNATIONAL" ? "internacional" : "nacional")}
 				</div>
 			</div>
 		</article>
@@ -209,9 +231,33 @@ export function OsintFeed({
 				<span className="oss-label">SINAIS/24H</span>
 			</div>
 
+			<div className="osf-uf">
+				<label>
+					<span className="dim">ESTADO</span>
+					<select
+						value={uf ?? ""}
+						onChange={(ev) => onUfChange(ev.target.value || null)}
+						aria-label="filtrar o feed por estado"
+					>
+						<option value="">TODOS · {events.length}</option>
+						{ufCounts.map(([u, n]) => (
+							<option key={u} value={u}>
+								{u} · {n}
+							</option>
+						))}
+						<option value="BR">NACIONAL/SEM UF · {nationalCount}</option>
+					</select>
+				</label>
+				{uf && (
+					<button className="osf-ufchip" onClick={() => onUfChange(null)} aria-label="mostrar todos os estados">
+						{uf === "BR" ? "NACIONAL" : uf} ✕
+					</button>
+				)}
+			</div>
+
 			<div className="osf-cats" role="tablist" aria-label="filtrar por categoria">
 				<button className={cat === "ALL" ? "on" : ""} onClick={() => setCat("ALL")}>
-					TODAS · {events.length}
+					TODAS · {inScope.length}
 				</button>
 				{cats.map(([c, n]) => (
 					<button key={c} className={cat === c ? "on" : ""} onClick={() => setCat(c)}>
