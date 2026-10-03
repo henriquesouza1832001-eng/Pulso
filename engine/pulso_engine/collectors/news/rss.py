@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from ...models import Signal
 from ...processing.geo import locate, state_place
 from ...processing.keyword_engine import KeywordEngine
-from ...processing.normalizer import canonical_url, clean_text, content_hash
+from ...processing.normalizer import canonical_url, clean_text, content_hash, is_broadcast_listing
 
 USER_AGENT = "pulso-engine/0.1 (+https://github.com/henriquesouza1832001-eng/Pulso)"
 MAX_BYTES = 5_000_000
@@ -158,8 +158,8 @@ class RssAdapter:
 
     def normalize(self, raw: dict[str, Any]) -> Signal | None:
         title = clean_text(raw.get("title"), 300)
-        if not title:
-            return None
+        if not title or is_broadcast_listing(title):
+            return None  # sem título, ou chamada de edição de telejornal (não é notícia)
         now = self._now()
         ts = _parse_date(raw.get("date")) or now
         ts = min(ts, now)  # data futura em feed mal configurado nunca vale

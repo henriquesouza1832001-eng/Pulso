@@ -72,8 +72,13 @@ def test_publishability_policy():
 def test_inherited_source_state_does_not_place_a_national_story():
     sigs = [sig(i, "x", source=f"s{i}") for i in range(5)] + [sig(9, "x", source="rn", state="RN", conf=35)]
     assert event_place(sigs) is None
-    confident = [sig(i, "x", source=f"s{i}") for i in range(5)] + [sig(9, "x", source="rn", state="RN", conf=90)]
-    assert event_place(confident).state == "RN"  # lugar explícito no texto vale mesmo sendo um só sinal
+    assert event_place([sig(1, "x", source="a"), sig(9, "x", source="rn", state="RN", conf=90)]).state == "RN"  # notícia local pequena
+    # pauta nacional (7 fontes) em que UM sinal cita o Amazonas: não vira evento do AM
+    national = [sig(i, "x", source=f"s{i}") for i in range(6)] + [sig(9, "x", source="am", state="AM", conf=90)]
+    assert event_place(national) is None
+    # mas quando uma parte relevante dos sinais cita o estado, ele vale
+    local = [sig(i, "x", source=f"s{i}", state="AM", conf=90) for i in range(3)] + [sig(9, "x", source="z"), sig(10, "x", source="y")]
+    assert event_place(local).state == "AM"
 
 
 def test_title_decides_the_category_before_the_summary():

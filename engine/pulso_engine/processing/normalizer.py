@@ -43,3 +43,17 @@ def content_hash(canonical: str | None, title: str) -> str:
     """Mesma URL canônica (ou, sem URL, mesmo título) = mesma matéria."""
     basis = canonical or normalized_title(title)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:32]
+
+
+# Programação de telejornal (não é notícia): "Assista ao JRO2 desta sexta", "Jornal X 2ª Edição de sexta-feira", "VÍDEO: AB2 de sexta".
+_WEEKDAY = r"(segunda|ter[cç]a|quarta|quinta|sexta|s[áa]bado|domingo)"
+_BROADCAST_LISTING = re.compile(
+    rf"(edi[cç][aã]o de {_WEEKDAY}|assista ao [a-z]{{1,4}}\d? desta|^v[ií]deos?:\s*[a-z]{{1,4}}\d? de {_WEEKDAY})",
+    re.IGNORECASE,
+)
+
+
+def is_broadcast_listing(title: str) -> bool:
+    """True para chamadas de edição de telejornal. Padrões específicos: 'Vídeo: Veja os horários de votação' é notícia."""
+    return bool(_BROADCAST_LISTING.search(title or ""))
+

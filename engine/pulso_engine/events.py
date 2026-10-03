@@ -103,9 +103,10 @@ def event_place(sigs: list[Signal]) -> Signal | None:
     top, w = weight.most_common(1)[0]
     if len(weight) >= 4 or w / sum(weight.values()) < 0.6:
         return None
-    # Um estado herdado da fonte regional (confiança baixa) em meio a muitos sinais sem lugar não define o evento.
-    confident = any((s.geo_confidence or 0) >= 60 for s in located if s.state == top)
-    if not confident and len(located) / len(sigs) < 0.5:
+    # Em um grupo de 4+ sinais, o lugar só vale se uma parte relevante deles o tem: um único sinal que cita um estado
+    # (ou um estado herdado da fonte regional) em meio a vários sem lugar não faz de uma pauta nacional um evento local.
+    # Grupos pequenos (1-3 sinais) são o caso comum de notícia local e podem ser definidos por um sinal só.
+    if len(sigs) >= 4 and len(located) / len(sigs) < 0.4:
         return None
     candidates = [s for s in located if s.state == top]
     return max(candidates, key=lambda s: (s.latitude is not None, s.geo_confidence or 0))
