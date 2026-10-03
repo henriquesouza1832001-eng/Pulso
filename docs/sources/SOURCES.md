@@ -12,8 +12,8 @@ Cada integração documenta aqui: fonte, API, limites, credenciais, dados coleta
 | Reddit | SOCIAL | API oficial OAuth (piloto desativado) | ⏳ exige aprovação prévia do Reddit (desde nov/2025) |
 | X | SOCIAL | API v2 busca recente (piloto desativado) | ⏳ orçamento/termos pendentes |
 | GDELT — cobertura de notícias | NEWS_REGIONAL | API aberta (`gdelt`) | 🧪 desligada: **não validada ao vivo** (429 persistente mesmo a 7 s de intervalo e consulta vazia em 2026-10-03) |
-| Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | 🧪 proposta (`enabled: false`), aguarda revisão |
-| USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | 🧪 proposta (`enabled: false`), aguarda revisão |
+| Mastodon — hashtags de impacto | SOCIAL | API aberta (`mastodon`) | ⏸ desligada **por medição** (ver ficha): sem atividade recente sobre desastres em português |
+| USGS — terremotos significativos | OFFICIAL | GeoJSON aberto (`usgs`) | ✅ ativa (2026-10-03); entra como INTERNATIONAL, coordenadas só dentro do Brasil |
 | **INPE Queimadas** (focos de calor) | OFFICIAL | CSV diário aberto (`inpe_fires`) | ✅ ativa, revisão de termos pendente (ver ficha) |
 | **Banco Central, dólar PTAX** (choque cambial) | OFFICIAL | Olinda OData aberto (`bcb_ptax`) | ✅ ativa; só emite com variação ≥ 1% |
 | **Defesa Civil Nacional** (alertas oficiais IDAP/CAP) | OFFICIAL | feed Atom/CAP aberto (`idap_cap`) | ✅ ativa, revisão de termos pendente (ver ficha) |
@@ -212,3 +212,6 @@ Termos relevantes: feed público do MIDR; confirmar a política de uso antes de 
 Exibição pública permitida: headline_link.
 Papel: fonte OFICIAL do alerta de desastre (chuvas intensas, estiagem, corridas de massa...). Severidade Extreme vira categoria EMERGENCY; as demais, WEATHER.
 ```
+
+### Medição do Mastodon como sensor de desastre (2026-10-03)
+Testadas 10 instâncias e as hashtags `chuva`, `enchente`, `incendio`, `brasil` e `eleicoes2026` (timelines públicas, só posts em português). Resultado: as hashtags de desastre quase não têm atividade (o post mais recente sobre `chuva` em todas as instâncias tinha 93 h, sobre `enchente`, 128 h a 900 h); só `brasil` e `eleicoes2026` têm movimento, de poucos posts por hora. Conclusão: o Mastodon **não serve como sensor rápido de desastre no Brasil** (a base de usuários em português é pequena). Fica desligado; reabrir se a base crescer. Alternativa gratuita com mais volume em português: Bluesky, que exige conta com *app password* (secrets `BSKY_HANDLE` e `BSKY_APP_PASSWORD`, a criar pelo dono); o adaptador só deve ser escrito com a credencial em mãos, para validar o formato da resposta.
