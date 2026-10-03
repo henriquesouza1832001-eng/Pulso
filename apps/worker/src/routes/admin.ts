@@ -46,11 +46,34 @@ admin.get("/signals", async (c) => {
 	const { results } = await c.env.DB.prepare(
 		`SELECT id AS signal_id, source_id, source_class, timestamp, collected_at, title, text, url, canonical_url,
 		        author, category, latitude, longitude, geo_precision, geo_confidence, state, city, reliability, hash, event_id
-		 FROM signals WHERE timestamp >= ?1 ORDER BY timestamp ASC LIMIT 5000`,
+		 FROM signals WHERE timestamp >= ?1 ORDER BY timestamp DESC LIMIT 10000`,
 	)
 		.bind(since)
 		.all();
+	// MAIS NOVOS primeiro: se passar do limite, descarta os antigos (já quase fora da janela), nunca os recentes.
 	return c.json({ since, signals: results });
+});
+
+const digestQuery = z.object({
+	hours: z.coerce.number().int().min(1).max(72).default(24),
+});
+
+/**
+ * Resumo dos eventos já gravados (só o que decide se vale reescrever). O Engine envia apenas eventos novos ou
+ * que mudaram: o D1 gratuito limita as linhas escritas por dia, e reenviar centenas de eventos iguais a cada
+ * 5 min estouraria o limite.
+ */
+admin.get("/events-digest", async (c) => {
+	const q = digestQuery.safeParse(c.req.query());
+	if (!q.success) return c.json({ error: "invalid_query" }, 400);
+	const since = new Date(Date.now() - q.data.hours * 3600_000).toISOString();
+	const { results } = await c.env.DB.prepare(
+		`SELECT id AS event_id, pulse, alert_level, status, signal_count, source_count
+		 FROM events WHERE updated_at >= ?1 ORDER BY updated_at DESC LIMIT 5000`,
+	)
+		.bind(since)
+		.all();
+	return c.json({ since, events: results });
 });
 
 const pulseHistoryQuery = z.object({

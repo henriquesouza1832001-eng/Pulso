@@ -108,7 +108,8 @@ const forecastSchema = z
 
 const batchSchema = z.object({
 	batch_id: z.string().min(1).max(80),
-	sources: z.array(sourceSchema).max(100),
+	// Catálogo completo cabe em um lote (hoje ~110 fontes); margem para crescer sem derrubar a ingestão.
+	sources: z.array(sourceSchema).max(500),
 	/** true = `sources` é o catálogo COMPLETO de fontes ativas: as que não vierem são desativadas. */
 	catalog_complete: z.boolean().optional().default(false),
 	events: z.array(eventSchema).max(200),

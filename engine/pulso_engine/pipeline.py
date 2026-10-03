@@ -137,6 +137,7 @@ def run_once(
     pulse_points: list[dict] | None = None,
     open_forecasts: list[dict] | None = None,
     catalog: list[dict] | None = None,
+    known_events: list[dict] | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     keywords = keywords or KeywordEngine()
@@ -161,6 +162,11 @@ def run_once(
             signals.setdefault(s.hash, s)  # dedup por URL canônica/título
         health.append({"source_id": src["id"], "status": status,
                        "last_success": iso(now) if got else None, "detail": detail})
+
+    # Notícia mais velha que a janela de estado não é informação nova: o feed ainda a mostra, mas a API só devolve
+    # as últimas 24 h, então reenviá-la a cada ciclo reescreveria no banco linhas iguais (limite de escrita do D1)
+    # e recriaria eventos que a API nem exibe. Fora do agrupamento, dos eventos e das séries.
+    signals = {h: s for h, s in signals.items() if (now - s.timestamp) <= STATE_WINDOW}
 
     # Estado: sinais já gravados entram no agrupamento, então a história continua a mesma
     # (mesmo event_id) mesmo depois que a notícia mais antiga sai do feed.
@@ -209,6 +215,8 @@ def run_once(
         *resolve_surge_due(open_forecasts or [], series_rows, points, now),
         *make_surge_forecasts(series_rows, now),
     ]
+    events_to_send = changed_events(events, known_events)
+    series_to_send = changed_series(series_now, history)
     return {
         "batch_id": uuid.uuid4().hex,
         # Com `catalog`, envia TODAS as fontes ativas (mesmo as fora da janela de interval_s) e o Worker
@@ -216,13 +224,59 @@ def run_once(
         "sources": [{k: s[k] for k in ("id", "name", "domain", "adapter", "source_class", "url", "state")}
                     for s in (catalog if catalog is not None else sources)],
         "catalog_complete": catalog is not None,
-        "events": events,
+        "events": events_to_send,
+        "events_total": len(events),
         "signals": [signal_dict(s) for s in to_send],
         "pulses": pulses,
         "source_health": health,
-        "series": series_now,
+        "series": series_to_send,
         "forecasts": forecasts,
     }
+
+
+PULSE_RESEND_DELTA = 3  # o Pulso só é reescrito se mudou ao menos isto (o frescor o faz cair a cada ciclo)
+
+
+def changed_events(events: list[dict], known: list[dict] | None) -> list[dict]:
+    """Só o que é novo ou mudou de forma relevante. O D1 gratuito limita as linhas escritas por dia: reenviar
+    centenas de eventos iguais a cada 5 min estouraria o limite. Sem resumo (`known` vazio) envia tudo (seguro)."""
+    if not known:
+        return events
+    by_id = {k["event_id"]: k for k in known}
+    out = []
+    for e in events:
+        k = by_id.get(e["event_id"])
+        if (k is None or k["alert_level"] != e["alert_level"] or k["status"] != e["status"]
+                or k["signal_count"] != e["signal_count"] or k["source_count"] != e["source_count"]
+                or abs(k["pulse"] - e["pulse"]) >= PULSE_RESEND_DELTA):
+            out.append(e)
+    return out
+
+
+def changed_series(series_now: list[dict], stored: list[dict] | None) -> list[dict]:
+    """Só as janelas novas ou com contagem maior que a gravada (o Worker já guarda o MAIOR valor visto)."""
+    if not stored:
+        return series_now
+    have = {(r["scope"], r["category"], r["bucket"]): int(r["signals"]) for r in stored}
+    return [r for r in series_now if int(r["signals"]) > have.get((r["scope"], r["category"], r["bucket"]), -1)]
+
+
+def select_sources(batch: dict, now: datetime, full_every_min: int = 30, slot_min: int = 5) -> None:
+    """Catálogo COMPLETO só no horário de revisão (a cada `full_every_min` min); nos demais ciclos, só as fontes
+    dos sinais enviados (a chave estrangeira exige que existam) e sem desativar nenhuma outra."""
+    if now.minute % full_every_min < slot_min:
+        return
+    used = {g["source_id"] for g in batch["signals"]}
+    batch["sources"] = [s for s in batch["sources"] if s["id"] in used]
+    batch["catalog_complete"] = False
+
+
+def select_health(health: list[dict], now: datetime, full_every_min: int = 30, slot_min: int = 5) -> list[dict]:
+    """Saúde: o que NÃO está ONLINE vai sempre (alerta imediato); o que está ONLINE só a cada `full_every_min`
+    minutos (uma rodada), para não reescrever dezenas de linhas iguais a cada ciclo."""
+    if now.minute % full_every_min < slot_min:
+        return health
+    return [h for h in health if h["status"] != "ONLINE"]
 
 
 def signal_dict(s: Signal) -> dict:
@@ -257,7 +311,10 @@ def chunks(batch: dict, max_events: int = 150, max_signals: int = 450) -> list[d
     for i in range(0, len(orphans), max_signals):
         parts.append({"events": [], "signals": orphans[i:i + max_signals]})
     return [
-        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"], "catalog_complete": batch["catalog_complete"],
+        # Fontes só na PRIMEIRA parte (os sinais das partes seguintes dependem delas, e reenviar o catálogo em
+        # cada parte reescreveria dezenas de linhas iguais).
+        {"batch_id": f"{batch['batch_id']}-{i}", "sources": batch["sources"] if i == 0 else [],
+         "catalog_complete": batch["catalog_complete"] if i == 0 else False,
          "events": p["events"], "signals": p["signals"],
          "pulses": batch["pulses"] if i == len(parts) - 1 else [],
          "source_health": batch["source_health"] if i == len(parts) - 1 else [],
@@ -297,15 +354,18 @@ def main(argv: list[str] | None = None) -> int:
         # valida o protocolo; fonte fora do protocolo não roda
         catalog = load_sources(args.config)
         sources = [s for s in catalog if is_due(s, now)]
-    from .client import fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
+    from .client import fetch_event_digest, fetch_history, fetch_open_forecasts, fetch_pulse_history, fetch_signals
     # Histórico (baseline), sinais gravados (estado) e previsões abertas: só com dado real do Worker.
-    history = fetch_history() if args.push else []
+    # Janelas mínimas que bastam (o D1 gratuito limita as linhas LIDAS por dia): 36 h de séries (a previsão de
+    # volume precisa de > 25 h) e 24 h do Pulso (o previsor exige ~3,5 h).
+    history = fetch_history(hours=36) if args.push else []
     stored = fetch_signals() if args.push else []
-    pulse_points = fetch_pulse_history() if args.push else []
+    pulse_points = fetch_pulse_history(hours=24) if args.push else []
     open_forecasts = fetch_open_forecasts() if args.push else []
+    known_events = fetch_event_digest() if args.push else []
     batch = run_once(sources, history=history, stored=stored, pulse_points=pulse_points, open_forecasts=open_forecasts,
-                     catalog=catalog)
-    print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])} "
+                     catalog=catalog, known_events=known_events)
+    print(f"sinais={len(batch['signals'])} eventos={len(batch['events'])}/{batch['events_total']} "
           f"BR={batch['pulses'][0]['score']} nivel={batch['pulses'][0]['alert_level']}")
     for h in batch["source_health"]:
         print(f"  {h['source_id']:<16} {h['status']:<9} {h['detail'] or ''}")
@@ -324,6 +384,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [{e['pulse']:>3}] {e['category']:<14} fontes={e['source_count']} conf={e['confidence']:>3} {e['title'][:70]}")
     if args.push:
         from .client import push_batch
+        now_push = datetime.now(timezone.utc)
+        select_sources(batch, now_push)
+        batch["source_health"] = select_health(batch["source_health"], now_push)
         for part in chunks(batch):
             print("  push:", push_batch(part))
     return 0
