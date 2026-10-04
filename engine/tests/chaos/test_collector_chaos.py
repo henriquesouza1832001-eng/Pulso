@@ -19,14 +19,16 @@ TRANSPORTS = {"ONLINE", "DEGRADED", "RATE_LIMITED", "OFFLINE", "AUTH_ERROR"}
 OFF, ONL, DEG, RL = "OFFLINE", "ONLINE", "DEGRADED", "RATE_LIMITED"
 
 # caminho -> (transporte, frescor). Decisões de classificação documentadas em docs/operations/FAILURE_RUNBOOK.md.
+# QA-006: resposta que CHEGOU inteira mas não é feed (204/vazio, XML quebrado, JSON) é DEGRADED (dado); conexão que fecha
+# antes do Content-Length ("truncated") continua OFFLINE (transporte).
 MATRIX = {
     "fresh": (ONL, "FRESH"), "stale": (ONL, "STALE"), "empty": (DEG, "EMPTY"),
-    "204": (OFF, "UNKNOWN"), "redirect-ok": (ONL, "FRESH"), "301": (ONL, "FRESH"), "redirect-loop": (OFF, "UNKNOWN"),
+    "204": (DEG, "EMPTY"), "redirect-ok": (ONL, "FRESH"), "301": (ONL, "FRESH"), "redirect-loop": (OFF, "UNKNOWN"),
     "304": (OFF, "UNKNOWN"), "403": (OFF, "UNKNOWN"), "404": (OFF, "UNKNOWN"), "408": (OFF, "UNKNOWN"), "429": (RL, "UNKNOWN"),
     "500": (OFF, "UNKNOWN"), "502": (OFF, "UNKNOWN"), "503": (OFF, "UNKNOWN"), "504": (OFF, "UNKNOWN"),
     "truncated": (OFF, "UNKNOWN"), "gzip-ok": (ONL, "FRESH"), "gzip-bad": (OFF, "UNKNOWN"), "gzip-bomb": (OFF, "UNKNOWN"),
     "latin1": (ONL, "FRESH"), "bad-utf8": (ONL, "UNKNOWN"),  # título ilegível e sem data: lido, mas frescor não verificável
-    "malformed": (OFF, "UNKNOWN"), "json-not-xml": (OFF, "UNKNOWN"), "html": (DEG, "EMPTY"), "schema-drift": (DEG, "EMPTY"),
+    "malformed": (DEG, "EMPTY"), "json-not-xml": (DEG, "EMPTY"), "html": (DEG, "EMPTY"), "schema-drift": (DEG, "EMPTY"),
     "huge": (OFF, "UNKNOWN"), "hang": (OFF, "UNKNOWN"), "reset": (OFF, "UNKNOWN"), "drip": (OFF, "UNKNOWN"),
 }
 

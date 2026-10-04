@@ -67,5 +67,17 @@ Regra de honestidade: com menos de **12 horas** de histórico o baseline é **in
 
 Limitações conhecidas: o baseline ainda não separa hora do dia e dia da semana (precisa de semanas de dados); e a clusterização é recalculada a cada rodada, então o `event_id` de uma história pode mudar quando a notícia mais antiga sai dos feeds (a solução é clusterização com estado, a próxima etapa).
 
+## Portão de ruído (atrás da flag `NOISE_GATE`, padrão DESLIGADO)
+Corrige QA-001..004 de `docs/reliability/BACKEND_ADVERSARIAL_QA.md`. Com a flag desligada, nada muda (suíte idêntica).
+- **Teto de nível 1** (`events.is_noise`, `NOISE_GATE_MAX_LEVEL`) quando TODOS os relatos são agenda/esporte/serviço/rotina (`importance.GATE_SCHEDULED`: "onde assistir", "vence o", "show", "feriado", "Mega-Sena", "saiba como", "chuva fraca", "garoa", "trânsito lento", "horário de pico"...) sem nenhum termo de impacto, ruptura ou incidente operacional ("chuva forte", "temporal", "congestionamento", "acidente" anulam o teto); ou quando o evento é `OTHER` sem nenhum termo de impacto nem operacional. Volume de veículos sozinho não vira alerta. O teto aparece no "POR QUE?" ("Agenda/serviço sem impacto", 0 pontos).
+- **Incidente operacional** (`importance.GATE_OPERATIONAL`: "interrompida", "paralisada", "sem internet", "fora do ar", "bloqueiam", "evacuado", "tumulto", "feridos", "sem transporte", "estação fechada"...) usa severidade-base 45 e impacto mínimo 45, como um evento físico de nível B, e **é publicado mesmo em pauta de agenda** ("pane nos trens após show": sem a flag, o papel de agenda descarta o evento inteiro, QA-012).
+- **Independência**: repost social que é quase-cópia (Jaccard ≥ 0,8, a regra do validador do Sentinela) de uma manchete não social não conta como fonte independente; "URGENTE: <manchete>" e "RT <manchete>" são repost. Conta 1 por veículo não social + 1 por origem social própria. Relato social com palavras próprias continua contando.
+- **Velocidade**: conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
+
+Validação OFF × ON com corpus de 86 cenários: `docs/reliability/NOISE_GATE_VALIDATION.md`.
+
+## Contradição no evento (atrás da flag `EVENT_CONTRADICTION`, padrão DESLIGADO)
+Relatos do MESMO evento que afirmam coisas incompatíveis (pares `validator.CLAIM_PAIRS`: feridos × "não deixou feridos"; bloqueio total × liberado; sem energia × restabelecida; fogo fora de controle × controlado) marcam o evento `DISPUTED` e descontam a confiança (`contradiction` = 0,5 por tema, até 1; −30 × contradição), com "Fontes divergem" no "POR QUE?". A negação tem precedência sobre as palavras que contém ("não deixou feridos" é negação). Em temas de desfecho (bloqueio, energia, fogo/alagamento), lado B inteiro DEPOIS do lado A é evolução, não disputa. Vítimas não têm desfecho: feridos × sem feridos é sempre disputa. Sem a flag, o pipeline não passa contradição ao evento (QA-013).
+
 ## Rotina de campanha pesa pouco
 Textos de campanha e rotina eleitoral (`importance.ROUTINE`: comício, carreata, caminhada, debate, sabatina, horário eleitoral, pesquisas Datafolha/Quaest/Ipec etc.) são eventos agendados e esperados. Quando TODOS os textos de um evento são rotina e nenhum traz sinal de impacto (tiers A/B) ou de ruptura (`importance.DISRUPTION`: tumulto, ataque, feridos, tiros, bomba...), a severidade fica limitada a `ROUTINE_SEVERITY_CAP` (20). "Comício termina em tumulto com feridos" NÃO é rotina e pontua normalmente.

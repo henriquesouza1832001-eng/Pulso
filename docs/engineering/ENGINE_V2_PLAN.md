@@ -63,7 +63,7 @@ V2 em paralelo (arquivo novo, por composição) ► atrás de feature flag (OFF)
 Regras: sem índice secundário por padrão (cada índice dobra a escrita), escrita só do que mudou, retenção definida na própria migration, e entrada no governador de orçamento. Nada altera tabela existente; reverter = desligar a flag (as tabelas novas ficam, sem efeito).
 
 ## 4. Feature flags
-Definidas em `engine/pulso_engine/flags.py`; ligar/desligar por variável `PULSO_FLAG_<NOME>`. Padrão: **tudo V2 desligado**, exceto o que já roda como **shadow** (só grava dados): `HISTORY_OBSERVATIONS`, `SENTINEL`. Lista: `SEASONAL_BASELINE_V2, ANOMALY_V2, CLUSTER_REFINE, SEMANTIC_CLUSTERING, GEO_V2, CONFIDENCE_V2, SEVERITY_V2, PULSE_V2, NATIONAL_PULSE_V2, DRIVER_VALIDATOR, EVENT_ESCALATION, CONTEXT_ENGINE`. O estado efetivo das flags vai no snapshot da previsão e no log do ciclo.
+Definidas em `engine/pulso_engine/flags.py`; ligar/desligar por variável `PULSO_FLAG_<NOME>`. Padrão: **tudo V2 desligado**, exceto o que já roda como **shadow** (só grava dados): `HISTORY_OBSERVATIONS`, `SENTINEL`. Lista: `SEASONAL_BASELINE_V2, ANOMALY_V2, CLUSTER_REFINE, SEMANTIC_CLUSTERING, GEO_V2, CONFIDENCE_V2, SEVERITY_V2, PULSE_V2, NATIONAL_PULSE_V2, DRIVER_VALIDATOR, EVENT_ESCALATION, CONTEXT_ENGINE, NOISE_GATE` (`NOISE_GATE`: portão de ruído do QA adversarial, ver `docs/SCORING.md`). O estado efetivo das flags vai no snapshot da previsão e no log do ciclo.
 
 ## 5. Portão de promoção (valores iniciais; revisar com dados reais)
 Nenhum V2 sai de shadow sem **todas** as condições:

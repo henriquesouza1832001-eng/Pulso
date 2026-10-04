@@ -25,12 +25,17 @@ MERGE_SCORE = 0.6
 MAX_CLUSTER = 40  # nunca forma um grupo gigante por encadeamento
 
 _ENTITY = re.compile(r"\b(?:[A-Z]{2,3}[- ]?\d{2,4}|[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]+)*)\b")
+_DATELINE = re.compile(r"^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]+)*\s*(?::|\s[-–]\s)")
 _COMMON = frozenset({"governo", "prefeitura", "policia", "brasil", "estado", "ministerio", "defesa", "civil", "veja", "saiba"})
 
 
 def entities(title: str) -> frozenset[str]:
-    """Nomes próprios e códigos (BR-381) do título, sem a primeira palavra (maiúscula só por começar a frase)."""
-    body = title.split(" ", 1)[1] if " " in title else ""
+    """Nomes próprios e códigos (BR-381) do título, sem a primeira palavra (maiúscula só por começar a frase).
+    Exceção: dateline ("Petrópolis: chuva provoca...", "Recife - ..."): ali a primeira palavra É o lugar (QA-005)."""
+    if _DATELINE.match(title):
+        body = title
+    else:
+        body = title.split(" ", 1)[1] if " " in title else ""
     found = {fold(m.group(0)) for m in _ENTITY.finditer(body)}
     return frozenset(e for e in found if e not in _COMMON and len(e) >= 3)
 

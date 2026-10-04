@@ -53,13 +53,14 @@ describe("ensaio de falha: ingest sobre Turso", () => {
 		const s = setup((n, body) => (armed ? onlyWrite("after")(n, body) : undefined));
 		const lost = await s.post(BATCH);
 		expect(lost.status).toBe(500); // o Engine não sabe se gravou: vai reenviar
-		// o servidor JÁ gravou o dado de verdade (nada se perdeu); a observabilidade (lote à parte) ainda não rodou: só ela falta
-		const core = (c: Record<string, number>) => ({ ...c, source_runtime: 0, engine_cycle: 0 });
+		// o servidor JÁ gravou o dado de PRODUTO (nada se perdeu); o lote OPCIONAL (pesquisa/observabilidade, à parte) ainda não rodou: só ele falta
+		const OPTIONAL = ["signal_observations", "investigations", "forecast_registry", "calibrators", "source_runtime", "engine_cycle", "shadow_results", "driver_registry"];
+		const core = (c: Record<string, number>) => ({ ...c, ...Object.fromEntries(OPTIONAL.map((t) => [t, 0])) });
 		expect(core(s.counts())).toEqual(core(expected));
 
 		armed = false;
 		const retry = (await (await s.post(BATCH)).json()) as { budget: { written: number } };
-		expect(retry.budget.written).toBe(3); // batimento de saúde (1) + as 2 linhas de observabilidade que o 500 impediu; nenhuma linha de dado duplicada
+		expect(retry.budget.written).toBe(9); // batimento de saúde (1) + as 8 linhas opcionais que o 500 impediu; nenhuma linha de dado duplicada
 		expect(s.counts()).toEqual(expected);
 	});
 
@@ -106,5 +107,65 @@ describe("ensaio de falha: ingest sobre Turso", () => {
 		const stmts = [s.db.prepare("INSERT INTO parcial VALUES (?1)").bind("a"), s.db.prepare("INSERT INTO parcial VALUES (?1)").bind("b"), s.db.prepare("INSERT INTO parcial VALUES (?1)").bind("a")];
 		await expect(s.db.batch(stmts)).rejects.toThrow(/turso_batch_failed/);
 		expect((s.sqlite.prepare("SELECT COUNT(*) AS c FROM parcial").get() as { c: number }).c).toBe(0);
+	});
+});
+
+describe("matriz de indisponibilidade do banco ativo (não existe failover automático Turso<->D1: um backend por vez)", () => {
+	const always = (kind: Fault) => () => kind;
+	const getJson = async (r: Response) => (await r.json()) as Record<string, any>;
+
+	it.each<[string, Fault]>([["Turso FORA (rede caída)", "before"], ["Turso FORA (HTTP 500)", "http500"], ["Turso FORA (conexão derrubada, ECONNRESET)", "reset"]])("%s: liveness 200, readiness 503, ingest 500 com request_id, nada gravado", async (_n, kind) => {
+		const s = setup(always(kind));
+		expect((await s.get("/api/health/live")).status).toBe(200); // o processo está vivo
+		const ready = await s.get("/api/health/ready");
+		expect(ready.status).toBe(503); // mas NÃO pronto: nunca "totalmente saudável"
+		expect((await getJson(ready)).status).toBe("not_ready");
+		const ing = await s.post(BATCH);
+		expect(ing.status).toBe(500);
+		expect((await getJson(ing)).request_id).toBeTruthy();
+		const st = await s.getAdmin("/engine-status");
+		expect(st.status).toBe(500); // sem banco, o painel diz que falhou (não inventa zeros)
+	});
+
+	it("timeout de verdade: o adaptador ABORTA e o ingest responde 500 sem pendurar (sem escrita)", async () => {
+		const s = setup(onlyWrite("hang"), { timeoutMs: 80 });
+		const t0 = Date.now();
+		const r = await s.post(BATCH);
+		expect(r.status).toBe(500);
+		expect(Date.now() - t0).toBeLessThan(3000);
+		expect(Object.values(s.counts()).every((n) => n === 0)).toBe(true);
+	});
+
+	it("resposta LENTA: o dado grava e a readiness diz DEGRADED com o motivo (não 'ok')", async () => {
+		const slow = setup((_n, body) => (body.requests?.[0]?.type === "execute" ? "slow" : undefined), { slowMs: 2100 });
+		const r = await slow.get("/api/health/ready");
+		const body = await getJson(r);
+		expect(r.status).toBe(200);
+		expect(body.status).toBe("degraded");
+		expect(body.reasons.join(" ")).toMatch(/lento/);
+	}, 15000);
+
+	it("esquema desatualizado (tabela de produto ausente): 500 interno sem vazar nome de tabela; liveness segue 200", async () => {
+		const s = setup();
+		s.sqlite.exec("DROP TABLE signals;");
+		const r = await s.post(BATCH);
+		const txt = await r.text();
+		expect(r.status).toBe(500);
+		expect(txt).not.toMatch(/signals|no such table|sqlite/i);
+		expect((await s.get("/api/health/live")).status).toBe(200);
+	});
+});
+
+describe("idempotência por tabela: reenviar o MESMO lote não cria linha em nenhuma delas", () => {
+	it("events, signals, series, forecasts, registry, shadow_results, drivers, calibrators, investigations, observations, source_runtime, engine_cycle", async () => {
+		const s = setup();
+		await s.post(BATCH);
+		const before = s.counts();
+		const snapshot = (t: string) => JSON.stringify(s.sqlite.prepare(`SELECT * FROM ${t}`).all());
+		const immutable = ["events", "signals", "series", "forecasts", "forecast_registry", "shadow_results", "driver_registry", "calibrators", "investigations", "signal_observations", "source_runtime", "engine_cycle", "pulse_history"];
+		const content = Object.fromEntries(immutable.map((t) => [t, snapshot(t)]));
+		for (let i = 0; i < 3; i++) await s.post(BATCH); // 3 reenvios idênticos (retry em cascata)
+		expect(s.counts()).toEqual(before); // nenhuma linha nova
+		for (const t of immutable) expect(snapshot(t), t).toBe(content[t]); // e nenhuma linha mudou de conteúdo
 	});
 });

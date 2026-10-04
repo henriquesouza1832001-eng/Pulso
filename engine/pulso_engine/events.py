@@ -6,14 +6,22 @@ from collections import Counter
 from datetime import datetime
 
 from .models import EventStats, Signal, SOCIAL_CLASSES
-from .processing.clustering import Cluster
-from .processing.importance import assess
+from .processing.clustering import Cluster, tokens
+from . import flags
+from .processing.importance import (EDITORIAL_ONLY, OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT,
+                                     SCHEDULED_CONTEXT, assess, context)
+from .processing.keyword_engine import _fold
 from .processing.normalizer import normalized_title
+from .research.validator import CLAIM_PAIRS, COPY_JACCARD, _origins, claim_side
 from .scoring.confidence import confidence
 from .scoring.pulse import HALF_LIFE_BY_CATEGORY, HALF_LIFE_MIN, alert_level, pulse_score
 
 ROUTINE_SEVERITY_CAP = 20  # teto de severidade de um evento cujos textos são todos rotina de campanha (importance.ROUTINE)
 IMPACT_WEIGHT = 0.3  # pontos de severidade por ponto de importância do texto (importance.assess: 0-100)
+# NOISE_GATE: incidente operacional (metrô parado, sem internet, bloqueio, tumulto) pesa como um evento físico de nível B.
+OPERATIONAL_BASE = 45
+OPERATIONAL_IMPACT = 45
+NOISE_GATE_MAX_LEVEL = 1  # teto de nível de agenda/esporte/serviço e de OTHER sem nenhum termo de impacto
 
 # Severidade-base por categoria (heurística inicial, a calibrar com dados reais).
 BASE_SEVERITY = {
@@ -26,6 +34,11 @@ def iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _near_copy(a: frozenset[str], b: frozenset[str]) -> bool:
+    union = len(a | b)
+    return bool(union) and len(a & b) / union >= COPY_JACCARD
+
+
 def dominant_category(signals: list[Signal]) -> str:
     counts = Counter(s.category for s in signals if s.category != "OTHER")
     return counts.most_common(1)[0][0] if counts else "OTHER"
@@ -33,23 +46,41 @@ def dominant_category(signals: list[Signal]) -> str:
 
 def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contradiction: float = 0.0) -> EventStats:
     category = dominant_category(signals)
+    gate = flags.enabled("NOISE_GATE")
     sources = {s.source_id for s in signals}
     times = [s.timestamp for s in signals]
     titles = Counter(normalized_title(s.title) for s in signals)
     duplicates = sum(c - 1 for c in titles.values())
     last_hour = sum(1 for t in times if (now - t).total_seconds() <= 3600)
     prev_hour = sum(1 for t in times if 3600 < (now - t).total_seconds() <= 7200)
+    independent = len(sources)
+    if gate:
+        # QA-003: repost social não é evidência independente. Conta cada veículo não social, mais uma origem por relato
+        # social que não é quase-cópia (Jaccard >= COPY_JACCARD, a regra do validador) de nenhuma manchete não social:
+        # "URGENTE: <manchete>" ou "RT <manchete>" é repost, não relato próprio.
+        non_social = {s.source_id for s in signals if s.source_class not in SOCIAL_CLASSES}
+        news_toks = [tokens(s.title) for s in signals if s.source_class not in SOCIAL_CLASSES]
+        own = [s for s in signals if s.source_class in SOCIAL_CLASSES and not any(_near_copy(tokens(s.title), t) for t in news_toks)]
+        independent = len(non_social) + len(_origins(own))
+        # QA-004: velocidade conta relatos distintos (veículo + manchete), não cópias da mesma fonte.
+        def distinct(lo: float, hi: float) -> int:
+            return len({(s.source_id, normalized_title(s.title)) for s in signals
+                        if lo < (now - s.timestamp).total_seconds() <= hi})
+        last_hour, prev_hour = distinct(-1, 3600), distinct(3600, 7200)
     # Severidade = base da categoria + corroboração (fontes) + IMPACTO DO TEXTO (mortes, desabamento... pesam mais
     # que um relato de rotina da mesma categoria). Ruído de entretenimento já vem com importância baixa.
     assessed = [assess(f"{s.title}. {s.text or ''}") for s in signals]
     impact = max(a.score for a in assessed)
-    severity = BASE_SEVERITY.get(category, 15) + min(20, 4 * (len(sources) - 1)) + round(IMPACT_WEIGHT * impact)
+    base = BASE_SEVERITY.get(category, 15)
+    if gate and any(context(f"{s.title}. {s.text or ''}").operational for s in signals):
+        base, impact = max(base, OPERATIONAL_BASE), max(impact, OPERATIONAL_IMPACT)  # QA-002
+    severity = base + min(20, 4 * (independent - 1)) + round(IMPACT_WEIGHT * impact)
     if all(a.routine for a in assessed):  # comício, carreata, agenda de candidato: esperado e agendado, não é impacto
         severity = min(severity, ROUTINE_SEVERITY_CAP)
     return EventStats(
         severity=min(100, severity),
         signal_count=len(signals),
-        independent_sources=len(sources),
+        independent_sources=independent,
         source_classes=frozenset(s.source_class for s in signals),
         newest_age_min=max(0.0, (now - max(times)).total_seconds() / 60),
         persistence_min=(max(times) - min(times)).total_seconds() / 60,
@@ -61,9 +92,31 @@ def stats_for(signals: list[Signal], now: datetime, anomaly: float = 0.0, contra
         temporal_consistency=1.0 if len(signals) > 1 else 0.5,
         duplicate_ratio=duplicates / len(signals),
         contradiction=max(0.0, min(1.0, contradiction)),  # 0-1, vem da validação do Sentinela (0 = nenhuma registrada)
-        extra={"acceleration": float(last_hour - prev_hour)},
+        extra={"acceleration": float(last_hour - prev_hour),
+               "content_roles": sorted({a.role for a in assessed})},
         half_life_min=HALF_LIFE_BY_CATEGORY.get(category, HALF_LIFE_MIN),
     )
+
+
+# Temas em que o lado B pode ser o DESFECHO do lado A (fogo controlado, energia restabelecida, via liberada): só é
+# disputa se os lados se sobrepõem no tempo. Vítimas não "deixam de existir": feridos x sem feridos é sempre disputa.
+RESOLUTION_TOPICS = frozenset({"extensão do bloqueio", "situação do fogo/alagamento", "energia/serviço"})
+
+
+def disputes(sigs: list[Signal]) -> list[str]:
+    """EVENT_CONTRADICTION: temas em que os relatos do evento afirmam coisas incompatíveis (reusa CLAIM_PAIRS do
+    validador do Sentinela, mesma `claim_side`). Lado B inteiro DEPOIS do lado A, em tema de desfecho, não é disputa."""
+    folded = [(s, _fold(f"{s.title} {s.text or ''}")) for s in sigs]
+    out = []
+    for topic, a, b in CLAIM_PAIRS:
+        side_a = [s for s, f in folded if claim_side(a, b, f) == "a"]
+        side_b = [s for s, f in folded if claim_side(a, b, f) == "b"]
+        if not side_a or not side_b:
+            continue
+        if topic in RESOLUTION_TOPICS and min(s.timestamp for s in side_b) > max(s.timestamp for s in side_a):
+            continue
+        out.append(topic)
+    return out
 
 
 def status_for(stats: EventStats) -> str:
@@ -86,6 +139,13 @@ def is_publishable(cluster: Cluster) -> bool:
     categoria; ou notícia isolada de categoria de impacto cujo TEXTO é de impacto (mortes, desabamento...).
     Uma matéria isolada de política/economia/internacional espera uma segunda fonte."""
     sigs = cluster.signals
+    roles = [assess(f"{s.title}. {s.text or ''}").role for s in sigs]
+    # Volume, official provenance, and source diversity do not turn a purely
+    # editorial/scheduled sports story into an operational event.
+    if roles and not any(r in (OPERATIONAL_SIGNAL, POTENTIAL_INCIDENT) for r in roles):
+        # NOISE_GATE: incidente operacional em pauta de agenda ("pane nos trens após show") não é agenda: publica.
+        if not (flags.enabled("NOISE_GATE") and any(context(f"{s.title}. {s.text or ''}").operational for s in sigs)):
+            return False
     category = dominant_category(sigs)
     if len({s.source_id for s in sigs}) >= 2:
         return True
@@ -95,6 +155,17 @@ def is_publishable(cluster: Cluster) -> bool:
         return True
     return category in SINGLE_SOURCE_CATEGORIES and any(
         assess(f"{s.title}. {s.text or ''}").is_important() for s in sigs)
+
+
+def is_noise(sigs: list[Signal]) -> bool:
+    """NOISE_GATE (QA-001): agenda/esporte/serviço em TODOS os relatos, ou OTHER sem nenhum termo de impacto nem de
+    incidente operacional. Volume de veículos sozinho não transforma isso em alerta."""
+    texts = [f"{s.title}. {s.text or ''}" for s in sigs]
+    ctx = [context(t) for t in texts]
+    if all(c.scheduled for c in ctx):
+        return True
+    return (dominant_category(sigs) == "OTHER" and not any(c.operational for c in ctx)
+            and max(assess(t).score for t in texts) == 0)
 
 
 def event_place(sigs: list[Signal]) -> Signal | None:
@@ -125,12 +196,18 @@ OFFICIAL_ALERT_FLOOR = 3  # piso do nível PULSO quando o órgão oficial declar
 def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id: str | None = None,
                 alert_sources: frozenset[str] = frozenset(), contradiction: float = 0.0) -> dict:
     sigs = sorted(cluster.signals, key=lambda s: s.timestamp)
+    disputed = disputes(sigs) if flags.enabled("EVENT_CONTRADICTION") else []
+    if disputed:  # mesma escala do validador do Sentinela: 1 tema = 0,5; 2+ = 1
+        contradiction = max(contradiction, min(1.0, len(disputed) / 2))
     stats = stats_for(sigs, now, anomaly, contradiction)
     conf = confidence(stats)
     score, breakdown = pulse_score(stats)
     if stats.contradiction > 0:  # explícito no "POR QUE?": a divergência já está descontada da confiança, não do score
         breakdown = [*breakdown, {"key": "contradiction", "label": "Fontes divergem (reduz a confiança)", "points": 0}]
     level = alert_level(score, conf, stats)
+    if flags.enabled("NOISE_GATE") and level > NOISE_GATE_MAX_LEVEL and is_noise(sigs):  # QA-001
+        level = NOISE_GATE_MAX_LEVEL
+        breakdown = [*breakdown, {"key": "noise_gate", "label": "Agenda/serviço sem impacto (teto nível 1)", "points": 0}]
     # Alerta OFICIAL de risco extremo (INMET "Grande Perigo", Defesa Civil "Extreme": o adaptador os classifica como
     # EMERGENCY) nunca fica abaixo de "Elevado": o próprio órgão já declarou o perigo, e o score ainda não enxerga isso
     # (anomalia só existe com 12 h de histórico). O piso é explícito no "POR QUE?" (0 pontos) e não altera o score.
@@ -150,7 +227,7 @@ def build_event(cluster: Cluster, now: datetime, anomaly: float = 0.0, event_id:
         "title": best.title,
         "summary": best.text,
         "category": dominant_category(sigs),
-        "status": status_for(stats),
+        "status": "DISPUTED" if disputed else status_for(stats),
         "latitude": located.latitude if located else None,
         "longitude": located.longitude if located else None,
         "geo_precision": located.geo_precision if located else None,

@@ -52,6 +52,8 @@ export interface TursoConfig {
 	url: string;
 	token: string;
 	fetchImpl?: typeof fetch;
+	/** Limite total de cada chamada ao banco (padrão 25 s). Configurável só para os testes de falha poderem simular timeout sem esperar. */
+	timeoutMs?: number;
 }
 
 const stmtBody = (sql: string, args: unknown[]) => ({ sql, args: args.map(toHrana) });
@@ -62,7 +64,7 @@ async function pipeline(cfg: TursoConfig, requests: unknown[]): Promise<{ result
 		method: "POST",
 		headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
 		body: JSON.stringify({ requests: [...requests, { type: "close" }] }),
-		signal: AbortSignal.timeout(25_000),
+		signal: AbortSignal.timeout(cfg.timeoutMs ?? 25_000),
 	});
 	if (!res.ok) throw new Error(`turso_http_${res.status}: ${(await res.text()).slice(0, 200)}`);
 	return (await res.json()) as { results: any[] };

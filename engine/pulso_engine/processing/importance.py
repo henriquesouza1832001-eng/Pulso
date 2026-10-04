@@ -19,9 +19,10 @@ TIER_B = (  # evento físico relevante ou risco imediato
     "enchente", "alagamento", "inundacao", "deslizamento", "ciclone", "temporal", "tempestade",
     "incendio", "queimada", "apagao", "surto", "epidemia", "evacuacao", "resgate", "explosao",
     "tiroteio", "defesa civil", "onda de calor", "estiagem", "granizo", "feridos", "alerta de",
+    "evacuam", "evacuado", "evacuados", "falha eletrica", "principio de incendio",
 )
 TIER_C = (  # contexto que sozinho não basta
-    "chuva forte", "acidente", "interdicao", "bloqueio", "greve", "dengue", "congestionamento",
+    "chuva forte", "acidente", "interdicao", "interditado", "interrompido", "risco estrutural", "bloqueio", "greve", "dengue", "congestionamento",
 )
 # Ruído de entretenimento e vida privada de famosos.
 NOISE = (
@@ -46,13 +47,30 @@ EXTRA_PER_HIT = 8
 NOISE_PENALTY = 30
 DEFAULT_THRESHOLD = 45
 
+# Papel semântico do sinal.  O papel é deliberadamente separado do assunto:
+# uma partida pode ser contexto editorial, enquanto uma evacuação no estádio é
+# um incidente operacional.
+EDITORIAL_ONLY = "EDITORIAL_ONLY"
+SCHEDULED_CONTEXT = "SCHEDULED_CONTEXT"
+OPERATIONAL_SIGNAL = "OPERATIONAL_SIGNAL"
+POTENTIAL_INCIDENT = "POTENTIAL_INCIDENT"
 
+EDITORIAL_PATTERNS = (
+    "onde assistir", "onde ver", "horario do jogo", "hora do jogo", "que horas joga",
+    "escalacao", "resultado do jogo", "tabela do", "classificacao do", "palpite",
+    "apostas", "odds", "mercado da bola", "transferencia", "brasileirao", "campeonato",
+    "jogo entre", "partida entre", "sao paulo recebe", "corinthians recebe",
+)
+SCHEDULED_PATTERNS = (
+    "partida", "jogo", "show", "festival", "concerto", "evento marcado", "ingressos",
+)
 @dataclass(frozen=True)
 class Importance:
     score: int
     high_impact: tuple[str, ...]
     noise: tuple[str, ...]
     routine: bool = False  # agenda de campanha/rotina eleitoral SEM sinal de violência: pesa pouco
+    role: str = OPERATIONAL_SIGNAL
 
     def is_important(self, threshold: int = DEFAULT_THRESHOLD) -> bool:
         return self.score >= threshold
@@ -90,6 +108,8 @@ _TIERS = {"A": _compile(TIER_A), "B": _compile(TIER_B), "C": _compile(TIER_C)}
 _NOISE = _compile(NOISE)
 _ROUTINE = _compile(ROUTINE)
 _DISRUPTION = _compile(DISRUPTION)
+_EDITORIAL = _compile(EDITORIAL_PATTERNS)
+_SCHEDULED = _compile(SCHEDULED_PATTERNS)
 
 
 def assess(text: str) -> Importance:
@@ -99,12 +119,58 @@ def assess(text: str) -> Importance:
     routine = (any(pat.search(folded) for _, pat in _ROUTINE) and not any(hits.values())
                and not any(pat.search(folded) for _, pat in _DISRUPTION))
     matched = [term for tier in ("A", "B", "C") for term in hits[tier]]
+    editorial = any(pat.search(folded) for _, pat in _EDITORIAL)
+    scheduled = any(pat.search(folded) for _, pat in _SCHEDULED)
+    has_disruption = any(pat.search(folded) for _, pat in _DISRUPTION)
     if not matched:
-        return Importance(0, (), noise, routine)
+        role = EDITORIAL_ONLY if editorial else (SCHEDULED_CONTEXT if scheduled else OPERATIONAL_SIGNAL)
+        return Importance(0, (), noise, routine, role)
     top = next(t for t in ("A", "B", "C") if hits[t])
     score = BASE[top] + EXTRA_PER_HIT * (len(matched) - 1)
     if noise:
         # Com 2+ sinais do nível mais alto ("atentado" + "mortos") a palavra de entretenimento é ruído do texto, não do
         # fato: "Atentado em casamento deixa 20 mortos" é notícia. Com 1 só ("morreu" + "famosos no casamento"), é fofoca.
         score -= NOISE_PENALTY // 3 if len(hits["A"]) >= 2 else NOISE_PENALTY
-    return Importance(max(0, min(100, score)), tuple(matched), noise, False)
+    role = POTENTIAL_INCIDENT if has_disruption or hits["A"] or hits["B"] else OPERATIONAL_SIGNAL
+    # Editorial sports language never masks physical impact: "jogo interrompido
+    # por apagão" remains operational.
+    return Importance(max(0, min(100, score)), tuple(matched), noise, False, role)
+
+
+# ---------------------------------------------------------------- NOISE_GATE (QA-001/002), só lido com a flag ligada
+# Nomes GATE_* de propósito: não colidem com SCHEDULED_PATTERNS/_SCHEDULED que `assess` usa para o papel do sinal.
+# Agenda, esporte, entretenimento e serviço: muitos veículos noticiam, mas sozinho não é incidente operacional.
+GATE_SCHEDULED = (
+    "onde assistir", "assistir ao vivo", "escalacao", "escalacoes", "vence o", "vence a", "venceu", "empata", "empatou",
+    "goleia", "goleada", "rodada", "brasileirao", "libertadores", "copa do brasil", "amistoso", "classico",
+    "show", "festival", "ingressos", "turne", "feriado", "o que abre e fecha", "abre e fecha", "horario de funcionamento",
+    "loteria", "mega-sena", "sorteio", "programacao", "veja como", "saiba como",  # "bets/apostas" é tema, não agenda
+    # rotina diária (validação do gate): chuva fraca e trânsito de pico. "chuva forte", "temporal", "congestionamento" e
+    # "acidente" são termos de impacto e anulam o teto (ver `context`).
+    "chuva fraca", "chuva leve", "garoa", "tempo nublado", "tempo instavel",
+    "transito lento", "transito intenso", "lentidao", "horario de pico",
+)
+# Incidente operacional que o vocabulário de impacto (substantivos) não pegava: verbos/particípios e telecom.
+GATE_OPERATIONAL = (
+    "circulacao interrompida", "interrompida", "interrompido", "paralisada", "paralisado", "paralisacao",
+    "sem internet", "sem sinal", "sem energia", "fora do ar", "pane", "bloqueiam", "bloqueada", "bloqueado",
+    "interditada", "interditado", "evacuado", "evacuada", "evacuados", "tumulto", "feridos", "ferido",
+    "sem transporte", "estacao fechada", "trens param", "ficam presos",
+)
+_GATE_SCHEDULED = _compile(GATE_SCHEDULED)
+_GATE_OPERATIONAL = _compile(GATE_OPERATIONAL)
+
+
+@dataclass(frozen=True)
+class Context:
+    scheduled: bool  # agenda/esporte/serviço SEM nenhum sinal de impacto, ruptura ou incidente operacional
+    operational: tuple[str, ...]  # termos de incidente operacional encontrados
+
+
+def context(text: str) -> Context:
+    folded = _fold(text)
+    operational = tuple(term for term, pat in _GATE_OPERATIONAL if pat.search(folded))
+    impact = any(pat.search(folded) for pats in _TIERS.values() for _, pat in pats)
+    disruption = any(pat.search(folded) for _, pat in _DISRUPTION)
+    scheduled = any(pat.search(folded) for _, pat in _GATE_SCHEDULED) and not (impact or disruption or operational)
+    return Context(scheduled, operational)

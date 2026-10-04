@@ -25,9 +25,10 @@ MIN_TYPES_CONFIRMED = 2  # ...de ao menos 2 tipos de fonte, um deles não social
 # (tema, lado A, lado B): pares de afirmações incompatíveis sobre o mesmo fato.
 CLAIM_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("extensão do bloqueio", r"totalmente (fechad|interditad|bloquead)|bloqueio total|interdi\w+ total", r"bloqueio parcial|interdi\w+ parcial|uma faixa|liberad|trafego normal|normalizad"),
-    ("vítimas", r"\bmortos?\b|\bmorre(u|m)\b|vitimas? fatais?|\bferidos?\b", r"sem vitimas|ninguem ferido|nao ha (mortos|feridos|vitimas)|nao houve (mortos|feridos|vitimas)"),
+    ("vítimas", r"\bmortos?\b|\bmorre(u|m)\b|vitimas? fatais?|\bferidos?\b", r"sem (vitimas|feridos|mortos)|ninguem (ficou )?ferid|nenhum (ferido|morto)|nao (ha|houve|deixou|deixa) (mortos|feridos|vitimas)"),
     ("situação do fogo/alagamento", r"fora de controle|sem controle|avanca|se espalha", r"controlad|extint|apagad|debelad|baixou|nivel (do rio )?(baixa|recua)"),
-    ("energia/serviço", r"sem energia|sem luz|apagao|fora do ar", r"energia (restabelecid|normalizad)|servico (restabelecid|normalizad)|volta ao normal"),
+    # "apagão" nomeia o evento, não afirma o estado atual: "energia restabelecida após apagão" é desfecho (lado B).
+    ("energia/serviço", r"sem energia|sem luz|fora do ar", r"energia (restabelecid|normalizad)|servico (restabelecid|normalizad)|volta ao normal"),
 )
 
 
@@ -59,16 +60,22 @@ def _origins(signals: list[Signal]) -> list[list[Signal]]:
     return [m for _, m in groups]
 
 
+def claim_side(a: str, b: str, folded: str) -> str | None:
+    """De que lado do par o texto (já `_fold`) está. O lado B (negação/desfecho) tem precedência sobre as palavras que
+    ele mesmo contém: "não deixou feridos" é B, embora tenha "feridos". Só é ambíguo (None) se o lado A aparecer FORA do
+    trecho B: "sem vítimas fatais, mas 3 feridos" é outra história."""
+    if re.search(b, folded):
+        return None if re.search(a, re.sub(b, " ", folded)) else "b"
+    return "a" if re.search(a, folded) else None
+
+
 def find_contradictions(signals: list[Signal]) -> list[dict]:
     out = []
     folded = {s.hash: _fold(f"{s.title} {s.text or ''}") for s in signals}
     for topic, a, b in CLAIM_PAIRS:
-        side_a = [s for s in signals if re.search(a, folded[s.hash])]
-        side_b = [s for s in signals if re.search(b, folded[s.hash])]
-        # um mesmo texto pode casar os dois lados ("sem feridos, mas 2 mortos" é outra história): só conta quem é de um lado só
-        both = {s.hash for s in side_a} & {s.hash for s in side_b}
-        side_a = [s for s in side_a if s.hash not in both]
-        side_b = [s for s in side_b if s.hash not in both]
+        side = {s.hash: claim_side(a, b, folded[s.hash]) for s in signals}
+        side_a = [s for s in signals if side[s.hash] == "a"]
+        side_b = [s for s in signals if side[s.hash] == "b"]
         if not side_a or not side_b:
             continue
         def pack(side: list[Signal]) -> dict:
