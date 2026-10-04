@@ -16,7 +16,24 @@ def test_registry_snapshot_binds_features_to_an_explicit_data_cutoff():
     assert entry["created_at"] == "2026-10-03T17:30:00Z"
     assert snapshot["data_cutoff"] == entry["created_at"]
     assert snapshot["features"] == {"baseline": 12}
+    assert snapshot["forecast_at"] == entry["created_at"]
+    assert snapshot["scope"] == "BR" and snapshot["horizon"] is None
+    assert snapshot["probability_raw"] == 0.62 and snapshot["probability_calibrated"] is None
+    assert snapshot["abstention"] is False and snapshot["calibrator_version"] is None
     assert verify(entry)
+
+
+def test_registry_preserves_prospective_metadata_without_outcome_fields():
+    cutoff = datetime(2026, 10, 3, 17, 30, tzinfo=timezone.utc)
+    forecast = {**FORECAST, "event_id": "ev-1", "created_at": "2026-10-03T17:29:00Z",
+                "horizon_minutes": 60, "probability_calibrated": 0.58,
+                "calibrator_version": "cal-2", "coverage": 0.8,
+                "evidence": {"missingness": {"energy": "stale"}}}
+    snapshot = json.loads(build_entry(forecast, {"baseline": 12}, cutoff, "m1", "f1", "b1", {})["snapshot"])
+    assert snapshot["event_id"] == "ev-1" and snapshot["forecast_at"] == forecast["created_at"]
+    assert snapshot["horizon"] == 60 and snapshot["probability_calibrated"] == 0.58
+    assert snapshot["coverage"] == 0.8 and snapshot["missingness"] == {"energy": "stale"}
+    assert "outcome" not in snapshot and "resolved_at" not in snapshot
 
 
 def test_registry_rejects_naive_cutoff_instead_of_ambiguously_timestamping_features():

@@ -25,10 +25,21 @@ def build_entry(forecast: dict, features: dict, now: datetime, model_version: st
     if now.tzinfo is None:
         raise ValueError("data_cutoff requer timezone")
     data_cutoff = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    body = {"data_cutoff": data_cutoff, "features": features, "model_version": model_version, "feature_version": feature_version,
+    evidence = forecast.get("evidence") if isinstance(forecast.get("evidence"), dict) else {}
+    forecast_at = forecast.get("created_at") or data_cutoff
+    body = {"data_cutoff": data_cutoff, "forecast_at": forecast_at,
+            "scope": forecast["scope"], "event_id": forecast.get("event_id"),
+            "horizon": forecast.get("horizon_minutes"),
+            "probability_raw": forecast.get("probability"),
+            "probability_calibrated": forecast.get("probability_calibrated"),
+            "coverage": forecast.get("coverage", evidence.get("coverage")),
+            "missingness": forecast.get("missingness", evidence.get("missingness")),
+            "abstention": forecast.get("abstention_reason") or forecast.get("status") == "abstained",
+            "features": features, "model_version": model_version, "feature_version": feature_version,
             "baseline_version": baseline_version, "flags": active_flags if active_flags is not None else flags.snapshot(),
+            "calibrator_version": forecast.get("calibrator_version"),
             "probability": forecast["probability"], "method": forecast["method"], "method_version": forecast["method_version"],
-            "scope": forecast["scope"], "threshold": forecast["threshold"]}
+            "threshold": forecast["threshold"]}
     return {"forecast_id": forecast["forecast_id"], "created_at": data_cutoff,
             "snapshot": _canonical(body), "snapshot_hash": hashlib.sha256(_canonical(body).encode()).hexdigest()}
 
